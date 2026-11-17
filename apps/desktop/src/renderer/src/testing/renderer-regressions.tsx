@@ -55,7 +55,7 @@ import { ComposerTasks } from "../features/conversation/ComposerTasks";
 import { TurnTranscript } from "../features/conversation/TurnTranscript";
 import { Sidebar } from "../features/shell/Sidebar";
 import { ProviderQuota } from "../features/library/ProviderQuota";
-import { RuntimeModeCard } from "../features/settings/RuntimeModeCard";
+import { RuntimeModeRow } from "../features/settings/RuntimeModeRow";
 import { Conversation } from "../features/conversation/Conversation";
 import { ThreadAgents } from "../features/shell/ThreadAgents";
 import { GATEWAY_CONNECTION_REQUIRED } from "../lib/harness-preflight";

@@ -71,9 +71,9 @@ const CODE_FONTS: Array<{ id: AppearanceCodeFont; label: string }> = [
   { id: "jetbrains", label: "JetBrains Mono" },
 ];
 const TRANSCRIPT_SIZES: Array<{ id: TranscriptSize; label: string }> = [
-  { id: "s", label: "Small" },
-  { id: "m", label: "Default" },
-  { id: "l", label: "Large" },
+  { id: "s", label: "Small · 13 px" },
+  { id: "m", label: "Default · 14 px" },
+  { id: "l", label: "Large · 16 px" },
 ];
 const TRANSCRIPT_WIDTHS: Array<{ id: TranscriptWidth; label: string }> = [
   { id: "narrow", label: "Narrow" },
@@ -96,11 +96,7 @@ export function AppearanceSettings({
   return (
     <div className="appearance-page">
       <div className="card">
-        <h3>Theme and text<SettingSource setting="appearanceTheme" /></h3>
-        <p className="muted">
-          Theme, transcript sizing, and the code font. Colors, contrast, and the
-          translucent sidebar are set separately for Light and Dark below.
-        </p>
+        <h3>Theme<SettingSource setting="appearanceTheme" /></h3>
         <div className="theme-picker" role="radiogroup" aria-label="Theme">
           {THEMES.map((item) => (
             <ThemeCard
@@ -115,8 +111,8 @@ export function AppearanceSettings({
           ))}
         </div>
         <SettingRow
-          label="Transcript text size" setting="transcriptSize"
-          hint="Size of the conversation transcript text."
+          label="Text size" setting="transcriptSize"
+          hint="Size of the text in conversations."
         >
           <select
             className="field-select"
@@ -140,8 +136,8 @@ export function AppearanceSettings({
           </div>
         </div>
         <SettingRow
-          label="Transcript width" setting="transcriptWidth"
-          hint="Maximum width of the transcript and composer columns."
+          label="Conversation width" setting="transcriptWidth"
+          hint="How wide messages and the composer can grow on large screens."
         >
           <select
             className="field-select"
@@ -168,7 +164,7 @@ export function AppearanceSettings({
             <option value="24h">24-hour</option>
           </select>
         </SettingRow>
-        <SettingRow label="Tool calls" setting="toolCallDisplay" hint="Whether a turn's tool calls start folded to one line or listed in full.">
+        <SettingRow label="Tool calls" setting="toolCallDisplay" hint="Whether the commands, edits and searches in a turn start folded to one line or listed in full.">
           <select
             className="field-select"
             value={settings.toolCallDisplay}
@@ -183,7 +179,7 @@ export function AppearanceSettings({
         </SettingRow>
         <SettingRow
           label="Custom code font" setting="customCodeFont"
-          hint="Optional monospace family for code and the terminal, e.g. JetBrains Mono."
+          hint="A monospace font for code and the terminal, used ahead of the Code font below. Leave empty to use that one."
         >
           <input
             className="field-select"
@@ -331,25 +327,22 @@ function PaletteEditor({
       </div>
       <ColorField
         label="Accent"
-        hint={kind === "light" ? "Light accent color" : "Dark accent color"}
         value={colour("accent")}
         onChange={(accent) => setColour("accent", accent)}
       />
       <ColorField
         label="Background"
-        hint={kind === "light" ? "Light background color" : "Dark background color"}
         value={colour("background")}
         onChange={(background) => setColour("background", background)}
       />
       <ColorField
         label="Foreground"
-        hint={kind === "light" ? "Light ink color" : "Dark ink color"}
         value={colour("foreground")}
         onChange={(foreground) => setColour("foreground", foreground)}
       />
       <label className="setting">
         <div className="setting-copy">
-          <div>UI font</div>
+          <div><span className="setting-label">Interface font</span></div>
         </div>
         <div className="setting-control">
           <select
@@ -367,7 +360,7 @@ function PaletteEditor({
       </label>
       <label className="setting">
         <div className="setting-copy">
-          <div>Code font</div>
+          <div><span className="setting-label">Code font</span></div>
         </div>
         <div className="setting-control">
           <select
@@ -385,8 +378,8 @@ function PaletteEditor({
       </label>
       <div className="setting">
         <div className="setting-copy">
-          <div>Translucent sidebar</div>
-          <p>Frosted glass over the sidebar surface.</p>
+          <div><span className="setting-label">Translucent sidebar</span></div>
+          <p>Let the desktop show through the sidebar.</p>
         </div>
         <div className="setting-control">
           <label className="switch">
@@ -402,8 +395,8 @@ function PaletteEditor({
       </div>
       <div className="setting contrast-row">
         <div className="setting-copy">
-          <div>Contrast</div>
-          <p>Separation between sidebar, panels, and the page.</p>
+          <div><span className="setting-label">Contrast</span></div>
+          <p>How strongly the sidebar and panels stand apart from the page.</p>
         </div>
         <div className="setting-control contrast-control">
           <span className="mono">{palette.contrast}</span>
@@ -423,12 +416,10 @@ function PaletteEditor({
 
 function ColorField({
   label,
-  hint,
   value,
   onChange,
 }: {
   label: string;
-  hint: string;
   value: string;
   onChange: (next: string) => void;
 }) {
@@ -439,8 +430,7 @@ function ColorField({
   return (
     <label className="setting color-field">
       <div className="setting-copy">
-        <div>{label}</div>
-        <p>{hint}</p>
+        <div><span className="setting-label">{label}</span></div>
       </div>
       <div className="setting-control color-control">
         <input

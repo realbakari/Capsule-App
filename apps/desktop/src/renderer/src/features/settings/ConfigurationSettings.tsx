@@ -9,8 +9,9 @@ import type {
   SandboxMode,
   WebAccess,
 } from "@capsule/shared";
+import type { ReactNode } from "react";
 import { useWorkspace } from "../../lib/workspace";
-import { SettingRow, Switch } from "./controls";
+import { AdvancedRows, SettingRow, Switch } from "./controls";
 import { PetControl } from "../pet/PetControl";
 
 const WEB_OPTIONS: Array<{ id: WebAccess; label: string }> = [
@@ -32,8 +33,8 @@ const OUTPUT_OPTIONS: Array<{ id: OutputDetail; label: string }> = [
 ];
 
 const REASONING_OPTIONS: Array<{ id: ReasoningSummary; label: string }> = [
-  { id: "visible", label: "Visible" },
-  { id: "collapsed", label: "Collapsed" },
+  { id: "visible", label: "Shown" },
+  { id: "collapsed", label: "Folded" },
   { id: "hidden", label: "Hidden" },
 ];
 
@@ -49,125 +50,122 @@ const MERGE_OPTIONS: Array<{ id: PrMergeMethod; label: string }> = [
   { id: "rebase", label: "Rebase" },
 ];
 const REVIEW_OPTIONS: Array<{ id: PrReviewDelivery; label: string }> = [
-  { id: "current", label: "Current chat" },
-  { id: "new-chat", label: "New chat" },
+  { id: "current", label: "This conversation" },
+  { id: "new-chat", label: "A new conversation" },
 ];
 
-/*
- * These cards used to render together under a tab called "Configuration",
- * which had become a drawer: agent defaults, notifications, desktop launch,
- * session archiving, harness credentials, the skill catalog and Git, none of
- * which belong together. Each is exported on its own so Settings can file it
- * under the section a user would look in.
- */
 interface SectionProps {
   settings: CapsuleSettings;
   onPatch: (next: Partial<CapsuleSettings>) => void;
 }
 
+function Choice<T extends string>({ value, options, label, onChange, disabled }: {
+  value: T;
+  options: ReadonlyArray<{ id: T; label: string }>;
+  label: string;
+  onChange: (next: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <select className="field-select" aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as T)}>
+      {options.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+    </select>
+  );
+}
 
-export function AgentDefaultsCard({ settings, onPatch }: SectionProps) {
+/** A text setting saved when the field loses focus, so typing does not write the file on every key. */
+function TextSetting({ value, placeholder, label, multiline, onSave }: {
+  value: string;
+  placeholder: string;
+  label: string;
+  multiline?: boolean;
+  onSave: (next: string) => void;
+}) {
+  if (multiline) {
+    return <textarea className="field-select" aria-label={label} key={value} defaultValue={value} placeholder={placeholder} rows={3} onBlur={(event) => onSave(event.target.value)} />;
+  }
+  return (
+    <input
+      className="field-select"
+      aria-label={label}
+      key={value}
+      defaultValue={value}
+      placeholder={placeholder}
+      spellCheck={false}
+      onBlur={(event) => onSave(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+    />
+  );
+}
+
+/** What a new conversation starts with. Each of these can be changed per conversation in the composer. */
+export function NewConversationsCard({ settings, onPatch, agents, routeRow }: SectionProps & {
+  agents: Array<{ id: string; name: string }>;
+  /** Where agents run, folded under Advanced because only Gateway users change it. */
+  routeRow: ReactNode;
+}) {
   return (
     <div className="card">
-      <h3>Agent defaults</h3>
-      <p className="muted">
-        Approvals, reasoning and agent settings can also be changed per conversation in the composer.
-      </p>
-      <SettingRow
-        label="Approvals for new conversations" setting="defaultPermission"
-        hint={`${approvalPreset(settings.defaultPermission).summary} Change it per conversation from the composer.`}
-      >
-        <select
-          className="field-select"
-          aria-label="Approvals for new conversations"
+      <h3>New conversations</h3>
+      <SettingRow label="Default agent" setting="defaultAgentId" hint="Selected when you start a conversation.">
+        <Choice
+          label="Default agent"
+          value={settings.defaultAgentId ?? "general"}
+          options={agents.map((agent) => ({ id: agent.id, label: agent.name }))}
+          onChange={(defaultAgentId) => onPatch({ defaultAgentId })}
+        />
+      </SettingRow>
+      <SettingRow label="Workspace" setting="defaultWorkspaceMode" hint="Where a conversation in a Git project starts. A worktree gets its own branch and folder.">
+        <Choice
+          label="Workspace"
+          value={settings.defaultWorkspaceMode}
+          options={[{ id: "local", label: "Current checkout" }, { id: "worktree", label: "New worktree" }]}
+          onChange={(defaultWorkspaceMode) => onPatch({ defaultWorkspaceMode })}
+        />
+      </SettingRow>
+      <SettingRow label="Permissions" setting="defaultPermission" hint={approvalPreset(settings.defaultPermission).summary}>
+        <Choice
+          label="Permissions"
           value={approvalPreset(settings.defaultPermission).id}
-          onChange={(event) =>
-            onPatch({
-              defaultPermission: event.target.value as CapsuleSettings["defaultPermission"],
-            })
-          }
-        >
-          {APPROVAL_PRESETS.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.label}
-            </option>
-          ))}
-        </select>
+          options={APPROVAL_PRESETS}
+          onChange={(defaultPermission) => onPatch({ defaultPermission: defaultPermission as CapsuleSettings["defaultPermission"] })}
+        />
       </SettingRow>
-      <SettingRow
-        label="Sandbox" setting="sandbox"
-        hint="How much local command access Capsule grants. Strict blocks the project terminal."
-      >
-        <select
-          className="field-select"
-          value={settings.sandbox}
-          onChange={(event) => onPatch({ sandbox: event.target.value as SandboxMode })}
-        >
-          {SANDBOX_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
+      <SettingRow label="Web search" setting="webAccess" hint="Whether agents may search and read the public web.">
+        <Choice label="Web search" value={settings.webAccess} options={WEB_OPTIONS} onChange={(webAccess) => onPatch({ webAccess })} />
       </SettingRow>
-      <SettingRow
-        label="Web search" setting="webAccess"
-        hint="Whether agents may use the public web. Off is written into the run contract."
-      >
-        <select
-          className="field-select"
-          value={settings.webAccess}
-          onChange={(event) => onPatch({ webAccess: event.target.value as WebAccess })}
-        >
-          {WEB_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
+      <AdvancedRows>
+        <SettingRow label="Sandbox" setting="sandbox" hint="How freely agents may run commands on this computer. Strict also blocks the project terminal.">
+          <Choice label="Sandbox" value={settings.sandbox} options={SANDBOX_OPTIONS} onChange={(sandbox) => onPatch({ sandbox })} />
+        </SettingRow>
+        {routeRow}
+      </AdvancedRows>
+    </div>
+  );
+}
+
+export function RepliesCard({ settings, onPatch }: SectionProps) {
+  return (
+    <div className="card">
+      <h3>Replies</h3>
+      <SettingRow label="Thinking" setting="reasoningSummary" hint="How the agent's thinking shows while a turn runs.">
+        <Choice label="Thinking" value={settings.reasoningSummary} options={REASONING_OPTIONS} onChange={(reasoningSummary) => onPatch({ reasoningSummary })} />
       </SettingRow>
-      <SettingRow
-        label="Output detail" setting="outputDetail"
-        hint="How much detail the agent includes in replies. A response style, yours or a profile's, replaces it."
-      >
-        <select
-          className="field-select"
-          value={settings.outputDetail}
-          onChange={(event) => onPatch({ outputDetail: event.target.value as OutputDetail })}
-        >
-          {OUTPUT_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
-      <SettingRow
-        label="Reasoning summary" setting="reasoningSummary"
-        hint="How thinking frames appear while a run is in progress."
-      >
-        <select
-          className="field-select"
-          value={settings.reasoningSummary}
-          onChange={(event) =>
-            onPatch({ reasoningSummary: event.target.value as ReasoningSummary })
-          }
-        >
-          {REASONING_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
+      <AdvancedRows>
+        <SettingRow label="Output detail" setting="outputDetail" hint="How much the agent writes when no response style is chosen. A response style replaces it.">
+          <Choice label="Output detail" value={settings.outputDetail} options={OUTPUT_OPTIONS} onChange={(outputDetail) => onPatch({ outputDetail })} />
+        </SettingRow>
+      </AdvancedRows>
     </div>
   );
 }
 
 /*
- * Presets over the switches below; nothing new is stored. The preset shown is
- * whichever one the switches match, so changing a switch by hand reads as
- * Custom rather than a preset that no longer describes what happens.
+ * Presets over the switches under Advanced; nothing new is stored. The preset
+ * shown is whichever one the switches match, so changing a switch by hand
+ * reads as Custom rather than a preset that no longer describes what happens.
  */
 const NOTIFICATION_PRESETS = {
   everything: { label: "Everything", values: { notifyRunComplete: true, notifyApprovals: true, notifyLongCommands: true, bounceDockOnAttention: true, dockBadge: true } },
@@ -189,7 +187,7 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
       <h3>Notifications</h3>
       <SettingRow
         label="Notify me"
-        hint="Everything: finished turns, approvals and long commands. When I'm needed: only when an agent waits on you. Only in the app: nothing outside Capsule's window. Sets the switches below."
+        hint="What reaches you while Capsule is in the background. Everything covers finished turns, approvals and long commands. When I'm needed covers only an agent waiting on you. Only in the app shows nothing outside the window."
       >
         <select
           className="field-select"
@@ -205,68 +203,121 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
         </select>
       </SettingRow>
       <SettingRow
-        label="Response completions" setting="notifyRunComplete"
-        hint="Notify with the conversation's name when a turn finishes or a snooze ends while Capsule is in the background. Clicking the notification opens it. In front of you, another conversation finishing shows in the app instead."
+        label="In-app notifications" setting="inAppNotifications"
+        hint="While you are in Capsule, show a toast with Open when another conversation finishes, fails or needs you."
       >
-        <Switch
-          checked={settings.notifyRunComplete}
-          label="Response completions"
-          onChange={(notifyRunComplete) => onPatch({ notifyRunComplete })}
-        />
+        <Switch checked={settings.inAppNotifications} label="In-app notifications" onChange={(inAppNotifications) => onPatch({ inAppNotifications })} />
       </SettingRow>
-      <SettingRow
-        label="Approval requests" setting="notifyApprovals"
-        hint="Notify when an agent needs approval or asks you a question and Capsule is in the background."
-      >
-        <Switch
-          checked={settings.notifyApprovals}
-          label="Approval requests"
-          onChange={(notifyApprovals) => onPatch({ notifyApprovals })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Long-running commands" setting="notifyLongCommands"
-        hint="Notify when a command that ran without asking, under Auto or Full, is still going and Capsule is in the background."
-      >
-        <div className="setting-inline">
-          <select
-            className="field-select"
-            aria-label="Long-running command threshold"
-            value={settings.longCommandSeconds}
-            disabled={!settings.notifyLongCommands}
-            onChange={(event) => onPatch({ longCommandSeconds: Number(event.target.value) })}
-          >
-            {LONG_COMMAND_SECONDS.map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {seconds < 60 ? `After ${seconds} seconds` : `After ${seconds / 60} minute${seconds === 60 ? "" : "s"}`}
-              </option>
-            ))}
-          </select>
-          <Switch
-            checked={settings.notifyLongCommands}
-            label="Long-running commands"
-            onChange={(notifyLongCommands) => onPatch({ notifyLongCommands })}
-          />
-        </div>
-      </SettingRow>
-      <SettingRow
-        label="Draw attention" setting="bounceDockOnAttention"
-        hint="Bounce the Dock icon when Capsule needs you and the window is not focused."
-      >
-        <Switch
-          checked={settings.bounceDockOnAttention}
-          label="Draw attention"
-          onChange={(bounceDockOnAttention) => onPatch({ bounceDockOnAttention })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Dock badge" setting="dockBadge"
-        hint="Count the conversations waiting on you: a decision, a failure, or a finished turn you have not read."
-      >
-        <Switch checked={settings.dockBadge} label="Dock badge" onChange={(dockBadge) => onPatch({ dockBadge })} />
-      </SettingRow>
-      <SettingRow label="Notification sound" setting="notificationSound" hint="Play the system sound with each notification.">
+      <SettingRow label="Notification sound" setting="notificationSound" hint="Play the system sound with each desktop notification. Focus modes can still silence it.">
         <Switch checked={settings.notificationSound} label="Notification sound" onChange={(notificationSound) => onPatch({ notificationSound })} />
+      </SettingRow>
+      <AdvancedRows>
+        <SettingRow
+          label="Finished turns" setting="notifyRunComplete"
+          hint="Notify when a turn finishes, fails or hits a usage limit, or a snooze ends, while Capsule is in the background."
+        >
+          <Switch checked={settings.notifyRunComplete} label="Finished turns" onChange={(notifyRunComplete) => onPatch({ notifyRunComplete })} />
+        </SettingRow>
+        <SettingRow
+          label="Approvals and questions" setting="notifyApprovals"
+          hint="Notify when an agent needs approval or asks you something while Capsule is in the background."
+        >
+          <Switch checked={settings.notifyApprovals} label="Approvals and questions" onChange={(notifyApprovals) => onPatch({ notifyApprovals })} />
+        </SettingRow>
+        <SettingRow
+          label="Long-running commands" setting="notifyLongCommands"
+          hint="Notify when a command that ran without asking is still going while Capsule is in the background."
+        >
+          <div className="setting-inline">
+            <select
+              className="field-select"
+              aria-label="Long-running command threshold"
+              value={settings.longCommandSeconds}
+              disabled={!settings.notifyLongCommands}
+              onChange={(event) => onPatch({ longCommandSeconds: Number(event.target.value) })}
+            >
+              {LONG_COMMAND_SECONDS.map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds < 60 ? `After ${seconds} seconds` : `After ${seconds / 60} minute${seconds === 60 ? "" : "s"}`}
+                </option>
+              ))}
+            </select>
+            <Switch checked={settings.notifyLongCommands} label="Long-running commands" onChange={(notifyLongCommands) => onPatch({ notifyLongCommands })} />
+          </div>
+        </SettingRow>
+        <SettingRow label="Bounce the Dock icon" setting="bounceDockOnAttention" hint="When a desktop notification goes out. On Windows the taskbar button flashes instead.">
+          <Switch checked={settings.bounceDockOnAttention} label="Bounce the Dock icon" onChange={(bounceDockOnAttention) => onPatch({ bounceDockOnAttention })} />
+        </SettingRow>
+        <SettingRow label="Dock badge" setting="dockBadge" hint="Count the conversations waiting on you: a decision, a failure, or a finished turn you have not read.">
+          <Switch checked={settings.dockBadge} label="Dock badge" onChange={(dockBadge) => onPatch({ dockBadge })} />
+        </SettingRow>
+      </AdvancedRows>
+    </div>
+  );
+}
+
+export function ChatCard({ settings, onPatch }: SectionProps) {
+  const sendOnEnter = settings.composerSendKey !== "cmd-enter";
+  return (
+    <div className="card">
+      <h3>Chat</h3>
+      <SettingRow
+        label="Send key" setting="composerSendKey"
+        hint={sendOnEnter
+          ? "Enter sends. Shift+Enter starts a new line. ⌘Enter starts another conversation."
+          : "⌘Enter sends. Enter starts a new line. ⌘⇧Enter starts another conversation."}
+      >
+        <Choice
+          label="Send key"
+          value={settings.composerSendKey}
+          options={[{ id: "enter", label: "Enter" }, { id: "cmd-enter", label: "⌘Enter" }]}
+          onChange={(composerSendKey) => onPatch({ composerSendKey })}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Follow-ups" setting="followUpBehavior"
+        hint="What a message sent while the agent works does. Messages with attachments or skills always queue."
+      >
+        <Choice
+          label="Follow-ups"
+          value={settings.followUpBehavior}
+          options={[{ id: "queue", label: "Queue for after the turn" }, { id: "steer", label: "Steer the running turn" }]}
+          onChange={(followUpBehavior) => onPatch({ followUpBehavior })}
+        />
+      </SettingRow>
+    </div>
+  );
+}
+
+export function ConversationsCard({ settings, onPatch }: SectionProps) {
+  return (
+    <div className="card">
+      <h3>Conversations</h3>
+      <SettingRow label="Resume after usage limits" setting="autoResumeOnLimit" hint="When a provider's usage limit stops a turn and says when it resets, send the prompt again then. Off asks each time.">
+        <Switch checked={settings.autoResumeOnLimit} label="Resume after usage limits" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
+      </SettingRow>
+      <SettingRow label="Continue after a restart" setting="continueAfterRestart" hint="If Capsule quits during a turn, queue its prompt again when Capsule reopens. Turns on a Gateway are left alone, since the Gateway may still be running them.">
+        <Switch checked={settings.continueAfterRestart} label="Continue after a restart" onChange={(continueAfterRestart) => onPatch({ continueAfterRestart })} />
+      </SettingRow>
+      <SettingRow label="Archive inactive conversations" setting="archiveInactiveAfter" hint="Running and pinned conversations are never archived.">
+        <Choice label="Archive inactive conversations" value={settings.archiveInactiveAfter} options={ARCHIVE_OPTIONS} onChange={(archiveInactiveAfter) => onPatch({ archiveInactiveAfter })} />
+      </SettingRow>
+      <SettingRow label="Mark blocked or done" setting="autoClassifySessions" hint="Set a conversation's status from how its latest turn ended. Conversations with a live agent session stay unmarked.">
+        <Switch checked={settings.autoClassifySessions} label="Mark blocked or done" onChange={(autoClassifySessions) => onPatch({ autoClassifySessions })} />
+      </SettingRow>
+    </div>
+  );
+}
+
+export function ConfirmationsCard({ settings, onPatch }: SectionProps) {
+  return (
+    <div className="card">
+      <h3>Confirmations</h3>
+      <SettingRow label="Confirm before deleting" setting="confirmDelete" hint="Ask before deleting a conversation. Deleting a project always asks.">
+        <Switch checked={settings.confirmDelete} label="Confirm before deleting" onChange={(confirmDelete) => onPatch({ confirmDelete })} />
+      </SettingRow>
+      <SettingRow label="Confirm before archiving" setting="confirmArchive" hint="Ask before archiving a conversation. Without it, Archive offers Undo for a few seconds.">
+        <Switch checked={settings.confirmArchive} label="Confirm before archiving" onChange={(confirmArchive) => onPatch({ confirmArchive })} />
       </SettingRow>
     </div>
   );
@@ -275,109 +326,44 @@ export function NotificationsCard({ settings, onPatch }: SectionProps) {
 export function DesktopCard({ settings, onPatch }: SectionProps) {
   return (
     <div className="card">
-      <h3>Desktop</h3>
-      <SettingRow label="Desktop companion" hint="An animated capsule for activity across all projects, even outside chat. Click to open threads; drag its handle to move it. Size and motion controls are inside.">
-        <PetControl />
+      <h3>System</h3>
+      <SettingRow label="Launch at login" setting="launchAtLogin" hint="Open Capsule when you sign in to this computer. Needs the installed app.">
+        <Switch checked={settings.launchAtLogin} label="Launch at login" onChange={(launchAtLogin) => onPatch({ launchAtLogin })} />
       </SettingRow>
-      <SettingRow label="Download updates automatically" setting="autoDownloadUpdates" hint="Download compatible releases in the background. Capsule only restarts to install when you ask, after active work finishes.">
+      <SettingRow label="Menu bar" setting="showMenuBarExtra" hint="Show Capsule in the menu bar, with approvals and running turns.">
+        <Switch checked={settings.showMenuBarExtra} label="Menu bar" onChange={(showMenuBarExtra) => onPatch({ showMenuBarExtra })} />
+      </SettingRow>
+      <SettingRow label="Keep computer awake" setting="keepAwakeWhileRunning" hint="Stop the computer from sleeping while an agent works. The display can still turn off.">
+        <Switch checked={settings.keepAwakeWhileRunning} label="Keep computer awake" onChange={(keepAwakeWhileRunning) => onPatch({ keepAwakeWhileRunning })} />
+      </SettingRow>
+      <SettingRow label="Download updates automatically" setting="autoDownloadUpdates" hint="Capsule restarts to install only when you ask, after running work finishes.">
         <Switch checked={settings.autoDownloadUpdates} label="Download updates automatically" onChange={(autoDownloadUpdates) => onPatch({ autoDownloadUpdates })} />
       </SettingRow>
-      <SettingRow label="Auto-resume limited conversations" setting="autoResumeOnLimit" hint="When a turn stops because the provider's usage limit is reached and it says when the limit lifts, send the prompt again at that time. Off asks each time with Resume at reset.">
-        <Switch checked={settings.autoResumeOnLimit} label="Auto-resume limited conversations" onChange={(autoResumeOnLimit) => onPatch({ autoResumeOnLimit })} />
-      </SettingRow>
-      <SettingRow label="Continue after a restart" setting="continueAfterRestart" hint="If Capsule quits or restarts in the middle of a turn, queue that turn's prompt again when it reopens, so the agent picks up where it stopped. It waits in the conversation's queue, where you can remove it. Gateway-hosted turns are left alone, because the Gateway may still be running them.">
-        <Switch checked={settings.continueAfterRestart} label="Continue after a restart" onChange={(continueAfterRestart) => onPatch({ continueAfterRestart })} />
-      </SettingRow>
-      <SettingRow label="Agent simulator access" setting="agentSimulatorAccess" hint="Let a direct agent see and drive the iOS Simulator you attach in a conversation's Simulator panel. Off hides the simulator tools from agents started from now on and refuses calls from running ones.">
-        <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
-      </SettingRow>
-      <SettingRow
-        label="Menu bar" setting="showMenuBarExtra"
-        hint="Show Capsule in the menu bar for Open, Settings, Approvals, and active runs."
-      >
-        <Switch
-          checked={settings.showMenuBarExtra}
-          label="Menu bar"
-          onChange={(showMenuBarExtra) => onPatch({ showMenuBarExtra })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Keep computer awake" setting="keepAwakeWhileRunning"
-        hint="Prevent idle sleep while a run or live harness is active. The display can still turn off."
-      >
-        <Switch
-          checked={settings.keepAwakeWhileRunning}
-          label="Keep computer awake"
-          onChange={(keepAwakeWhileRunning) => onPatch({ keepAwakeWhileRunning })}
-        />
-      </SettingRow>
+      <AdvancedRows>
+        <SettingRow label="Desktop companion" hint="A small capsule on the desktop that shows activity across projects. Click it to open conversations.">
+          <PetControl />
+        </SettingRow>
+        <SettingRow label="Agent simulator access" setting="agentSimulatorAccess" hint="Let an agent on this computer see and drive the iOS Simulator attached in a conversation's Simulator panel.">
+          <Switch checked={settings.agentSimulatorAccess} label="Agent simulator access" onChange={(agentSimulatorAccess) => onPatch({ agentSimulatorAccess })} />
+        </SettingRow>
+      </AdvancedRows>
     </div>
   );
 }
 
-export function SessionsCard({ settings, onPatch }: SectionProps) {
+/*
+ * Capsule cannot hand an API key to an agent the Gateway starts: the agent
+ * reads the Gateway's environment. This says where to put one instead.
+ */
+export function GatewayApiKeysRow() {
   return (
-    <div className="card">
-      <h3>Sessions</h3>
-      <SettingRow
-        label="Classify session states" setting="autoClassifySessions"
-        hint="Mark threads as blocked or done from the latest run. Live harness sessions stay unmarked."
-      >
-        <Switch
-          checked={settings.autoClassifySessions}
-          label="Classify session states"
-          onChange={(autoClassifySessions) => onPatch({ autoClassifySessions })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Archive inactive sessions" setting="archiveInactiveAfter"
-        hint="Automatically archive idle local threads. Running work and pinned threads are never archived."
-      >
-        <select
-          className="field-select"
-          value={settings.archiveInactiveAfter}
-          onChange={(event) =>
-            onPatch({ archiveInactiveAfter: event.target.value as ArchiveInactiveAfter })
-          }
-        >
-          {ARCHIVE_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
-    </div>
-  );
-}
-
-export function HarnessCredentialsCard({ settings, onPatch }: SectionProps) {
-  return (
-    <div className="card">
-      <h3>Harness credentials</h3>
-      <p className="muted">
-        Capsule connects to a Gateway that is already running; the Gateway is what launches
-        Claude Code and Codex. Their credentials therefore come from the Gateway&rsquo;s
-        environment, and Capsule has nowhere to put an API key that would reach them. Both CLIs
-        also work with the subscription login you already have — a key is only needed to bill
-        through the API instead.
-      </p>
-      <div className="setting-copy">
-        <p>
-          Codex reads <span className="mono">CODEX_API_KEY</span> or{" "}
-          <span className="mono">OPENAI_API_KEY</span>; Claude Code reads{" "}
-          <span className="mono">ANTHROPIC_API_KEY</span>. Set them where the Gateway starts:
-        </p>
-        <pre className="mono settings-snippet">
-          OPENAI_API_KEY=… ANTHROPIC_API_KEY=… openclaw gateway run
-        </pre>
-        <p>
-          A Gateway installed as a service does not inherit your shell, so exporting a variable in
-          a terminal will not reach it — it sources its own generated env file, which OpenClaw
-          asks you not to hand-edit while the service is installed.
-        </p>
-      </div>
-    </div>
+    <SettingRow
+      label="API keys"
+      stacked
+      hint="Agents on a Gateway read keys from the Gateway's environment, not from Capsule. Their own sign-in works without one. A Gateway installed as a service does not read your shell, so set keys where it starts."
+    >
+      <pre className="mono settings-snippet">OPENAI_API_KEY=… ANTHROPIC_API_KEY=… openclaw gateway run</pre>
+    </SettingRow>
   );
 }
 
@@ -385,17 +371,14 @@ export function SkillCatalogCard({ settings, onPatch }: SectionProps) {
   return (
     <div className="card">
       <h3>Skill catalog</h3>
-      <p className="muted">
-        The directory reads skills straight from their GitHub repositories, which needs no
-        account. skills.sh is optional and adds install counts.
-      </p>
       <SettingRow
         label="skills.sh token"
-        hint="Every skills.sh endpoint returns 401 without a Vercel OIDC token, and that token expires roughly every 12 hours. Leave this empty to browse GitHub only."
+        hint="Optional. Adds install counts to the catalog. The token expires about every 12 hours. Without one, the catalog reads skills from GitHub."
       >
         <input
           className="field-select"
           type="password"
+          aria-label="skills.sh token"
           autoComplete="off"
           spellCheck={false}
           key={settings.skillsShToken ?? ""}
@@ -422,181 +405,74 @@ export function SkillCatalogCard({ settings, onPatch }: SectionProps) {
   );
 }
 
+/** Diffs, pull requests, then commits and branches: three sections, the order someone reviewing work meets them. */
 export function GitCard({ settings, onPatch }: SectionProps) {
   return (
-    <div className="card">
-      <h3>Git</h3>
-      <p className="muted">
-        Local git plus the GitHub CLI (<span className="mono">gh</span>) when it is installed and
-        signed in. Capsule does not add a second GitHub login.
-      </p>
-      <SettingRow
-        label="Branch prefix" setting="branchPrefix"
-        hint="Prefixed onto branches created from the inspector, e.g. capsule/fix-login."
-      >
-        <input
-          className="field-select"
-          key={settings.branchPrefix ?? ""}
-          defaultValue={settings.branchPrefix ?? ""}
-          placeholder="capsule"
-          spellCheck={false}
-          onBlur={(event) => onPatch({ branchPrefix: event.target.value })}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Pull request merge method" setting="prMergeMethod"
-        hint="Used when Capsule merges a pull request with gh."
-      >
-        <select
-          className="field-select"
-          value={settings.prMergeMethod}
-          onChange={(event) => onPatch({ prMergeMethod: event.target.value as PrMergeMethod })}
-        >
-          {MERGE_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
-      <SettingRow label="Diff layout" setting="diffLayout" hint="Side by side or one column, for Review and pull request diffs. Turn diffs in the conversation stay one column.">
-        <select
-          className="field-select"
-          value={settings.diffLayout}
-          onChange={(event) => onPatch({ diffLayout: event.target.value as CapsuleSettings["diffLayout"] })}
-        >
-          <option value="split">Side by side</option>
-          <option value="unified">One column</option>
-        </select>
-      </SettingRow>
-      <SettingRow label="Diff files" setting="diffFileState" hint="Whether each changed file in a diff starts open or folded.">
-        <select
-          className="field-select"
-          value={settings.diffFileState}
-          onChange={(event) => onPatch({ diffFileState: event.target.value as CapsuleSettings["diffFileState"] })}
-        >
-          <option value="expanded">Open</option>
-          <option value="collapsed">Folded</option>
-        </select>
-      </SettingRow>
-      <SettingRow label="Ignore whitespace" setting="diffIgnoreWhitespace" hint="Review starts with whitespace-only changes hidden. Each conversation can still switch it from the Review header.">
-        <Switch
-          checked={settings.diffIgnoreWhitespace}
-          onChange={(value) => onPatch({ diffIgnoreWhitespace: value })}
-          label="Ignore whitespace in Review"
-        />
-      </SettingRow>
-      <SettingRow
-        label="Always force push" setting="gitForceWithLease"
-        hint="Use --force-with-lease when pushing from Capsule, never --force."
-      >
-        <Switch
-          checked={settings.gitForceWithLease}
-          label="Always force push"
-          onChange={(gitForceWithLease) => onPatch({ gitForceWithLease })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Create draft pull requests" setting="prDraft"
-        hint="Open pull requests as drafts by default."
-      >
-        <Switch
-          checked={settings.prDraft}
-          label="Create draft pull requests"
-          onChange={(prDraft) => onPatch({ prDraft })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Review delivery" setting="prReviewDelivery"
-        hint="When checks fail, send the fix prompt in this thread or start a new one."
-      >
-        <select
-          className="field-select"
-          value={settings.prReviewDelivery}
-          onChange={(event) =>
-            onPatch({ prReviewDelivery: event.target.value as PrReviewDelivery })
-          }
-        >
-          {REVIEW_OPTIONS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
-      <SettingRow
-        label="Watch and fix pull requests" setting="prWatchAndFix"
-        hint="If CI fails, Capsule asks the agent to fix and push. Requires gh."
-      >
-        <Switch
-          checked={settings.prWatchAndFix}
-          label="Watch and fix pull requests"
-          onChange={(prWatchAndFix) => onPatch({ prWatchAndFix })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Auto-merge when ready" setting="prAutoMerge"
-        hint="Queue GitHub auto-merge after opening a PR, and merge when checks pass."
-      >
-        <Switch
-          checked={settings.prAutoMerge}
-          label="Auto-merge when ready"
-          onChange={(prAutoMerge) => onPatch({ prAutoMerge })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Continue watching until merged" setting="prWatchUntilMerged"
-        hint="Keep polling the open pull request until GitHub reports it merged or closed."
-      >
-        <Switch
-          checked={settings.prWatchUntilMerged}
-          label="Continue watching until merged"
-          onChange={(prWatchUntilMerged) => onPatch({ prWatchUntilMerged })}
-        />
-      </SettingRow>
-      <SettingRow label="Settle merged conversations" setting="autoSettleMerged" hint="When a watched pull request merges, settle the conversation that opened it. It comes back as soon as you send it another message.">
-        <Switch checked={settings.autoSettleMerged} label="Settle merged conversations" onChange={(autoSettleMerged) => onPatch({ autoSettleMerged })} />
-      </SettingRow>
-      <SettingRow
-        label="Commit instructions" setting="commitInstructions"
-        hint="Added to agent prompts when writing commit messages."
-        stacked
-      >
-        <textarea
-          className="field-select"
-          key={settings.commitInstructions ?? ""}
-          defaultValue={settings.commitInstructions ?? ""}
-          placeholder="Add commit message guidance…"
-          rows={3}
-          onBlur={(event) => onPatch({ commitInstructions: event.target.value })}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Pull request instructions" setting="prInstructions"
-        hint="Added to PR title/description generation and to the body Capsule opens with gh."
-        stacked
-      >
-        <textarea
-          className="field-select"
-          key={settings.prInstructions ?? ""}
-          defaultValue={settings.prInstructions ?? ""}
-          placeholder="Add pull request guidance…"
-          rows={3}
-          onBlur={(event) => onPatch({ prInstructions: event.target.value })}
-        />
-      </SettingRow>
-    </div>
+    <>
+      <div className="card">
+        <h3>Diffs</h3>
+        <SettingRow label="Diff layout" setting="diffLayout" hint="For Review and pull request diffs. Diffs inside a conversation stay one column.">
+          <Choice label="Diff layout" value={settings.diffLayout} options={[{ id: "split", label: "Side by side" }, { id: "unified", label: "One column" }]} onChange={(diffLayout) => onPatch({ diffLayout })} />
+        </SettingRow>
+        <SettingRow label="Diff files" setting="diffFileState" hint="Whether each changed file starts open or folded.">
+          <Choice label="Diff files" value={settings.diffFileState} options={[{ id: "expanded", label: "Open" }, { id: "collapsed", label: "Folded" }]} onChange={(diffFileState) => onPatch({ diffFileState })} />
+        </SettingRow>
+        <SettingRow label="Ignore whitespace" setting="diffIgnoreWhitespace" hint="Review starts with whitespace-only changes hidden. The Review header can switch it per conversation.">
+          <Switch checked={settings.diffIgnoreWhitespace} label="Ignore whitespace in Review" onChange={(diffIgnoreWhitespace) => onPatch({ diffIgnoreWhitespace })} />
+        </SettingRow>
+      </div>
+      <div className="card">
+        <h3>Pull requests</h3>
+        <p className="muted">Uses the GitHub CLI (<span className="mono">gh</span>) when it is installed and signed in.</p>
+        <SettingRow label="Create draft pull requests" setting="prDraft" hint="Open pull requests as drafts.">
+          <Switch checked={settings.prDraft} label="Create draft pull requests" onChange={(prDraft) => onPatch({ prDraft })} />
+        </SettingRow>
+        <SettingRow label="Pull request merge method" setting="prMergeMethod" hint="Used when Capsule merges a pull request.">
+          <Choice label="Pull request merge method" value={settings.prMergeMethod} options={MERGE_OPTIONS} onChange={(prMergeMethod) => onPatch({ prMergeMethod })} />
+        </SettingRow>
+        <SettingRow label="Watch and fix pull requests" setting="prWatchAndFix" hint="When checks fail, ask the agent to fix them and push.">
+          <Switch checked={settings.prWatchAndFix} label="Watch and fix pull requests" onChange={(prWatchAndFix) => onPatch({ prWatchAndFix })} />
+        </SettingRow>
+        <SettingRow label="Send check fixes to" setting="prReviewDelivery" hint="Where the prompt to fix failing checks goes.">
+          <Choice label="Send check fixes to" value={settings.prReviewDelivery} options={REVIEW_OPTIONS} onChange={(prReviewDelivery) => onPatch({ prReviewDelivery })} />
+        </SettingRow>
+        <SettingRow label="Auto-merge when ready" setting="prAutoMerge" hint="Turn on GitHub auto-merge after opening a pull request, so it merges when checks pass.">
+          <Switch checked={settings.prAutoMerge} label="Auto-merge when ready" onChange={(prAutoMerge) => onPatch({ prAutoMerge })} />
+        </SettingRow>
+        <SettingRow label="Settle merged conversations" setting="autoSettleMerged" hint="When a watched pull request merges, settle the conversation that opened it. A new message brings it back.">
+          <Switch checked={settings.autoSettleMerged} label="Settle merged conversations" onChange={(autoSettleMerged) => onPatch({ autoSettleMerged })} />
+        </SettingRow>
+        <AdvancedRows>
+          <SettingRow label="Continue watching until merged" setting="prWatchUntilMerged" hint="Keep checking an open pull request until it is merged or closed.">
+            <Switch checked={settings.prWatchUntilMerged} label="Continue watching until merged" onChange={(prWatchUntilMerged) => onPatch({ prWatchUntilMerged })} />
+          </SettingRow>
+          <SettingRow label="Pull request instructions" setting="prInstructions" hint="Added when the agent writes a pull request title and description." stacked>
+            <TextSetting multiline label="Pull request instructions" value={settings.prInstructions ?? ""} placeholder="Add pull request guidance…" onSave={(prInstructions) => onPatch({ prInstructions })} />
+          </SettingRow>
+        </AdvancedRows>
+      </div>
+      <div className="card">
+        <h3>Commits and branches</h3>
+        <SettingRow label="Branch prefix" setting="branchPrefix" hint="Put before the name of each new branch, as in capsule/fix-login. Leave empty for no prefix.">
+          <TextSetting label="Branch prefix" value={settings.branchPrefix ?? ""} placeholder="capsule" onSave={(branchPrefix) => onPatch({ branchPrefix })} />
+        </SettingRow>
+        <SettingRow label="Force push with lease" setting="gitForceWithLease" hint="Push with --force-with-lease, so a rewritten branch updates the remote without overwriting commits you have not seen.">
+          <Switch checked={settings.gitForceWithLease} label="Force push with lease" onChange={(gitForceWithLease) => onPatch({ gitForceWithLease })} />
+        </SettingRow>
+        <AdvancedRows>
+          <SettingRow label="Commit instructions" setting="commitInstructions" hint="Added when the agent writes a commit message." stacked>
+            <TextSetting multiline label="Commit instructions" value={settings.commitInstructions ?? ""} placeholder="Add commit message guidance…" onSave={(commitInstructions) => onPatch({ commitInstructions })} />
+          </SettingRow>
+        </AdvancedRows>
+      </div>
+    </>
   );
 }
 
 /*
- * A pointer, not a second list. Runtimes already renders every harness with
- * its readiness, binary path and doctor button; rendering them again here gave
- * two places to change and two chances for them to disagree, which is how the
- * failed-step glyph and the duplicated harness name went wrong earlier.
+ * A pointer, not a second list. Agents already renders every agent with its
+ * readiness, path and Doctor; listing them again here gave two places for them
+ * to disagree.
  */
 export function HarnessProvidersCard() {
   const { harnesses, setView } = useWorkspace();
@@ -606,16 +482,11 @@ export function HarnessProvidersCard() {
   return (
     <div className="card">
       <h3>Installed agents</h3>
-      <p className="muted">
-        {total === 0
-          ? "No agents detected."
-          : `${ready} of ${total} ready.`}
-      </p>
-      <div className="actions">
-        <button type="button" className="chip" onClick={() => setView("runtimes")}>
+      <SettingRow label="Agents on this computer" hint={total === 0 ? "No agents detected." : `${ready} of ${total} ready.`}>
+        <button type="button" className="ghost" onClick={() => setView("runtimes")}>
           Open Agents
         </button>
-      </div>
+      </SettingRow>
     </div>
   );
 }

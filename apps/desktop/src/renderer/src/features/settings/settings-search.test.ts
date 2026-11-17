@@ -8,8 +8,8 @@ import {
 } from "./settings-search.js";
 
 describe("searchSettings", () => {
-  it("finds the local runtime preference under Agents", () => {
-    expect(searchSettings("Runtime")[0]).toMatchObject({ title: "Runtime", section: "agents" });
+  it("finds the runtime route under Agents by its old name", () => {
+    expect(searchSettings("runtime")[0]).toMatchObject({ title: "Where agents run", section: "agents" });
   });
   it("waits for two characters rather than listing everything", () => {
     expect(searchSettings("")).toEqual([]);
@@ -34,6 +34,13 @@ describe("searchSettings", () => {
     expect(searchSettings("squash").map((r) => r.title)).toContain(
       "Pull request merge method",
     );
+  });
+
+  it("finds a renamed row by the name it used to have", () => {
+    expect(searchSettings("review delivery").map((r) => r.title)).toContain("Send check fixes to");
+    expect(searchSettings("operator token").map((r) => r.title)).toContain("Gateway token");
+    expect(searchSettings("reasoning summary").map((r) => r.title)).toContain("Thinking");
+    expect(searchSettings("tasks without a project").map((r) => r.title)).toContain("Inbox folder");
   });
 
   it("is case insensitive", () => {
@@ -96,7 +103,7 @@ describe("the catalog against the panels", () => {
     "SavedPromptsSettings.tsx",
     "../open-in/OpenInSettings.tsx",
     "CommandsCard.tsx",
-    "RuntimeModeCard.tsx",
+    "RuntimeModeRow.tsx",
     "../customization/ProfilesCard.tsx",
     "../customization/McpServersSettings.tsx",
     "../automations/AutomationsSettings.tsx",
@@ -144,7 +151,7 @@ describe("@modified", () => {
   const modified = new Set(["diffLayout", "transcriptWidth", "permissions"]);
 
   it("lists every row a settings file set, in panel order", () => {
-    expect(searchSettings("@modified", 8, modified).map((item) => item.title)).toEqual(["Transcript width", "Diff layout"]);
+    expect(searchSettings("@modified", 8, modified).map((item) => item.title)).toEqual(["Conversation width", "Diff layout"]);
   });
 
   it("narrows by the words after it, and starts working before it is fully typed", () => {

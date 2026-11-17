@@ -10,7 +10,7 @@ export function SettingRow({
   setting,
 }: {
   label: string;
-  hint?: string;
+  hint?: ReactNode;
   children: ReactNode;
   stacked?: boolean;
   /** The settings-file key this row edits, so the row can show which file set it. */
@@ -19,11 +19,24 @@ export function SettingRow({
   return (
     <div className={`setting ${stacked ? "setting-stacked" : ""}`} title={useUserOnlyHint(setting)}>
       <div className="setting-copy">
-        <div>{label}{setting ? <SettingSource setting={setting} /> : null}</div>
+        <div><span className="setting-label">{label}</span>{setting ? <SettingSource setting={setting} /> : null}</div>
         {hint ? <p>{hint}</p> : null}
       </div>
       <div className="setting-control">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Rows most people never change, folded at the foot of their section. A
+ * search result inside one opens it (see reveal.ts).
+ */
+export function AdvancedRows({ children, label = "Advanced" }: { children: ReactNode; label?: string }) {
+  return (
+    <details className="settings-advanced">
+      <summary>{label}</summary>
+      {children}
+    </details>
   );
 }
 

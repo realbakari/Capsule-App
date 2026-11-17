@@ -7194,7 +7194,61 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
   background: transparent;
 }
 .settings-body .appearance-page { gap: 0; }
-.settings-body .card:last-child { border-bottom: 0; }
+.settings-body .card:last-child { margin-bottom: 0; }
+.settings-body .card h3 { font-size: var(--text-base); font-weight: var(--weight-semibold, 600); letter-spacing: -0.01em; }
+.settings-body .card > h3 { margin: 0 0 0.6rem; padding-inline: 1rem; }
+.settings-body .card > p.muted,
+.settings-body .card > p.faint { margin: -0.3rem 0 0.6rem; padding-inline: 1rem; max-width: 42rem; font-size: var(--text-xs); line-height: 1.45; }
+.settings-body .card > :is(.setting, .settings-advanced) {
+  border: 1px solid var(--border-color);
+  border-block-width: 0;
+  background: color-mix(in srgb, var(--text) 2.5%, transparent);
+}
+.settings-body .card > .setting { padding: 0.75rem 1rem; }
+.settings-body .card > :is(.setting, .settings-advanced) + :is(.setting, .settings-advanced),
+.settings-advanced > :is(.setting, .settings-advanced-note) {
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 65%, transparent);
+}
+.settings-body .card > :is(.setting, .settings-advanced):not(:is(.setting, .settings-advanced) + *) {
+  border-top-width: 1px;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+.settings-body .card > :is(.setting, .settings-advanced):not(:has(+ :is(.setting, .settings-advanced))) {
+  border-bottom-width: 1px;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+.settings-body .card > :is(.setting, .settings-advanced):not(:has(+ :is(.setting, .settings-advanced))):not(:last-child) { margin-bottom: 0.6rem; }
+.settings-body .setting-copy > div:first-child { font-weight: var(--weight-medium, 500); color: var(--text); }
+.settings-body .setting-copy p { max-width: 42rem; color: var(--text-muted); line-height: 1.45; text-wrap: pretty; }
+.settings-body .setting-control .field-select { min-width: 10rem; }
+.setting-inline.settings-inline-tight { margin-top: 0; justify-content: flex-end; }
+
+/* Advanced: rows most people never change, folded at the foot of a section.
+   The chevron is the shared disclosure one from tokens.css. */
+.settings-advanced > summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0 1rem;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium, 500);
+  color: var(--text-muted);
+}
+.settings-advanced > summary:hover { color: var(--text); }
+.settings-advanced > .setting { padding: 0.75rem 1rem; }
+.settings-advanced-note { margin: 0; padding: 0.6rem 1rem; font-size: var(--text-xs); line-height: 1.45; color: var(--text-muted); }
+
+/* A search result's row, pulsed twice after the jump. */
+.settings-body .is-revealed { animation: settings-reveal 650ms ease-out 2; }
+@keyframes settings-reveal {
+  0%, 100% { box-shadow: inset 0 0 0 2px transparent; }
+  40% { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ring) 70%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-body .is-revealed { animation: none; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ring) 70%, transparent); }
+}
 
 /* ==========================================================================
    ContextWindowMeter (Ring + Popover Card)

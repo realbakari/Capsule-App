@@ -2,14 +2,15 @@ import { isFeaturedHarness } from "../../lib/harness";
 import { useEffect, useState } from "react";
 import type { CapsuleSettings, WritableScope } from "@capsule/shared";
 import { routeSettingsPatch, sectionTakesProjectValues, settingsFileTarget, settingsLayerView, type SettingSourceChip } from "../../lib/config-view";
-import { SaveToControl, SettingSource, SettingSourceContext, type SettingSourceState } from "../customization/SettingSource";
+import { SaveToControl, SettingSourceContext, type SettingSourceState } from "../customization/SettingSource";
 import { CustomizationDoctor } from "../customization/CustomizationDoctor";
 import { PermissionRulesCard } from "../customization/PermissionRulesCard";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { ProcessMonitor } from "./ProcessMonitor";
 import { PerformanceDiagnostics } from "./PerformanceDiagnostics";
-import { RuntimeModeCard } from "./RuntimeModeCard";
+import { RuntimeModeRow } from "./RuntimeModeRow";
+import { useRevealSetting } from "./reveal";
 import { SourceControlTools } from "./SourceControlTools";
 import { WorktreeStorage } from "./WorktreeStorage";
 import { OpenInSettings } from "../open-in/OpenInSettings";
@@ -19,13 +20,16 @@ import {
   type SettingsSectionId,
 } from "./settings-search";
 import {
-  AgentDefaultsCard,
+  ChatCard,
+  ConfirmationsCard,
+  ConversationsCard,
   DesktopCard,
+  GatewayApiKeysRow,
   GitCard,
-  HarnessCredentialsCard,
   HarnessProvidersCard,
+  NewConversationsCard,
   NotificationsCard,
-  SessionsCard,
+  RepliesCard,
   SkillCatalogCard,
 } from "./ConfigurationSettings";
 import { AboutCard } from "./AboutModal";
@@ -39,7 +43,7 @@ import { AnalyticsSettings } from "./AnalyticsSettings";
 import { PlanModeCard } from "./PlanModeSettings";
 import { SavedPromptsSettings } from "./SavedPromptsSettings";
 import { TagsSettings } from "../threads/TagsSettings";
-import { SettingRow, Switch } from "./controls";
+import { AdvancedRows, SettingRow } from "./controls";
 import { PluginsPanel } from "../plugins/PluginsPanel";
 import { ChartIcon, CpuIcon, FileIcon, FolderIcon, GitBranchIcon, GridIcon, HistoryIcon, InfoIcon, KeyboardIcon, LinkIcon, SettingsIcon, SparkIcon, SunIcon, UndoIcon, WrenchIcon } from "../shell/icons";
 import { formatProjectRoot } from "../../lib/paths";
@@ -103,6 +107,7 @@ export function SettingsView() {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  useRevealSetting(tab);
   /* Where changes go while a project is open. Back to You when the project changes. */
   const [saveTo, setSaveTo] = useState<{ projectId?: string; scope: WritableScope }>({ scope: "user" });
   const projectConfig = config?.project;
@@ -188,7 +193,6 @@ export function SettingsView() {
   };
   const fileScope: WritableScope = sectionTakesProjectValues(tab) ? target : "user";
   const tokenSaved = Boolean(settings.gatewayToken);
-  const sendOnEnter = settings.composerSendKey !== "cmd-enter";
 
   return (
     <SettingSourceContext.Provider value={sources}>
@@ -229,7 +233,7 @@ export function SettingsView() {
                   }
                 >
                   <UndoIcon size={13} />
-                  Restore {SETTINGS_SECTION_LABELS[tab]} defaults
+                  Restore defaults
                 </button>
               </div>
               )}
@@ -243,70 +247,14 @@ export function SettingsView() {
             )}
             {error && <div className="notice settings-error" role="alert">{error}</div>}
             {tab === "general" && (
-              <div className="card">
-                <h3>Startup and sending</h3>
-                <SettingRow
-                  label="Launch at login" setting="launchAtLogin"
-                  hint="Open Capsule when you sign in to this computer. Requires the packaged app."
-                >
-                  <Switch
-                    checked={settings.launchAtLogin}
-                    label="Launch at login"
-                    onChange={(value) => void patch({ launchAtLogin: value })}
-                  />
-                </SettingRow>
-                <SettingRow
-                  label="Send key" setting="composerSendKey"
-                  hint={
-                    sendOnEnter
-                      ? "Enter sends. Shift+Enter inserts a new line. ⌘Enter starts another thread."
-                      : "⌘Enter sends. Enter inserts a new line. ⌘⇧Enter starts another thread."
-                  }
-                >
-                  <select
-                    className="field-select"
-                    value={settings.composerSendKey}
-                    onChange={(event) =>
-                      void patch({
-                        composerSendKey: event.target.value as CapsuleSettings["composerSendKey"],
-                      })
-                    }
-                  >
-                    <option value="enter">Enter to send</option>
-                    <option value="cmd-enter">⌘Enter to send</option>
-                  </select>
-                </SettingRow>
-                <SettingRow
-                  label="Follow-ups" setting="followUpBehavior"
-                  hint="What sending during a running turn does. Steer adds it to the turn where the agent can take it; attachments and skills always queue."
-                >
-                  <select
-                    className="field-select"
-                    value={settings.followUpBehavior}
-                    onChange={(event) => void patch({ followUpBehavior: event.target.value as CapsuleSettings["followUpBehavior"] })}
-                  >
-                    <option value="queue">Queue for after the turn</option>
-                    <option value="steer">Steer the running turn</option>
-                  </select>
-                </SettingRow>
-              </div>
-            )}
-            {tab === "general" && (
               <div className="appearance-page">
-                <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
                 <NotificationsCard settings={settings} onPatch={(next) => void patch(next)} />
-                <SessionsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <ChatCard settings={settings} onPatch={(next) => void patch(next)} />
+                <ConversationsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <ConfirmationsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <DesktopCard settings={settings} onPatch={(next) => void patch(next)} />
                 <SavedPromptsSettings settings={settings} onPatch={(next) => void patch(next)} />
                 <TagsSettings />
-                <div className="card">
-                  <h3>Confirmations</h3>
-                  <SettingRow label="Confirm before deleting" setting="confirmDelete" hint="Ask before deleting a conversation. Deleting a project always asks.">
-                    <Switch checked={settings.confirmDelete} label="Confirm before deleting" onChange={(value) => void patch({ confirmDelete: value })} />
-                  </SettingRow>
-                  <SettingRow label="Confirm before archiving" setting="confirmArchive" hint="Ask before archiving a conversation. Without it, Archive offers Undo for a few seconds.">
-                    <Switch checked={settings.confirmArchive} label="Confirm before archiving" onChange={(value) => void patch({ confirmArchive: value })} />
-                  </SettingRow>
-                </div>
                 <AnalyticsSettings settings={settings} patch={patch} />
               </div>
             )}
@@ -332,47 +280,18 @@ export function SettingsView() {
 
             {tab === "agents" && (
               <div className="appearance-page">
-                <div className="card">
-                  <h3>New conversations</h3>
-                  <SettingRow label="Default agent" setting="defaultAgentId" hint="Pre-selected when you start a new thread.">
-                    <select
-                      className="field-select"
-                      value={settings.defaultAgentId ?? "general"}
-                      onChange={(event) => void patch({ defaultAgentId: event.target.value })}
-                    >
-                      {agents.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </SettingRow>
-                  <SettingRow
-                    label="Conversation workspace" setting="defaultWorkspaceMode"
-                    hint="Local shares the checkout. Worktree creates an isolated branch and folder for each Git conversation."
-                  >
-                    <select
-                      className="field-select"
-                      value={settings.defaultWorkspaceMode}
-                      onChange={(event) =>
-                        void patch({
-                          defaultWorkspaceMode: event.target.value as CapsuleSettings["defaultWorkspaceMode"],
-                        })
-                      }
-                    >
-                      <option value="local">Local</option>
-                      <option value="worktree">New worktree</option>
-                    </select>
-                  </SettingRow>
-                </div>
+                <NewConversationsCard
+                  settings={settings}
+                  agents={agents}
+                  onPatch={(next) => void patch(next)}
+                  routeRow={<RuntimeModeRow settings={settings} onPatch={patch} />}
+                />
+                <RepliesCard settings={settings} onPatch={(next) => void patch(next)} />
+                <PlanModeCard settings={settings} harnesses={harnessList ?? []} editable={api.isDesktop !== false} onPatch={(next) => void patch(next)} />
                 <ProfilesCard />
                 <ResponseStyleCard />
-                <RuntimeModeCard settings={settings} onPatch={patch} />
-                <HarnessProvidersCard />
-                <AgentDefaultsCard settings={settings} onPatch={(next) => void patch(next)} />
-                <PlanModeCard settings={settings} harnesses={harnessList ?? []} editable={api.isDesktop !== false} onPatch={(next) => void patch(next)} />
                 <PermissionRulesCard />
-                <HarnessCredentialsCard settings={settings} onPatch={(next) => void patch(next)} />
+                <HarnessProvidersCard />
               </div>
             )}
 
@@ -400,16 +319,16 @@ export function SettingsView() {
             {tab === "gateway" && (
               <>
                 <div className="card">
-                  <h3>OpenClaw Gateway · optional</h3>
+                  <h3>Gateway</h3>
                   <p className="muted">
-                    Connect for Gateway-backed agents, plugins and messaging channels.
-                    Local agents do not need this connection. Capsule uses operator protocol {status?.protocol ?? 4}
-                    {" "}and signs a device identity when you connect.
+                    Optional. Connect an OpenClaw Gateway for its agents, plugins and messaging channels.
+                    Agents on this computer do not need one.
                   </p>
-                  <label className="field">
-                    <span>URL</span>
+                  <SettingRow label="Gateway URL" setting="gatewayUrl" hint="The address the Gateway listens on.">
                     <input
                       type="text"
+                      className="field-select"
+                      aria-label="Gateway URL"
                       value={url}
                       placeholder="ws://127.0.0.1:18789"
                       autoComplete="off"
@@ -420,106 +339,68 @@ export function SettingsView() {
                         if (next && next !== settings.gatewayUrl) void patch({ gatewayUrl: next });
                       }}
                     />
-                  </label>
-                  <SettingSource setting="gatewayUrl" />
-                  <label className="field">
-                    <span>Operator token</span>
-                    <input
-                      type="password"
-                      value={token}
-                      placeholder={tokenSaved ? "Stored in Keychain" : "Optional on loopback"}
-                      autoComplete="off"
-                      onChange={(event) => setToken(event.target.value)}
-                    />
-                  </label>
-                  {tokenSaved && (
-                    <div className="setting-inline">
-                      <span className="faint">A token is saved in the Keychain.</span>
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={() => void patch({ gatewayToken: "" })}
-                      >
-                        Clear token
+                  </SettingRow>
+                  <SettingRow label="Gateway token" hint={tokenSaved ? "A token is saved in the Keychain." : "Optional when the Gateway runs on this computer."}>
+                    <div className="setting-inline settings-inline-tight">
+                      <input
+                        type="password"
+                        className="field-select"
+                        aria-label="Gateway token"
+                        value={token}
+                        placeholder={tokenSaved ? "Stored in Keychain" : "Optional"}
+                        autoComplete="off"
+                        onChange={(event) => setToken(event.target.value)}
+                      />
+                      {tokenSaved && (
+                        <button className="ghost" type="button" onClick={() => void patch({ gatewayToken: "" })}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </SettingRow>
+                  <SettingRow
+                    label="Status"
+                    hint={connected ? `Connected to ${status?.gatewayHost}:${status?.gatewayPort}.` : `${status?.state ?? "Disconnected"}.`}
+                  >
+                    <div className="setting-inline settings-inline-tight">
+                      <button className="ghost" type="button" disabled={busy || !connected} onClick={() => void disconnect()}>
+                        Disconnect
+                      </button>
+                      <button className="send" type="button" disabled={busy} onClick={() => void connect()}>
+                        {busy ? "Connecting…" : connected ? "Reconnect" : "Connect"}
                       </button>
                     </div>
-                  )}
-                  <div className="grid-2" style={{ marginTop: "0.75rem" }}>
-                    <div>
-                      <div className="faint">Status</div>
-                      <div>
-                        {connected ? "Connected" : (status?.state ?? "Disconnected")}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="faint">Host</div>
-                      <div className="mono">
-                        {status?.gatewayHost}:{status?.gatewayPort}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="faint">Agents / sessions / runs</div>
-                      <div>
-                        {status?.agentCount ?? 0} / {status?.sessionCount ?? 0} /{" "}
-                        {status?.activeRunCount ?? 0}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="faint">Gateway version</div>
-                      <div>{status?.openclawVersion ?? "—"}</div>
-                    </div>
-                  </div>
-                  <div className="actions">
-                    <button className="send" disabled={busy} onClick={() => void connect()}>
-                      {busy ? "Connecting…" : "Save & Connect"}
-                    </button>
-                    <button className="ghost" disabled={busy} onClick={() => void disconnect()}>
-                      Disconnect
-                    </button>
-                  </div>
+                  </SettingRow>
+                  <AdvancedRows>
+                    <SettingRow
+                      label="Connection details"
+                      hint={`Gateway ${status?.openclawVersion ?? "version unknown"}, protocol ${status?.protocol ?? 4}. Capsule signs in with a device identity.`}
+                    >
+                      <span className="faint">
+                        {status?.agentCount ?? 0} agents · {status?.sessionCount ?? 0} sessions · {status?.activeRunCount ?? 0} running
+                      </span>
+                    </SettingRow>
+                    {(harnessList ?? [])
+                      .filter((harness) => isFeaturedHarness(harness) || Boolean(harness.binaryPath) || harness.readiness === "dedicated" || harness.readiness === "running")
+                      .map((harness) => (
+                        <SettingRow key={harness.id} label={harness.name} hint={harness.detail}>
+                          <span className={`readiness ${harness.readiness}`}>{harness.readiness.replaceAll("_", " ")}</span>
+                        </SettingRow>
+                      ))}
+                    <GatewayApiKeysRow />
+                  </AdvancedRows>
                 </div>
                 <RemoteAccessSettings settings={settings} patch={patch} />
-                <div className="card">
-                  <h3>Agents on the Gateway</h3>
-                  <p className="muted">
-                    Spawned with <span className="mono">/acp spawn</span> through OpenClaw acpx.
-                    Capsule will not install a second copy. Open Agents for the full catalog.
-                  </p>
-                  {(harnessList ?? [])
-                    .filter(
-                      (harness) =>
-                        isFeaturedHarness(harness) ||
-                        Boolean(harness.binaryPath) ||
-                        harness.readiness === "dedicated" ||
-                        harness.readiness === "running",
-                    )
-                    .map((harness) => (
-                    <div className="row" key={harness.id} style={{ marginBottom: 8 }}>
-                      <div>
-                        <b>{harness.name}</b>
-                        <div className="faint">{harness.detail}</div>
-                      </div>
-                      <span className={`readiness ${harness.readiness}`}>
-                        {harness.readiness.replaceAll("_", " ")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
               </>
             )}
 
             {tab === "projects" && (
+              <>
               <div className="card">
-                <h3>Folders</h3>
-                <p className="muted">
-                  Inbox is for tasks started outside a repo. ⌘O attaches or changes this project’s
-                  folder; New project from folder creates another. Extra folders stay readable
-                  while git and new chats use the primary. Deleting a project removes Capsule
-                  history, not the folder on disk.
-                </p>
+                <h3>Inbox</h3>
                 <SettingRow
-                  label="Tasks without a project" setting="projectlessFolder"
-                  hint="Default folder for Inbox threads. Each conversation gets a dated subfolder."
+                  label="Inbox folder" setting="projectlessFolder"
+                  hint="Where conversations outside a project run. Each one gets a dated subfolder."
                 >
                   <div className="setting-stack">
                     <div className="mono setting-path">
@@ -565,6 +446,13 @@ export function SettingsView() {
                     </div>
                   </div>
                 </SettingRow>
+              </div>
+              <div className="card">
+                <h3>Your projects</h3>
+                <p className="muted">
+                  Deleting a project removes its conversations from Capsule, not its folder.
+                  Extra folders stay readable, while Git and new conversations use the first.
+                </p>
                 {projects.map((item) => (
                   <div className="row project-settings-row" key={item.id} style={{ marginBottom: 8 }}>
                     <span className="project-settings-icon">
@@ -635,18 +523,18 @@ export function SettingsView() {
                     From folder
                   </button>
                 </div>
-                <div className="actions">
-                  <div className="mono">
-                    {formatProjectRoot(project?.workingDirectory, {
-                      home: window.capsule.homeDir,
-                      fallback: "No working directory",
-                    })}
-                  </div>
-                  <button className="ghost" onClick={() => void pickProjectDirectory()}>
-                    Choose folder
-                  </button>
-                </div>
+                {project && (
+                  <SettingRow
+                    label={`${project.name} folder`}
+                    hint={formatProjectRoot(project.workingDirectory, { home: window.capsule.homeDir, fallback: "No folder yet." })}
+                  >
+                    <button className="ghost" type="button" onClick={() => void pickProjectDirectory()}>
+                      Choose folder
+                    </button>
+                  </SettingRow>
+                )}
               </div>
+              </>
             )}
             {tab === "projects" && <OpenInSettings />}
 

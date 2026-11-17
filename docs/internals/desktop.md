@@ -2003,13 +2003,25 @@ The panel shows one section with a `Settings / <Section>` breadcrumb and, for
 sections that own settings, a **Restore defaults** control that resets only
 that section. Keychain-backed tokens are never reset by it.
 
-Settings sections use flat headings and separator rows. Cards are reserved for
-status or content elsewhere in the product rather than wrapping every settings
-group in another bordered box.
+A settings section (a `.card` inside `.settings-body`) is a 1rem semibold
+heading, then its rows in one rounded box with hairlines between them. The box
+is pure CSS over sibling runs: a `.setting` or `.settings-advanced` with no
+such sibling before it rounds the top, one with none after it rounds the
+bottom, so text or a picker between rows starts a new box. A row is
+`SettingRow` in `features/settings/controls.tsx`: the label (`.setting-label`,
+0.875rem medium) and its source chip, the description under it (0.75rem,
+muted, at most 42rem), the control on the right. `AdvancedRows` folds rows
+nobody needs on first read into a closed `<details>` labelled **Advanced** at
+the foot of the box. Route internals live only there (**Where agents run**
+under Agents → New conversations; Gateway connection details, the Gateway
+agent list and API keys under Gateway).
 
 Searching the sidebar matches a setting's title or the words someone would
-type instead — "dark" finds Theme, "squash" finds Merge method — and each
-result names the section it lives in.
+type instead, including a renamed row's old name ("review delivery" finds
+Send check fixes to). Each result names its section. Picking one calls
+`revealSetting(title)` (`features/settings/reveal.ts`): the section mounts,
+the row is found by its label, every enclosing `<details>` opens, the row
+scrolls to the middle and pulses twice (a steady ring under reduced motion).
 
 | Section | Owns |
 |---------|------|

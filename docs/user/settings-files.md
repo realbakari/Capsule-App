@@ -72,6 +72,12 @@ reasoning follow the project you are looking at.
 
 The Settings screen and the files are two views of the same settings.
 
+Each section groups its settings under a heading, one row per setting with the
+control on the right. Settings most people never change sit under **Advanced**
+at the foot of their group. Picking a search result opens its section, unfolds
+Advanced if the setting is there, and scrolls to it. A renamed setting can
+still be found by its old name.
+
 - A setting that a file sets carries a small label naming that file: **user
   file**, **project**, **project (local)** or **capsule.json**. Click the label
   to open the file. The arrow beside it resets the setting, which removes it
