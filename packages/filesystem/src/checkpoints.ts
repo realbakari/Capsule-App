@@ -50,10 +50,11 @@ export function checkpointRef(sessionId: string, turn: number): string {
 
 /**
  * A thread's other snapshots: the folder as it stood before a restore (for
- * Redo) and as it stands now (for Compare). They sit beside the turn refs so
- * deleting the thread's checkpoints takes them too.
+ * Redo), as it stands now (for Compare), and before a thread's first turn (the
+ * base its diff needs). They sit beside the turn refs so deleting the thread's
+ * checkpoints takes them too.
  */
-export function threadSnapshotRef(sessionId: string, kind: "redo" | "compare" | "set-aside" | "paused", id = "latest"): string {
+export function threadSnapshotRef(sessionId: string, kind: "redo" | "compare" | "set-aside" | "paused" | "base", id = "latest"): string {
   const safeId = id.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[.-]+/, "") || "latest";
   return checkpointRef(sessionId, 0).replace(/\/turn\/0$/, `/${kind}/${safeId}`);
 }

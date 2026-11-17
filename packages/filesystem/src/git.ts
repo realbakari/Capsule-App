@@ -2,9 +2,10 @@ import { inRepository } from "./git-process.js";
 import fs from "node:fs";
 import { lstat, unlink, realpath } from "node:fs/promises";
 import path from "node:path";
-import type { GitChange, GitDiffOptions, GitStatus } from "@capsule/shared";
+import type { GitChange, GitCommitScope, GitStatus } from "@capsule/shared";
 import { git } from "./git-process.js";
-import { CANONICAL_PATCH_FLAGS, parsePorcelain, parseNumstat } from "./git-output.js";
+import { hookFailure, readClientHooks, readTracking } from "./git-sync.js";
+import { parsePorcelain, parseNumstat } from "./git-output.js";
 import { readBoundedFile } from "./bounded-read.js";
 
 export async function readGitStatus(workingDirectory?: string): Promise<GitStatus> {
@@ -22,8 +23,9 @@ export async function readGitStatus(workingDirectory?: string): Promise<GitStatu
       };
     }
     const gitDir = path.join(workingDirectory, ".git");
-    const inside = await git(workingDirectory, ["rev-parse", "--is-inside-work-tree"]);
-    if (inside.stdout.trim() !== "true" && !fs.existsSync(gitDir)) {
+    const inside = await git(workingDirectory, ["rev-parse", "--is-inside-work-tree", "--show-toplevel"]);
+    const [insideLine, toplevel] = inside.stdout.split(/\r?\n/).map((line) => line.trim());
+    if (insideLine !== "true" && !fs.existsSync(gitDir)) {
       return {
         available: true,
         isRepo: false,
@@ -44,11 +46,11 @@ export async function readGitStatus(workingDirectory?: string): Promise<GitStatu
     const files = await applyLineStats(workingDirectory, parsePorcelain(porcelain));
     const added = sumStat(files, "added");
     const removed = sumStat(files, "removed");
-    // `git branch` reads each branch's commit; for-each-ref reads only the refs.
-    const branches = (await git(workingDirectory, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]))
-      .stdout.split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean);
+    // for-each-ref reads only refs and config; ahead and behind walk one branch.
+    const [{ branches, remoteBranches, checkedOutElsewhere, ...tracking }, hooks] = await Promise.all([
+      readTracking(workingDirectory, branch === "HEAD" ? undefined : branch, insideLine === "true" ? toplevel : undefined),
+      readClientHooks(workingDirectory),
+    ]);
     return {
       available: true,
       isRepo: true,
@@ -58,6 +60,10 @@ export async function readGitStatus(workingDirectory?: string): Promise<GitStatu
       summary: files.length > 0 ? `${branch} · ${files.length} changed` : `${branch} · clean`,
       files,
       branches,
+      ...tracking,
+      ...(remoteBranches.length ? { remoteBranches } : {}),
+      ...(Object.keys(checkedOutElsewhere).length ? { checkedOutElsewhere } : {}),
+      ...(hooks.length ? { hooks } : {}),
       ...(added === undefined ? {} : { added }),
       ...(removed === undefined ? {} : { removed }),
     };
@@ -188,63 +194,23 @@ export async function checkoutBranch(workingDirectory: string, branch: string): 
 
     const name = branch.trim();
     if (!name || name.startsWith("-")) return { ok: false, detail: "Choose a valid branch name." };
+    const local = await git(workingDirectory, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`]);
+    const remote = !local.ok && (await git(workingDirectory, ["show-ref", "--verify", "--quiet", `refs/remotes/${name}`])).ok;
     // A branch deleted since the menu loaded must fail, never become a
     // same-named path checkout that silently discards working-tree edits.
-    const result = await git(workingDirectory, ["checkout", name, "--"]);
-    if (result.ok) return { ok: true, detail: `Checked out ${name}.` };
-    return { ok: false, detail: result.stderr || result.stdout || "Checkout failed." };
+    // A remote branch becomes a local one that tracks it.
+    const result = await git(workingDirectory, remote ? ["checkout", "--track", name, "--"] : ["checkout", name, "--"]);
+    if (result.ok) return { ok: true, detail: `Checked out ${remote ? name.slice(name.indexOf("/") + 1) : name}.` };
+    return { ok: false, detail: checkoutFailure(name, result.stderr || result.stdout) };
 
   });
 }
 
-/** The most text Review reads for one diff. */
-export const REVIEW_DIFF_BYTES = 16 * 1024 * 1024;
-
-export async function readGitDiff(workingDirectory: string, relative?: string, options: GitDiffOptions = {}): Promise<string> {
-  return inRepository(workingDirectory, async () => {
-
-    const paths = relative ? ["--", relative] : [];
-    const whitespace = options.ignoreWhitespace ? ["-w"] : [];
-    const hasHead = (await git(workingDirectory, ["rev-parse", "--verify", "HEAD"])).ok;
-    const result = hasHead
-      ? await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, ...whitespace, "HEAD", ...paths])
-      : { ok: true, stdout: "", stderr: "" };
-    if (!result.ok) throw new Error(await readFailure(workingDirectory, result.stderr, "Could not read the combined working-tree diff."));
-    return result.stdout + await readUntrackedPatches(workingDirectory, relative, !hasHead, REVIEW_DIFF_BYTES - Buffer.byteLength(result.stdout));
-
-  }, JSON.stringify(["readGitDiff", workingDirectory, relative, Boolean(options.ignoreWhitespace)]));
-}
-
-/**
- * New files git does not track yet, as creation patches. With `cached`, files
- * already added before the first commit count too.
- */
-export async function readUntrackedPatches(workingDirectory: string, relative: string | undefined, cached: boolean, budget: number): Promise<string> {
-  const paths = relative ? ["--", relative] : [];
-  const listing = await git(workingDirectory, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", ...(cached ? ["--cached"] : []), ...paths]);
-  if (!listing.ok) throw new Error(await readFailure(workingDirectory, listing.stderr, "Could not read untracked files."));
-  const names = [...new Set(listing.stdout.split("\0").filter(Boolean))];
-  if (names.length > 200) throw new Error("More than 200 new files need review. Select individual files to inspect them before committing.");
-  const patches: string[] = [];
-  let bytes = 0;
-  for (let offset = 0; offset < names.length; offset += 8) {
-    const batch = await Promise.all(names.slice(offset, offset + 8).map(async (name) => {
-      const info = await lstat(path.join(workingDirectory, name)).catch(() => undefined);
-      if (!info) return ""; // Deleted before the first commit.
-      if (!info.isFile() && !info.isSymbolicLink()) return "";
-      if (info.size > 1_000_000) throw new Error(`New file ${name} is too large to review here. Inspect it before committing.`);
-      const patch = await git(workingDirectory, ["--literal-pathspecs", "diff", "--no-index", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS, "--", "/dev/null", name]);
-      // --no-index exits 1 when files differ, which is its successful result.
-      if (!patch.stdout.startsWith("diff --git ")) throw new Error(patch.stderr || `Could not review ${name}.`);
-      return patch.stdout;
-    }));
-    for (const patch of batch) {
-      bytes += Buffer.byteLength(patch);
-      if (bytes > budget) throw new Error("The combined diff exceeds 16 MB. Review individual files before committing.");
-      patches.push(patch);
-    }
-  }
-  return patches.join("");
+/** Git's answer, or a sentence for the refusal a branch picker meets most. */
+export function checkoutFailure(branch: string, output: string): string {
+  const elsewhere = output.match(/(?:is already (?:used by worktree|checked out) at) '([^']+)'/);
+  if (elsewhere) return `${branch} is checked out in another worktree, at ${elsewhere[1]}. Open that folder to work on it, or pick another branch.`;
+  return output.trim() || "Checkout failed.";
 }
 
 export async function stageFile(workingDirectory: string, relative: string): Promise<{ ok: boolean; detail: string; }> {
@@ -278,18 +244,59 @@ export async function discardFile(workingDirectory: string, relative: string): P
   });
 }
 
-export async function commitAll(workingDirectory: string, message: string): Promise<{ ok: boolean; detail: string; }> {
+/** A commit runs hooks that can take minutes; thirty seconds stopped real ones. */
+export const COMMIT_TIMEOUT = 10 * 60_000;
+
+/**
+ * Commits what the caller chose and nothing else. `staged` takes the index
+ * exactly as Review left it. `paths` takes every change to those files,
+ * untracked ones included, with `git commit --only` semantics: anything else
+ * already staged stays staged and out of this commit.
+ */
+export async function commitChanges(
+  workingDirectory: string,
+  message: string,
+  scope: GitCommitScope,
+  options: { timeout?: number; } = {},
+): Promise<{ ok: boolean; detail: string; }> {
   return inRepository(workingDirectory, async () => {
 
     const text = message.trim();
     if (!text) return { ok: false, detail: "Commit message is empty." };
-    const staged = await git(workingDirectory, ["add", "-A"]);
-    if (!staged.ok) return { ok: false, detail: staged.stderr || "Stage failed; nothing committed." };
-    const result = await git(workingDirectory, ["commit", "-m", text]);
-    if (result.ok) return { ok: true, detail: result.stdout.trim() || "Committed." };
-    return { ok: false, detail: result.stderr || result.stdout.trim() || "Commit failed." };
+    const timeout = options.timeout ?? COMMIT_TIMEOUT;
+    const hooks = await readClientHooks(workingDirectory);
+    const hook = hooks.find((name) => name !== "pre-push");
+    if (!("paths" in scope)) {
+      const staged = await git(workingDirectory, ["diff", "--cached", "--quiet"]);
+      if (staged.ok) return { ok: false, detail: "Nothing is staged. Choose the files to commit." };
+      if (staged.exitCode !== 1) return { ok: false, detail: staged.stderr || "Could not read what is staged." };
+      const result = await git(workingDirectory, ["commit", "-m", text], process.env, timeout);
+      if (result.ok) return { ok: true, detail: result.stdout.trim() || "Committed." };
+      return { ok: false, detail: commitFailure(result, hook) };
+    }
+    const paths = [...new Set(scope.paths.filter((item) => item.trim()))];
+    if (paths.length === 0) return { ok: false, detail: "Choose at least one file to commit." };
+    const before = await git(workingDirectory, ["--literal-pathspecs", "diff", "--cached", "--name-only", "-z", "--", ...paths]);
+    const alreadyStaged = new Set(before.stdout.split("\0").filter(Boolean));
+    const added = await git(workingDirectory, ["--literal-pathspecs", "add", "-A", "--", ...paths]);
+    if (!added.ok) return { ok: false, detail: added.stderr || "Stage failed; nothing committed." };
+    const result = await git(workingDirectory, ["--literal-pathspecs", "commit", "--only", "-m", text, "--", ...paths], process.env, timeout);
+    if (result.ok) {
+      // --only runs hooks on a temporary index; a hook's own `git add` reached the commit but not the real index.
+      await git(workingDirectory, ["--literal-pathspecs", "reset", "-q", "HEAD", "--", ...paths]);
+      return { ok: true, detail: result.stdout.trim() || "Committed." };
+    }
+    // Leave the index as it was, so a retry after fixing what a hook flagged takes the fix too.
+    const unstage = paths.filter((item) => !alreadyStaged.has(item));
+    if (unstage.length) await git(workingDirectory, ["--literal-pathspecs", "reset", "-q", "--", ...unstage]);
+    return { ok: false, detail: commitFailure(result, hook) };
 
   });
+}
+
+function commitFailure(result: { stdout: string; stderr: string; }, hook: string | undefined): string {
+  const output = `${result.stderr}\n${result.stdout}`.trim();
+  return hookFailure(output, hook, "commit") ?? (output || "Commit failed.");
 }
 
 export async function createBranch(workingDirectory: string, branch: string): Promise<{ ok: boolean; detail: string; }> {

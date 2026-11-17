@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { parseUnifiedDiff } from "@capsule/shared";
-import { isOffloaded, OFFLOADED_DATABASE, readGitDiff, readGitStatus, stageFile } from "./git.js";
+import { isOffloaded, OFFLOADED_DATABASE, readGitStatus, stageFile } from "./git.js";
+import { readGitDiff } from "./review-diff.js";
 import { readScopedDiff } from "./git-hunks.js";
 import { parseNumstat, parsePorcelain } from "./git-output.js";
 
@@ -65,7 +66,7 @@ it("treats a Mac file with content but no blocks on disk as offloaded to the clo
 
 it("keeps NUL-delimited rename destinations and literal whitespace", () => {
   expect(parsePorcelain("R  new\tname\n.ts\0old.ts\0 M spaced name \0")).toEqual([
-    { code: "R", path: "new\tname\n.ts" }, { code: "M", path: "spaced name " },
+    { code: "R ", path: "new\tname\n.ts" }, { code: " M", path: "spaced name " },
   ]);
   expect(parseNumstat("2\t3\t\0old.ts\0new\tname\n.ts\0-\t-\timage.png\0")).toEqual([
     { path: "new\tname\n.ts", added: 2, removed: 3 }, { path: "image.png" },

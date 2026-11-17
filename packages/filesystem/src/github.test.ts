@@ -9,7 +9,7 @@ import {
   parseLabels,
   parsePullRequestDetail,
   parsePullRequestList,
-  pushArgs,
+  pullRequestBody,
 } from "./github.js";
 
 describe("git and pull request args", () => {
@@ -21,9 +21,11 @@ describe("git and pull request args", () => {
   it.each(["--help", "../other", "HEAD", "abc", "z".repeat(40)])("rejects a non-commit argument: %s", (oid) => {
     expect(() => commitDiffArgs(oid)).toThrow("full commit ID");
   });
-  it("pushes with lease only when asked", () => {
-    expect(pushArgs(false)).toEqual(["push", "-u", "origin", "HEAD"]);
-    expect(pushArgs(true)).toEqual(["push", "--force-with-lease", "-u", "origin", "HEAD"]);
+  it("describes a pull request by its commits, not by repeating the title", () => {
+    expect(pullRequestBody([{ subject: "Add rate limit", body: "" }, { subject: "Test rate limit", body: "x" }], [undefined, "Notes"]))
+      .toBe("- Add rate limit\n- Test rate limit\n\nNotes");
+    expect(pullRequestBody([{ subject: "Fix login", body: "The cookie expired early." }], [])).toBe("The cookie expired early.");
+    expect(pullRequestBody([{ subject: "Fix login", body: "" }], [""])).toBe("");
   });
 
   it("creates a draft pull request", () => {

@@ -4,18 +4,24 @@ import {
   DIFF_SCOPES,
   hunkActions,
   hunkStage,
+  OPEN_IN_DEFAULT_APP,
   parseUnifiedDiff,
   type DiffFile,
   type DiffScope,
   type HunkAction,
+  type OmittedDiffFile,
   type ReviewFileDiffs,
 } from "@capsule/shared";
 import { displayPrefs } from "../../lib/display-prefs";
 import { formatUserError } from "../../lib/errors";
-import type { ReviewSelection } from "../../lib/review-scope";
+import { addReviewComment, clearReviewComments, reviewCommentsBlock, useReviewComments } from "../../lib/review-comments";
+import { hidesTests, isTestPath, rememberHideTests, useReviewChoices, type ReviewSelection } from "../../lib/review-scope";
 import { useWorkspace } from "../../lib/workspace";
 import { DIFF_PAGE_FILES, DiffPager } from "../shell/DiffPager";
 import { FileDiff } from "../shell/FileDiff";
+import { fileRowAbsolutePath } from "../shell/file-row-actions";
+import { CopyIcon, ExternalLinkIcon } from "../shell/icons";
+import { NoteEditor, NotesTray, OmittedFiles, SavedNote } from "./ReviewNotes";
 import { diffBlockKeys } from "../shell/PagedFileDiffs";
 import { HunkTools, type HunkProgress } from "./HunkTools";
 import { useViewedFiles } from "./useViewedFiles";
@@ -26,6 +32,8 @@ interface Reading {
   unstaged: Map<string, DiffFile>;
   /** Shown instead of the empty message, such as why a turn has no diff. */
   note?: string;
+  /** Changed files the read listed without a patch. */
+  omitted?: OmittedDiffFile[];
 }
 
 const EMPTY: Record<DiffScope, string> = {
@@ -34,6 +42,7 @@ const EMPTY: Record<DiffScope, string> = {
   unstaged: "No unstaged changes.",
   turn: "This turn changed no files.",
   branch: "No changes on this branch yet.",
+  commit: "This commit changed no files.",
 };
 
 const KEYS: Partial<Record<string, HunkAction>> = { k: "keep", x: "reject", u: "unstage" };
@@ -58,7 +67,7 @@ async function readScope(api: Api, projectId: string, sessionId: string | undefi
   if (selection.kind === "turn") {
     if (!selection.runId) return { ...none, files: [], note: "No turn in this conversation has saved changes yet." };
     const result = await api.turnDiff(selection.runId, { relative: path, ignoreWhitespace });
-    if (result.available === false) return { ...none, files: [], note: "This turn has no earlier checkpoint to compare against, so its changes cannot be told apart from what came before it." };
+    if (result.available === false) return { ...none, files: [], note: "This turn has no earlier saved snapshot to compare against, so its changes cannot be told apart from what came before it." };
     return { ...none, files: parseUnifiedDiff(result.patch), note: result.patchTruncated ? "Preview limited to 512 KB. Select a file to see all of its changes." : undefined };
   }
   if (selection.kind === "uncommitted") {
@@ -67,10 +76,12 @@ async function readScope(api: Api, projectId: string, sessionId: string | undefi
       api.gitScopedDiff(projectId, "staged", path, sessionId, options),
       api.gitScopedDiff(projectId, "unstaged", path, sessionId, options),
     ]);
-    return { files: parseUnifiedDiff(shown.patch), staged: byPath(staged.patch), unstaged: byPath(unstaged.patch) };
+    return { files: parseUnifiedDiff(shown.patch), staged: byPath(staged.patch), unstaged: byPath(unstaged.patch), omitted: shown.omitted };
   }
-  const result = await api.gitScopedDiff(projectId, selection.kind, path, sessionId, options);
-  return { ...none, files: parseUnifiedDiff(result.patch), base: result.base };
+  if (selection.kind === "commit" && !selection.oid) return { ...none, files: [], note: "This branch has no commits of its own since it left its base." };
+  const scoped = selection.kind === "branch" ? { ...options, base: selection.base } : selection.kind === "commit" ? { ...options, commit: selection.oid } : options;
+  const result = await api.gitScopedDiff(projectId, selection.kind, path, sessionId, scoped);
+  return { ...none, files: parseUnifiedDiff(result.patch), base: selection.kind === "branch" ? result.base : undefined, omitted: result.omitted };
 }
 
 /**
@@ -79,7 +90,7 @@ async function readScope(api: Api, projectId: string, sessionId: string | undefi
  * Viewed mark per file. Acting refreshes the diff in place; a refusal leaves
  * everything as it was and says why on the hunk.
  */
-export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhitespace, path, onShowAll }: {
+export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhitespace, path, onShowAll, onShowFile }: {
   projectId: string;
   sessionId?: string;
   /** Whose Viewed marks these are: the conversation, or the project without one. */
@@ -89,8 +100,26 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
   /** One file, when chosen in the changed-files list; otherwise the whole scope. */
   path?: string;
   onShowAll: () => void;
+  /** Read one file on its own, such as one left out of a large change. */
+  onShowFile?: (path: string) => void;
 }) {
-  const { api, git, gitApplyHunk, setConfirm } = useWorkspace();
+  const { api, git, gitApplyHunk, setConfirm, project, session, settings, setDraft, setNotice } = useWorkspace();
+  useReviewChoices();
+  const hideTests = hidesTests(thread);
+  const comments = useReviewComments(thread);
+  const [drafting, setDrafting] = useState<{ path: string; line: number; side: "left" | "right" }>();
+  const folder = session?.workingDirectory ?? project?.workingDirectory;
+  const copyPath = (relative: string) => { navigator.clipboard.writeText(relative).catch((error: unknown) => setNotice(formatUserError(error))); };
+  const openInEditor = folder && api.isDesktop !== false ? (relative: string) => {
+    api.openInApp(settings?.openInFavorite ?? OPEN_IN_DEFAULT_APP, projectId, sessionId, fileRowAbsolutePath({ root: folder, path: relative }))
+      .catch((error: unknown) => setNotice(formatUserError(error)));
+  } : undefined;
+  const sendNotes = () => {
+    const block = reviewCommentsBlock(comments);
+    setDraft((current) => current.trim() ? `${current.trimEnd()}\n\n${block}` : block);
+    clearReviewComments(thread);
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("textarea.composer-field")?.focus());
+  };
   // Staging a file from the list, or an agent editing one, changes the status; read again.
   const changes = JSON.stringify(git?.files ?? []);
   const scope: DiffScope = selection.kind;
@@ -204,7 +233,10 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
 
   // A whitespace-blind diff is not the patch git would apply, so hunks act only on the full diff.
   const actsOnHunks = !readOnly && !ignoreWhitespace && (scope === "uncommitted" || scope === "staged" || scope === "unstaged");
-  const visible = (files ?? []).map((file, index) => ({ file, key: blockKeys[index]! }));
+  const everyFile = (files ?? []).map((file, index) => ({ file, key: blockKeys[index]! }));
+  const tests = everyFile.filter(({ file }) => isTestPath(file.path)).length;
+  const visible = hideTests ? everyFile.filter(({ file }) => !isTestPath(file.path)) : everyFile;
+  const omitted = current?.value?.omitted ?? [];
   const currentPage = page.key === key ? page.page : 0;
   const shown = visible.slice(currentPage * DIFF_PAGE_FILES, (currentPage + 1) * DIFF_PAGE_FILES);
   // A file's own fold wins; otherwise a viewed file starts folded.
@@ -222,6 +254,12 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
           </span>
         ) : null}
         {path ? <button type="button" className="chip" onClick={onShowAll} title={`Showing ${path}`}>All files</button> : null}
+        {tests > 0 && !path ? (
+          <button type="button" className="pr-wrap-toggle" aria-pressed={hideTests} onClick={() => rememberHideTests(thread, !hideTests)}
+            title={hideTests ? `${tests} test ${tests === 1 ? "file" : "files"} hidden` : "Hide files that look like tests"}>
+            Hide tests
+          </button>
+        ) : null}
         <span className="review-diff-view">
           <span className="pr-view-toggle" role="group" aria-label="Diff layout">
             <button type="button" aria-pressed={!split} onClick={() => setLayout(false)}>Unified</button>
@@ -231,9 +269,10 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
         </span>
       </div>
       {current?.value?.base ? <p className="faint review-diff-note">Since this branch left {current.value.base}.</p> : null}
-      {scope === "branch" ? <p className="faint review-diff-note">Read only. Keep and Reject work on Uncommitted, Staged and Unstaged.</p> : null}
-      {readOnly && scope !== "turn" && scope !== "branch" ? <p className="faint review-diff-note">Keep and Reject are available on the host.</p> : null}
-      {!readOnly && ignoreWhitespace && scope !== "turn" && scope !== "branch" ? <p className="faint review-diff-note">Whitespace is hidden. Turn Ignore whitespace off to keep or reject hunks.</p> : null}
+      {scope === "branch" || scope === "commit" ? <p className="faint review-diff-note">Read only. Keep and Reject work on Uncommitted, Staged and Unstaged.</p> : null}
+      {readOnly && (scope === "uncommitted" || scope === "staged" || scope === "unstaged") ? <p className="faint review-diff-note">Keep and Reject are available on the host.</p> : null}
+      {!readOnly && ignoreWhitespace && (scope === "uncommitted" || scope === "staged" || scope === "unstaged") ? <p className="faint review-diff-note">Whitespace is hidden. Turn Ignore whitespace off to keep or reject hunks.</p> : null}
+      {comments.length > 0 && !readOnly ? <NotesTray thread={thread} comments={comments} onSend={sendNotes} onDiscard={() => clearReviewComments(thread)} /> : null}
       {!current ? (
         <div className="review-diff-loading" role="status" aria-label="Loading diff">
           {[52, 38, 64].map((size) => <span key={size} className="review-diff-skeleton" style={{ width: `${size}%` }} />)}
@@ -244,7 +283,9 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
           <button type="button" className="chip" onClick={() => setReload((value) => value + 1)}>Try again</button>
         </div>
       ) : !files?.length ? (
-        <p className="faint">{current.value?.note ?? (path ? `No ${DIFF_SCOPES.find((item) => item.id === scope)!.label.toLowerCase()} changes in ${path}.` : ignoreWhitespace ? "No changes besides whitespace." : EMPTY[scope])}</p>
+        omitted.length ? <OmittedFiles omitted={omitted} path={path} onShow={onShowFile} onOpen={openInEditor} /> : (
+          <p className="faint">{current.value?.note ?? (path ? `No ${DIFF_SCOPES.find((item) => item.id === scope)!.label.toLowerCase()} changes in ${path}.` : ignoreWhitespace ? "No changes besides whitespace." : EMPTY[scope])}</p>
+        )
       ) : (
         <div className="review-diff-files">
           {current.value?.note ? <p className="faint review-diff-note">{current.value.note}</p> : null}
@@ -273,7 +314,22 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
                   onExpandedChange={(open) => fold(block, open)}
                   viewed={viewed.isViewed(file)}
                   onViewedChange={(next) => { viewed.mark(file, next); fold(block, !next); }}
-                  tools={fileActions.length > 0 && file.hunks.length > 1 ? (
+                  headerActions={<>
+                    <button type="button" className="icon-btn" title="Copy path" aria-label={`Copy path of ${file.path}`} onClick={() => copyPath(file.path)}><CopyIcon size={13} /></button>
+                    {openInEditor && file.status !== "deleted" ? <button type="button" className="icon-btn" title="Open in editor" aria-label={`Open ${file.path} in editor`} onClick={() => openInEditor(file.path)}><ExternalLinkIcon size={13} /></button> : null}
+                  </>}
+                  onAddComment={readOnly ? undefined : (filePath, line, side) => setDrafting({ path: filePath, line, side })}
+                  lineNote={(line, side) => {
+                    const here = comments.filter((comment) => comment.path === file.path && comment.line === line && comment.side === side);
+                    const editing = drafting?.path === file.path && drafting.line === line && drafting.side === side;
+                    if (!here.length && !editing) return null;
+                    return <>
+                      {here.map((comment) => <SavedNote key={comment.id} thread={thread} comment={comment} />)}
+                      {editing ? <NoteEditor label={`Note on ${file.path} line ${line}`} onCancel={() => setDrafting(undefined)}
+                        onSave={(text) => { addReviewComment(thread, { path: file.path, line, side, text }); setDrafting(undefined); }} /> : null}
+                    </>;
+                  }}
+                  tools={fileActions.length > 0 && file.hunks.length !== 1 ? (
                     <div className="file-diff-tools">
                       <HunkTools actions={fileActions} scopeLabel="all" progress={progress[fileSlot]}
                         onAct={(action) => act(file, everything, action, fileSlot)} onRetry={() => setReload((value) => value + 1)} />
@@ -298,6 +354,8 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
               </div>
             );
           })}
+          {hideTests && tests > 0 ? <p className="faint review-diff-note">{tests} test {tests === 1 ? "file" : "files"} hidden.</p> : null}
+          {omitted.length ? <OmittedFiles omitted={omitted} path={path} onShow={onShowFile} onOpen={openInEditor} /> : null}
         </div>
       )}
     </div>

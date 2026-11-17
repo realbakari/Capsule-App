@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { isDiffScope, type DiffScope, type GitDiffScope, type Run } from "@capsule/shared";
+import { isDiffScope, type DiffScope, type ReviewCommit, type Run } from "@capsule/shared";
 
 /*
  * The Review scope each project last showed. It is a view preference on this
@@ -30,6 +30,36 @@ export function reviewScope(projectId: string | undefined): DiffScope {
 export function setReviewScope(projectId: string, scope: DiffScope): void {
   cache = { ...load(), [projectId]: scope };
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cache)); } catch { /* Keep the in-memory choice. */ }
+  notify();
+}
+
+/*
+ * The ref Branch measures from, per project on this device. Absent, the
+ * engine uses the default branch; a base that stops resolving falls back too.
+ */
+const BASE_KEY = "capsule.reviewBase.v1";
+let bases: Record<string, string> | undefined;
+
+function loadBases(): Record<string, string> {
+  if (bases) return bases;
+  bases = {};
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(BASE_KEY) ?? "{}");
+    if (parsed && typeof parsed === "object") {
+      for (const [project, base] of Object.entries(parsed)) if (typeof base === "string" && base) bases[project] = base;
+    }
+  } catch { /* Storage can be unavailable or hold an older shape. */ }
+  return bases;
+}
+
+export function reviewBase(projectId: string | undefined): string | undefined {
+  return projectId ? loadBases()[projectId] : undefined;
+}
+
+export function setReviewBase(projectId: string, base: string | undefined): void {
+  const { [projectId]: _previous, ...rest } = loadBases();
+  bases = base ? { ...rest, [projectId]: base } : rest;
+  try { localStorage.setItem(BASE_KEY, JSON.stringify(bases)); } catch { /* Keep the in-memory choice. */ }
   notify();
 }
 
@@ -105,6 +135,7 @@ export function parseScopeValue(value: string): ReviewScope {
  */
 const scopes = new Map<string, ReviewScope>();
 const whitespace = new Map<string, boolean>();
+const commitPicks = new Map<string, string>();
 
 export function rememberedScope(thread: string): ReviewScope {
   return scopes.get(thread) ?? UNCOMMITTED;
@@ -126,15 +157,33 @@ export function rememberIgnoreWhitespace(thread: string, value: boolean, fallbac
   notify();
 }
 
-/** What Review shows: one of git's scopes, or one saved turn (absent while none is saved). */
-export type ReviewSelection = { kind: GitDiffScope } | { kind: "turn"; runId?: string };
+/**
+ * What Review shows: one of git's scopes, Branch against a base (absent: the
+ * default branch), one commit, or one saved turn (absent while none exists).
+ */
+export type ReviewSelection =
+  | { kind: "uncommitted" | "staged" | "unstaged" }
+  | { kind: "branch"; base?: string }
+  | { kind: "commit"; oid?: string }
+  | { kind: "turn"; runId?: string };
+
+export interface ReviewCommits {
+  commits: readonly ReviewCommit[];
+  loading: boolean;
+}
 
 /*
  * The project's scope says which kind of diff; for a turn, the thread's own
  * pick wins while it is still a saved turn, else the newest one. While the
  * turn list loads, a remembered pick is kept rather than dropped.
  */
-export function reviewSelection(kind: DiffScope, thread: string, turns: readonly ReviewTurn[], loading: boolean): ReviewSelection {
+export function reviewSelection(kind: DiffScope, thread: string, turns: readonly ReviewTurn[], loading: boolean, projectId?: string, commits: ReviewCommits = { commits: [], loading: false }): ReviewSelection {
+  if (kind === "branch") return { kind, base: reviewBase(projectId) };
+  if (kind === "commit") {
+    const picked = commitPicks.get(thread);
+    if (picked && (commits.loading || commits.commits.some((commit) => commit.oid === picked))) return { kind, oid: picked };
+    return { kind, oid: commits.commits[0]?.oid };
+  }
   if (kind !== "turn") return { kind };
   const picked = rememberedScope(thread);
   if (picked.kind === "turn" && (loading || turns.some((turn) => turn.runId === picked.runId))) return { kind: "turn", runId: picked.runId };
@@ -142,11 +191,18 @@ export function reviewSelection(kind: DiffScope, thread: string, turns: readonly
 }
 
 export function selectionValue(selection: ReviewSelection): string {
-  return selection.kind === "turn" ? (selection.runId ? `turn:${selection.runId}` : "turn") : selection.kind;
+  if (selection.kind === "turn") return selection.runId ? `turn:${selection.runId}` : "turn";
+  if (selection.kind === "commit") return selection.oid ? `commit:${selection.oid}` : "commit";
+  return selection.kind;
 }
 
 /** Apply a choice from Review's scope select. */
 export function chooseReview(projectId: string, thread: string, value: string): void {
+  if (value === "commit" || value.startsWith("commit:")) {
+    if (value.length > 7) commitPicks.set(thread, value.slice(7));
+    setReviewScope(projectId, "commit");
+    return;
+  }
   const scope = parseScopeValue(value);
   if (scope.kind === "turn") {
     rememberScope(thread, scope);
@@ -172,4 +228,34 @@ export function changeStatus(code: string): { letter: string; title: string } {
   const word = CHANGE_WORDS[kind] ?? "Changed";
   const staging = index !== " " && tree !== " " ? "partly staged" : index !== " " ? "staged" : "not staged";
   return { letter: kind, title: `${word}, ${staging}` };
+}
+
+/** A commit as the scope list names it: its subject, then its short ID. */
+export function commitLabel(commit: ReviewCommit): string {
+  return `${promptExcerpt(commit.subject || "No subject")} · ${commit.oid.slice(0, 7)}`;
+}
+
+const TEST_FOLDERS = new Set(["__tests__", "__mocks__", "test", "tests", "spec", "specs", "e2e", "testing"]);
+const TEST_NAME = /(?:[._-](?:test|spec|e2e)s?\.[^.]+$|^test_.+\.py$|_test\.(?:go|py|rb|exs?)$|_spec\.rb$|(?:Tests?|Spec)\.(?:java|kt|swift|cs|scala)$)/;
+
+/** Whether a path looks like a test, a fixture folder of tests, or a test helper, by common conventions. */
+export function isTestPath(path: string): boolean {
+  const parts = path.split("/");
+  const name = parts.pop() ?? "";
+  return parts.some((part) => TEST_FOLDERS.has(part)) || TEST_NAME.test(name);
+}
+
+/*
+ * Whether Review hides test files, per thread for this window's life like
+ * the whitespace choice.
+ */
+const hideTests = new Set<string>();
+
+export function hidesTests(thread: string): boolean {
+  return hideTests.has(thread);
+}
+
+export function rememberHideTests(thread: string, value: boolean): void {
+  if (value) hideTests.add(thread); else hideTests.delete(thread);
+  notify();
 }

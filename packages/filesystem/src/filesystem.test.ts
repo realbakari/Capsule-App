@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkoutBranch,
-  commitAll,
+  commitChanges,
   FilesystemAdapter,
   readGitDiff,
   readGitStatus,
@@ -57,7 +57,7 @@ describe("FilesystemAdapter", () => {
     const switched = await checkoutBranch(root, status.branch ?? "HEAD");
     expect(switched.ok).toBe(true);
     writeFileSync(path.join(root, "README.md"), "three\n");
-    const committed = await commitAll(root, "update readme");
+    const committed = await commitChanges(root, "update readme", { paths: ["README.md", "capsule.json"] });
     expect(committed.ok).toBe(true);
     expect((await readGitStatus(root)).dirty).toBe(false);
     expect((await searchContents(root, "three")).some((hit) => hit.path.includes("README"))).toBe(true);

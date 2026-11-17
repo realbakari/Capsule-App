@@ -81,8 +81,9 @@ you kept, not the ones removed. The conversation keeps its agent settings, such
 as model, reasoning effort, permissions and mode, and how it connects to the
 agent.
 **Edit and restore files** does the same and also puts the project folder
-back to how the turn before stood, using that turn's checkpoint. If no earlier
-turn has a checkpoint, Capsule says so and changes nothing. Edit from here is a
+back to how the turn before stood, using that turn's checkpoint. If that turn
+has no checkpoint, Capsule says so and changes nothing, rather than going back
+further and undoing it too. Edit from here is a
 restore too, so Redo brings the removed turns back until you send again.
 
 Restores, Redo and forks wait for a running turn to stop, and are available in
@@ -111,8 +112,7 @@ themes, with subtle full-width backgrounds for additions and removals.
 Select a file row (including on touch devices) to open that file's saved diff
 in place. Select **All changed files**, or the card's heading, for the entire
 turn. Large hover previews are labelled **Excerpt**. File previews are limited
-to 512 KB; for larger files, inspect the saved checkpoints in Git for the complete
-change. Binary files and changes without a text diff are identified instead
+to 512 KB; a larger file says it exceeds the preview limit. Binary files and changes without a text diff are identified instead
 of showing a blank code panel.
 These previews retain their file names even when your Git preferences hide or
 customize diff prefixes. Your Git configuration is not changed.
@@ -164,7 +164,12 @@ Checkpoints keep the worktree separate from your staging area and branch history
   and git can reclaim the space. The copy Redo keeps goes the same way, and
   sooner: with your next message. A fork keeps its own copies of the
   checkpoints it shares, so deleting the original leaves the fork's changes
-  readable.
+  readable. Deleting a conversation whose turn is still running stops that
+  turn and closes its agent first, so the agent does not go on working in the
+  folder afterwards.
+- **Every turn gets a checkpoint when it ends**, including one you stopped, one
+  that failed, and one cut off when Capsule quit. The first turn in a folder
+  also records the folder as it started, so its changes can be read too.
 
 Projects that are not git repositories do not get checkpoints, and the restore
 control does not appear for them.

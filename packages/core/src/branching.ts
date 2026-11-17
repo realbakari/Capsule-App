@@ -103,7 +103,7 @@ export class Branching {
     const session = target ? this.repos.getSession(target.sessionId) : undefined;
     if (!target || !session) return { ok: false, detail: "That turn is no longer in this conversation." };
     const files = scope !== "conversation";
-    if (files && !target.checkpointRef) return { ok: false, detail: "That turn has no checkpoint, so its files cannot be restored. Restore the conversation only." };
+    if (files && !target.checkpointRef) return { ok: false, detail: "That turn has no saved snapshot, so its files cannot be restored. Restore the conversation only." };
     return this.apply({ session, scope, target, filesFrom: files ? target : undefined, cutMessageId: scope === "files" ? undefined : this.cutAfter(session.id, target.id) });
   }
 
@@ -128,8 +128,10 @@ export class Branching {
      */
     const kept = this.repos.listRuns(sessionId).filter((run) => !removed.has(run.id) && run.createdAt <= prompt.createdAt);
     const target = kept[0];
-    const filesFrom = restoreFiles ? kept.find((run) => run.checkpointRef) : undefined;
-    if (restoreFiles && !filesFrom) return { ok: false, detail: "No earlier turn has a checkpoint to restore files from. Edit from here without restoring files, or restore the files of a turn instead." };
+    // Files come back as the turn just before left them; an older snapshot would also undo that turn.
+    const filesFrom = restoreFiles ? target : undefined;
+    if (restoreFiles && !filesFrom) return { ok: false, detail: "No earlier turn has a saved snapshot to restore files from. Edit from here without restoring files, or restore the files of a turn instead." };
+    if (filesFrom && !filesFrom.checkpointRef) return { ok: false, detail: "The turn before this one has no saved snapshot, so restoring files would also undo that turn. Edit from here without restoring files, or restore the files of an earlier turn instead." };
     return this.apply({ session, scope: restoreFiles ? "both" : "conversation", target, filesFrom, cutMessageId: messageId, edit: { prompt } });
   }
 
@@ -283,7 +285,7 @@ export class Branching {
   /** Diff a turn's checkpoint against the folder as it is now: what restoring its files would change. */
   async compareRefs(runId: string): Promise<{ cwd: string; from: string; to: string }> {
     const run = this.repos.getRun(runId);
-    if (!run?.checkpointRef) throw new Error("That turn has no checkpoint to compare.");
+    if (!run?.checkpointRef) throw new Error("That turn has no saved snapshot to compare.");
     const cwd = this.host.cwdForRun(run);
     if (!cwd) throw new Error("That turn has no working directory.");
     const current = threadSnapshotRef(run.sessionId, "compare");
@@ -304,7 +306,7 @@ export class Branching {
     const run = this.repos.getRun(input.runId);
     if (!source || !run || run.sessionId !== source.id) throw new Error("That turn is no longer in this conversation.");
     if (ACTIVE.has(run.status)) throw new Error("This turn is still running. Wait for it to finish before forking from it.");
-    if (input.workspace === "worktree" && !run.checkpointRef) throw new Error("That turn has no checkpoint, so a worktree cannot start from its files. Fork into the same folder instead.");
+    if (input.workspace === "worktree" && !run.checkpointRef) throw new Error("That turn has no saved snapshot, so a worktree cannot start from its files. Fork into the same folder instead.");
     const project = this.host.requireProject(source.projectId);
     const split = this.repos.splitTranscript(source.id, this.cutAfter(source.id, run.id));
     const fork = createSessionRecord(project, {

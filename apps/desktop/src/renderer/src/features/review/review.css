@@ -174,3 +174,59 @@
 }
 .review-turn-banner span { flex: 1 1 14rem; min-width: 0; }
 .review-turn-banner .chip { flex: none; }
+
+/* Review notes: a line's note, its editor, and the tray of notes waiting to go to the agent. */
+.review-note, .review-note-editor { display: flex; flex-direction: column; gap: 0.35rem; }
+.review-note + .review-note, .review-note + .review-note-editor { margin-top: 0.5rem; }
+.review-note p { margin: 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-note-editor textarea { width: 100%; min-height: 3.25rem; resize: vertical; font: inherit; }
+.review-note-actions { display: inline-flex; gap: 0.35rem; justify-content: flex-end; }
+.review-note .review-note-actions { justify-content: flex-start; }
+.review-notes-tray {
+  margin: 0 0 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--code-header);
+}
+.review-notes-head { display: flex; align-items: center; gap: 0.35rem; }
+.review-notes-spacer { flex: 1; }
+.review-notes-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.review-notes-where { display: block; margin-bottom: 0.2rem; color: var(--text-muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Files the read left out: listed with why, and a way to see each one. */
+.review-omitted { margin-top: 0.75rem; padding: 0.5rem 0.6rem; border: 1px dashed var(--border-color); border-radius: var(--radius-sm); }
+.review-omitted-head { margin: 0 0 0.4rem; color: var(--text-muted); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+.review-omitted ul { list-style: none; margin: 0 0 0.4rem; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.review-omitted li { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: var(--text-xs); }
+.review-omitted li > .mono { flex: 1 1 auto; min-width: 0; }
+.review-omitted-why { flex: none; }
+
+.review-base-select { display: inline-flex; align-items: center; gap: 0.35rem; font-size: var(--text-xs); }
+
+/* Copy path and Open in editor: out of the way until the header is pointed at or focused. */
+.file-diff-head-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.125rem;
+  padding-right: 0.25rem;
+  opacity: 0;
+  transition: opacity var(--motion-instant) var(--ease-in-out);
+}
+.file-diff-head-row:hover .file-diff-head-actions,
+.file-diff-head-row:focus-within .file-diff-head-actions { opacity: 1; }
+@media (hover: none) { .file-diff-head-actions { opacity: 1; } }
+.file-diff-status--binary { color: var(--text-muted); }
+
+/* A review note under its line: as wide as the diff, in the text face. */
+.diff-line-note {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 0.4rem 0.6rem 0.5rem 4.5rem;
+  border-block: 1px solid var(--border-color);
+  background: var(--code-header);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  white-space: normal;
+}

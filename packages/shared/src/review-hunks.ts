@@ -9,23 +9,59 @@
  */
 import type { DiffFile, DiffHunk } from "./diff.js";
 
-export type DiffScope = "uncommitted" | "staged" | "unstaged" | "turn" | "branch";
+export type DiffScope = "uncommitted" | "staged" | "unstaged" | "turn" | "branch" | "commit";
 
 export const DIFF_SCOPES: ReadonlyArray<{ id: DiffScope; label: string; detail: string }> = [
   { id: "uncommitted", label: "Uncommitted", detail: "Staged and unstaged changes against the last commit" },
   { id: "staged", label: "Staged", detail: "Changes in the index, ready to commit" },
   { id: "unstaged", label: "Unstaged", detail: "Working-tree changes not yet staged" },
   { id: "turn", label: "This turn", detail: "What the latest turn changed" },
-  { id: "branch", label: "Branch", detail: "Everything since this branch left the default branch" },
+  { id: "branch", label: "Branch", detail: "Everything since this branch left the base you compare against" },
+  { id: "commit", label: "Commit", detail: "What one commit on this branch changed" },
 ];
 
 /** The scopes git answers directly. "This turn" comes from saved checkpoints. */
 export type GitDiffScope = Exclude<DiffScope, "turn">;
 
+/**
+ * A changed file Review lists without its patch: one file over the per-file
+ * size, or past the file and byte budget for one read. Reading that file on
+ * its own shows a `limit` file; a `too-large` one only opens elsewhere.
+ */
+export interface OmittedDiffFile {
+  path: string;
+  reason: "too-large" | "limit";
+  /** The file's size on disk, when known. */
+  bytes?: number;
+}
+
 export interface ScopedDiff {
   patch: string;
-  /** For Branch, the branch the diff is measured from. */
+  /** For Branch, the ref the diff is measured from. For Commit, the commit's parent. */
   base?: string;
+  /** Changed files left out of `patch`, so a large change still shows the rest. */
+  omitted?: OmittedDiffFile[];
+}
+
+/** A commit Review can show on its own. */
+export interface ReviewCommit {
+  oid: string;
+  subject: string;
+  author: string;
+  /** ISO 8601. */
+  date: string;
+}
+
+/** What Branch and Commit can compare: refs to measure from, and the branch's own commits. */
+export interface ReviewTargets {
+  /** Local branches, then remote-tracking ones, as `git` names them. */
+  bases: { local: string[]; remote: string[] };
+  /** The base Branch uses when none is chosen, or the chosen one when it still resolves. */
+  base?: string;
+  /** Commits on HEAD since it left `base`, newest first. */
+  commits: ReviewCommit[];
+  /** More commits than were listed. */
+  commitsTruncated?: boolean;
 }
 
 export function isDiffScope(value: unknown): value is DiffScope {
@@ -82,19 +118,23 @@ export function quoteGitPath(prefixed: string): string {
 /**
  * A patch holding only the chosen hunks of one file.
  *
- * The patch never moves a file or changes its mode: a hunk of a renamed file
- * edits the file where it now is. A created or deleted file has a single
+ * The patch never changes a file's mode, and moves a renamed file only with
+ * `move`: otherwise a hunk of a renamed file edits the file where it now is.
+ * A move is for a target that still holds the file at its old path, such as
+ * the index under an unstaged rename. A created or deleted file has a single
  * hunk that covers the whole file, so its patch still creates or deletes it.
  * Hunk headers keep their original line numbers; git places each hunk by its
  * context, and the side it reads (old for forwards, new for reverse) is exact
  * for a single hunk.
  */
-export function hunkPatch(file: DiffFile, hunks: readonly number[]): string {
-  const a = quoteGitPath(`a/${file.path}`);
+export function hunkPatch(file: DiffFile, hunks: readonly number[], options: { move?: boolean } = {}): string {
+  const from = options.move && file.status === "renamed" && file.oldPath ? file.oldPath : undefined;
+  const a = quoteGitPath(`a/${from ?? file.path}`);
   const b = quoteGitPath(`b/${file.path}`);
   const head = [`diff --git ${a} ${b}`];
   if (file.status === "added") head.push(`new file mode ${file.mode ?? "100644"}`, "--- /dev/null", `+++ ${b}`);
   else if (file.status === "deleted") head.push(`deleted file mode ${file.mode ?? "100644"}`, `--- ${a}`, "+++ /dev/null");
+  else if (from) head.push(`rename from ${quoteGitPath(from)}`, `rename to ${quoteGitPath(file.path)}`, ...(hunks.length ? [`--- ${a}`, `+++ ${b}`] : []));
   else head.push(`--- ${a}`, `+++ ${b}`);
   const body = [...new Set(hunks)].sort((x, y) => x - y).flatMap((index) => {
     const hunk = file.hunks[index];
@@ -170,24 +210,31 @@ export function rejectHunks(file: DiffFile, hunks: readonly number[]): HunkApply
 
 type Actions = Partial<Record<HunkAction, HunkApply>>;
 
+/*
+ * A file renamed in the unstaged diff still sits at its old path in the
+ * index, so staging any part of it stages the move too. A pure move has no
+ * hunks; staging, or unstaging, the move is then its whole action.
+ */
 const SCOPE_ACTIONS: Record<DiffScope, (diffs: ReviewFileDiffs, hunks: readonly number[]) => Actions> = {
   uncommitted: (diffs, hunks) => {
     const staged = stagedParts(diffs, hunks);
     const unstaged = unstagedParts(diffs, hunks);
+    const moving = diffs.unstaged?.status === "renamed" && hunks.length === 0;
     const unstage = diffs.staged && staged.length ? { patch: hunkPatch(diffs.staged, staged), reverse: true } : undefined;
     return {
-      ...(diffs.unstaged && unstaged.length ? { keep: { index: { patch: hunkPatch(diffs.unstaged, unstaged), reverse: false } } } : {}),
+      ...(diffs.unstaged && (unstaged.length || moving) ? { keep: { index: { patch: hunkPatch(diffs.unstaged, unstaged, { move: true }), reverse: false } } } : {}),
       ...(unstage ? { unstage: { index: unstage } } : {}),
-      reject: { ...rejectHunks(diffs.shown, hunks), ...(unstage ? { index: unstage } : {}) },
+      ...(hunks.length ? { reject: { ...rejectHunks(diffs.shown, hunks), ...(unstage ? { index: unstage } : {}) } } : {}),
     };
   },
   unstaged: (diffs, hunks) => ({
-    keep: { index: { patch: hunkPatch(diffs.shown, hunks), reverse: false } },
-    reject: rejectHunks(diffs.shown, hunks),
+    keep: { index: { patch: hunkPatch(diffs.shown, hunks, { move: true }), reverse: false } },
+    ...(hunks.length ? { reject: rejectHunks(diffs.shown, hunks) } : {}),
   }),
-  staged: (diffs, hunks) => ({ unstage: { index: { patch: hunkPatch(diffs.shown, hunks), reverse: true } } }),
+  staged: (diffs, hunks) => ({ unstage: { index: { patch: hunkPatch(diffs.shown, hunks, { move: hunks.length === 0 }), reverse: true } } }),
   turn: () => ({}),
   branch: () => ({}),
+  commit: () => ({}),
 };
 
 /**
@@ -195,7 +242,7 @@ const SCOPE_ACTIONS: Record<DiffScope, (diffs: ReviewFileDiffs, hunks: readonly 
  * into the patches it applies. An action that would do nothing is absent.
  */
 export function hunkActions(scope: DiffScope, diffs: ReviewFileDiffs, hunks: readonly number[]): Actions {
-  if (diffs.shown.binary || hunks.length === 0) return {};
+  if (diffs.shown.binary || (hunks.length === 0 && diffs.shown.status !== "renamed")) return {};
   return SCOPE_ACTIONS[scope](diffs, hunks);
 }
 

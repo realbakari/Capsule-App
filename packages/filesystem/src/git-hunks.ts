@@ -3,49 +3,24 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { GitDiffOptions, GitDiffScope, HunkApply, PatchApplication, ScopedDiff } from "@capsule/shared";
 import { git, inRepository } from "./git-process.js";
-import { CANONICAL_PATCH_FLAGS } from "./git-output.js";
-import { readFailure, readGitDiff, readUntrackedPatches, REVIEW_DIFF_BYTES } from "./git.js";
-
-const DIFF = ["--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", ...CANONICAL_PATCH_FLAGS];
-
-async function diffText(cwd: string, args: string[], relative: string | undefined, what: string): Promise<string> {
-  const result = await git(cwd, [...DIFF, ...args, "--", ...(relative ? [relative] : [])]);
-  if (!result.ok) throw new Error(await readFailure(cwd, result.stderr, `Could not read the ${what} diff.`));
-  return result.stdout;
-}
-
-/*
- * The branch work started from: where origin/HEAD points, else a local main
- * or master. A local branch wins over its remote copy, because a worktree
- * conversation branches from the local one.
- */
-async function defaultBranch(cwd: string): Promise<string | undefined> {
-  const remoteHead = await git(cwd, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
-  const remoteName = remoteHead.ok ? remoteHead.stdout.trim() : "";
-  const local = remoteName.replace(/^origin\//, "");
-  const candidates = [...(local ? [local, remoteName] : []), "main", "master", "origin/main", "origin/master"];
-  for (const name of candidates) {
-    if ((await git(cwd, ["rev-parse", "--verify", "--quiet", `${name}^{commit}`])).ok) return name;
-  }
-  return undefined;
-}
+import { readCommitPatch, readReviewPatch, readWorkingTreePatch, reviewBase } from "./review-diff.js";
 
 export async function readScopedDiff(cwd: string, scope: GitDiffScope, relative?: string, options: GitDiffOptions = {}): Promise<ScopedDiff> {
-  const whitespace = options.ignoreWhitespace ? ["-w"] : [];
+  const read = { ignoreWhitespace: options.ignoreWhitespace };
   return inRepository(cwd, async () => {
-    if (scope === "uncommitted") return { patch: await readGitDiff(cwd, relative, options) };
-    if (scope === "staged") return { patch: await diffText(cwd, ["--cached", ...whitespace], relative, "staged") };
-    if (scope === "unstaged") {
-      const tracked = await diffText(cwd, whitespace, relative, "unstaged");
-      return { patch: tracked + await readUntrackedPatches(cwd, relative, false, REVIEW_DIFF_BYTES - Buffer.byteLength(tracked)) };
-    }
-    const base = await defaultBranch(cwd);
-    if (!base) throw new Error("No default branch was found. Branch compares against main, master, or the remote's default branch.");
-    const mergeBase = await git(cwd, ["merge-base", base, "HEAD"]);
-    if (!mergeBase.ok) throw new Error(`This branch shares no history with ${base}.`);
-    const tracked = await diffText(cwd, [...whitespace, mergeBase.stdout.trim()], relative, "branch");
-    return { base, patch: tracked + await readUntrackedPatches(cwd, relative, false, REVIEW_DIFF_BYTES - Buffer.byteLength(tracked)) };
-  }, JSON.stringify(["readScopedDiff", cwd, scope, relative, Boolean(options.ignoreWhitespace)]));
+    const result = await (async (): Promise<ScopedDiff> => {
+      if (scope === "uncommitted") return readWorkingTreePatch(cwd, relative, options);
+      if (scope === "staged") return readReviewPatch(cwd, ["--cached"], relative, { ...read, untracked: false });
+      if (scope === "unstaged") return readReviewPatch(cwd, [], relative, { ...read, untracked: true });
+      if (scope === "commit") return readCommitPatch(cwd, options.commit ?? "", relative, options);
+      const base = await reviewBase(cwd, options.base);
+      if (!base) throw new Error(options.base ? `${options.base} no longer exists, and no default branch was found to compare against.` : "No default branch was found. Choose a branch to compare against.");
+      const mergeBase = await git(cwd, ["merge-base", "--end-of-options", base, "HEAD"]);
+      if (!mergeBase.ok) throw new Error(`This branch shares no history with ${base}.`);
+      return { base, ...await readReviewPatch(cwd, [mergeBase.stdout.trim()], relative, { ...read, untracked: true }) };
+    })();
+    return { patch: result.patch, ...(result.base ? { base: result.base } : {}), ...(result.omitted?.length ? { omitted: result.omitted } : {}) };
+  }, JSON.stringify(["readScopedDiff", cwd, scope, relative, Boolean(options.ignoreWhitespace), options.base ?? "", options.commit ?? ""]));
 }
 
 type Target = "index" | "worktree";

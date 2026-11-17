@@ -141,7 +141,7 @@ export function useSavedDiffPreview(patch: string | undefined, onOpenDiff?: (pat
       <div key={shown.file.path} className="saved-diff-preview-code" tabIndex={0} role="region" aria-label="Saved diff excerpt">
         {loading ? <p role="status">Loading saved changes…</p>
           : result?.error ? <p role="alert">{result.error} <button type="button" className="ghost" onClick={() => setRetry((value) => value + 1)}>Retry preview</button></p>
-          : !content ? <p>{result?.truncated ? "This file exceeds the preview limit. Inspect the saved checkpoint in Git for the complete change." : "No text diff is available for this file in this saved snapshot."}</p>
+          : !content ? <p>{result?.truncated ? "This file exceeds the preview limit." : "No text diff is available for this file in this saved snapshot."}</p>
           : content.file.binary ? <p>Binary file changed. There is no text preview.</p>
           : content.file.hunks.length === 0 ? <p>{content.truncated ? "Text is outside this excerpt. Open the file diff to inspect it." : content.file.status === "renamed" ? `Renamed from ${content.file.oldPath}. No text changes.` : "File metadata changed. No text changes."}</p>
           : <SavedDiffExcerpt file={content.file} />}

@@ -9,9 +9,19 @@ import { readBoundedFileSync } from "./bounded-read.js";
 export { readBoundedFile, readBoundedFileSync, FileTooLargeError } from "./bounded-read.js";
 export { previewCheckpoint } from "./checkpoint-preview.js";
 export { applyHunk, checkHunks, readScopedDiff } from "./git-hunks.js";
+export { readGitDiff, readReviewTargets } from "./review-diff.js";
 
 export type { FileEntry };
 export { inRepository } from "./git-process.js";
+export {
+  clearFetchState,
+  commitsSince,
+  fetchRemote,
+  pullCurrentBranch,
+  pushCurrentBranch,
+  readTracking,
+  REMOTE_TIMEOUT,
+} from "./git-sync.js";
 export {
   cloneRepository,
   cloneRepositoryArgs,
@@ -26,11 +36,11 @@ export {
 } from "./attachments.js";
 export {
   checkoutBranch,
-  commitAll,
+  commitChanges,
+  COMMIT_TIMEOUT,
   createBranch,
   initializeRepository,
   discardFile,
-  readGitDiff,
   readGitStatus,
   stageFile,
 } from "./git.js";
@@ -53,8 +63,7 @@ export {
   mergePullRequestArgs,
   mergePullRequestStack,
   rebasePullRequestStack,
-  pushArgs,
-  pushCurrentBranch,
+  pullRequestBody,
   parsePullRequestList,
   pollPullRequest,
   pollPullRequestList,

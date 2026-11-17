@@ -69,3 +69,37 @@ export function highlight(code: string, language?: string): ReactNode {
   cache.set(key, result);
   return result;
 }
+
+/**
+ * The same tokens, one entry per source line. A token that spans lines, such
+ * as a block comment, is cut at each break and keeps its colour on both sides.
+ */
+export function highlightLines(code: string, language?: string): ReactNode[] {
+  const lang = language?.toLowerCase();
+  let tree: HighlightNode[] | undefined;
+  if (lang && code.length <= MAX_HIGHLIGHT_CHARS && highlighter.registered(lang)) {
+    try { tree = highlighter.highlight(lang, code).children; } catch { tree = undefined; }
+  }
+  if (!tree) return code.split("\n");
+  const lines: ReactNode[][] = [[]];
+  const walk = (nodes: HighlightNode[], classes: string[]) => {
+    for (const node of nodes) {
+      if (node.type === "element") {
+        const scopes = Array.isArray(node.properties.className) ? node.properties.className : [];
+        const className = scopes.map((scope) => TOKEN_CLASSES[String(scope)]).filter(Boolean).join(" ");
+        walk(node.children, className && classes.length < 32 ? [...classes, className] : classes);
+      } else if (node.type === "text") {
+        node.value.split("\n").forEach((piece, index) => {
+          if (index > 0) lines.push([]);
+          if (!piece) return;
+          const line = lines[lines.length - 1]!;
+          line.push(classes.reduceRight<ReactNode>((child, className, depth) => (
+            <span className={className} key={depth === 0 ? line.length : undefined}>{child}</span>
+          ), classes.length ? piece : <Fragment key={line.length}>{piece}</Fragment>));
+        });
+      }
+    }
+  };
+  walk(tree, []);
+  return lines;
+}

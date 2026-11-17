@@ -17,7 +17,7 @@ const LABELS: Record<RestoreScope, string> = { files: "Files", conversation: "Co
 
 /** Why a scope cannot apply to this turn, or undefined. */
 function unavailable(target: RestoreTarget, scope: RestoreScope): string | undefined {
-  if (scope !== "conversation" && !target.run.checkpointRef) return "This turn has no checkpoint, so its files cannot be restored.";
+  if (scope !== "conversation" && !target.run.checkpointRef) return "This turn has no saved snapshot, so its files cannot be restored.";
   if (scope !== "files" && target.laterTurns === 0) return "This is the latest turn; there is nothing after it to hide.";
   return undefined;
 }

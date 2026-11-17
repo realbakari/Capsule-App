@@ -38,15 +38,16 @@ export function silentFailure(operation: string, error: { code?: string | number
 }
 
 function seconds(ms: number): string {
+  if (ms >= 120_000) return `${Math.round(ms / 60_000)} minutes`;
   const count = Math.max(1, Math.round(ms / 1000));
   return `${count} second${count === 1 ? "" : "s"}`;
 }
 
 /** Display-only reads may return an excerpt. Mutating Git operations must use git(). */
-export function gitExcerpt(cwd: string, args: string[], maxBytes: number, timeout = 30_000): Promise<{ stdout: string; truncated: boolean }> {
+export function gitExcerpt(cwd: string, args: string[], maxBytes: number, timeout = 30_000, env: NodeJS.ProcessEnv = process.env): Promise<{ stdout: string; truncated: boolean }> {
   const end = localTimings.start("git.diff");
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", timeout, maxBuffer: maxBytes }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env: { ...env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", timeout, maxBuffer: maxBytes }, (error, stdout, stderr) => {
       // Node stops our child at the limit. A stderr overflow or a timeout is
       // still a failure, never evidence of a successfully read patch.
       const truncated = error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" && error.message.startsWith("stdout maxBuffer");

@@ -62,3 +62,32 @@ describe("changeStatus", () => {
     expect(changeStatus("R ").title).toBe("Renamed, staged");
   });
 });
+
+describe("review targets", () => {
+  it("round-trips a commit pick and keeps it only while the commit is listed", async () => {
+    const { chooseReview, reviewSelection, selectionValue, reviewScope } = await import("./review-scope");
+    const commits = [{ oid: "b".repeat(40), subject: "newest", author: "a", date: "2026-01-02" }, { oid: "a".repeat(40), subject: "older", author: "a", date: "2026-01-01" }];
+    chooseReview("p-commit", "t-commit", `commit:${"a".repeat(40)}`);
+    expect(reviewScope("p-commit")).toBe("commit");
+    const picked = reviewSelection("commit", "t-commit", [], false, "p-commit", { commits, loading: false });
+    expect(picked).toEqual({ kind: "commit", oid: "a".repeat(40) });
+    expect(selectionValue(picked)).toBe(`commit:${"a".repeat(40)}`);
+    expect(reviewSelection("commit", "t-commit", [], false, "p-commit", { commits: commits.slice(0, 1), loading: false })).toEqual({ kind: "commit", oid: "b".repeat(40) });
+    expect(reviewSelection("commit", "t-commit", [], false, "p-commit", { commits: [], loading: true })).toEqual({ kind: "commit", oid: "a".repeat(40) });
+  });
+
+  it("remembers the Branch base per project and forgets it when cleared", async () => {
+    const { reviewSelection, setReviewBase } = await import("./review-scope");
+    setReviewBase("p-base", "origin/release");
+    expect(reviewSelection("branch", "t", [], false, "p-base")).toEqual({ kind: "branch", base: "origin/release" });
+    expect(reviewSelection("branch", "t", [], false, "other")).toEqual({ kind: "branch", base: undefined });
+    setReviewBase("p-base", undefined);
+    expect(reviewSelection("branch", "t", [], false, "p-base")).toEqual({ kind: "branch", base: undefined });
+  });
+
+  it("tells test files from source by common conventions", async () => {
+    const { isTestPath } = await import("./review-scope");
+    for (const path of ["src/a.test.ts", "src/a.spec.tsx", "pkg/__tests__/x.ts", "tests/test_db.py", "db_test.go", "spec/models/user_spec.rb", "App/LoginTests.swift", "e2e/flow.ts"]) expect(isTestPath(path), path).toBe(true);
+    for (const path of ["src/testing-library.ts", "src/contest.ts", "src/latest.ts", "docs/testing.md", "src/attest.ts"]) expect(isTestPath(path), path).toBe(false);
+  });
+});

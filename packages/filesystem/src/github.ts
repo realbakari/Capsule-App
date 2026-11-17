@@ -136,12 +136,6 @@ export function clearGhCache(): void {
   pullRequestListReads.clear();
 }
 
-export function pushArgs(forceWithLease: boolean): string[] {
-  return forceWithLease
-    ? ["push", "--force-with-lease", "-u", "origin", "HEAD"]
-    : ["push", "-u", "origin", "HEAD"];
-}
-
 export function createPullRequestArgs(input: {
   title: string;
   body: string;
@@ -166,17 +160,13 @@ export async function lastCommitSubject(cwd: string): Promise<string> {
   return (await run("git", ["log", "-1", "--pretty=%s"], cwd, 4000)).stdout.trim();
 }
 
-export async function pushCurrentBranch(
-  cwd: string,
-  forceWithLease: boolean,
-): Promise<{ ok: boolean; detail: string; }> {
-  return inRepository(cwd, async () => {
-
-    const result = await runAsync("git", pushArgs(forceWithLease), cwd, 30_000);
-    if (result.ok) return { ok: true, detail: "Pushed." };
-    return { ok: false, detail: remoteCommandFailure(result.stderr || result.stdout, "Push failed. Check the remote branch and your Git setup.") };
-
-  });
+/**
+ * The pull request's description: what the branch did, commit by commit,
+ * rather than the title again. One commit lends its own body.
+ */
+export function pullRequestBody(commits: ReadonlyArray<{ subject: string; body: string; }>, extra: readonly (string | undefined)[]): string {
+  const summary = commits.length === 1 ? commits[0]!.body || "" : commits.map((commit) => `- ${commit.subject}`).join("\n");
+  return [summary, ...extra.map((part) => part?.trim())].filter(Boolean).join("\n\n");
 }
 
 function checkRollup(
@@ -893,14 +883,10 @@ export async function enrichGitStatus(status: GitStatus, cwd?: string): Promise<
 
     if (!status.isRepo || !cwd) return { ...status, ghAvailable: false };
     const available = await ghAvailable();
-    const ahead = await run("git", ["rev-list", "--count", "@{upstream}..HEAD"], cwd, 3000);
-    const behind = await run("git", ["rev-list", "--count", "HEAD..@{upstream}"], cwd, 3000);
     const pullRequest = available ? await pollPullRequest(cwd) : { known: false };
     return {
       ...status,
       ghAvailable: available,
-      ahead: ahead.ok ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : undefined,
-      behind: behind.ok ? Number.parseInt(behind.stdout.trim(), 10) || 0 : undefined,
       pullRequest: pullRequest.value,
       pullRequestKnown: pullRequest.known,
     };

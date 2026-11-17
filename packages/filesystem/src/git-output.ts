@@ -11,7 +11,8 @@ export function parsePorcelain(text: string): GitChange[] {
     const record = fields[i]!;
     if (record.length < 4) continue;
     const status = record.slice(0, 2);
-    result.push({ path: record.slice(3), code: status.trim() || "?" });
+    // Both columns: the first is the index, so a staged change reads differently from an unstaged one.
+    result.push({ path: record.slice(3), code: status });
     if (/[RC]/.test(status)) i++;
   }
   return result;

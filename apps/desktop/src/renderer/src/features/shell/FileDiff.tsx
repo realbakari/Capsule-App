@@ -1,5 +1,5 @@
 import { displayPrefs } from "../../lib/display-prefs";
-import { memo, useMemo, useState, type ReactNode } from "react";
+import { Fragment, memo, useMemo, useState, type ReactNode } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
 import { DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
@@ -49,6 +49,9 @@ export interface HunkSlot {
   label: (index: number) => string;
 }
 
+/** What a diff draws under one of its lines, such as a review note; nothing for most lines. */
+export type LineNote = (line: number, side: "left" | "right") => ReactNode;
+
 function HunkHeading({ hunk, index, slot }: { hunk: DiffHunk; index: number; slot?: HunkSlot }) {
   if (!slot) return <code className="diff-text">{hunk.header}</code>;
   // The line range stays whole; only the section heading after it gives way.
@@ -70,12 +73,14 @@ function UnifiedHunk({
   slot,
   filePath,
   onAddComment,
+  lineNote,
 }: {
   hunk: DiffHunk;
   index: number;
   slot?: HunkSlot;
   filePath?: string;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  lineNote?: LineNote;
 }) {
   return (
     <>
@@ -86,8 +91,10 @@ function UnifiedHunk({
       </div>
       {hunk.lines.map((line, index) => {
         const lineNum = line.newLine ?? line.oldLine;
+        const note = lineNum && lineNote ? lineNote(lineNum, line.kind === "del" ? "left" : "right") : null;
         return (
-          <div className={`diff-row diff-row--${line.kind}`} key={`${index}-${line.text.slice(0, 16)}`}>
+          <Fragment key={`${index}-${line.text.slice(0, 16)}`}>
+          <div className={`diff-row diff-row--${line.kind}`}>
             <span className="diff-gutter">
               <span className="diff-gutter-num">{line.oldLine ?? ""}</span>
             </span>
@@ -114,6 +121,8 @@ function UnifiedHunk({
               <DiffText text={line.text} filePath={filePath} />
             </code>
           </div>
+          {note ? <div className="diff-line-note">{note}</div> : null}
+          </Fragment>
         );
       })}
     </>
@@ -167,6 +176,7 @@ function SplitHunk({
   rows,
   filePath,
   onAddComment,
+  lineNote,
 }: {
   hunk: DiffHunk;
   index: number;
@@ -174,35 +184,45 @@ function SplitHunk({
   rows: ReturnType<typeof splitRows>;
   filePath?: string;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  lineNote?: LineNote;
 }) {
   return (
     <>
       <div className="diff-split-row diff-split-row--hunk">
         <HunkHeading hunk={hunk} index={index} slot={slot} />
       </div>
-      {rows.map((row, index) => (
-        <div className="diff-split-row" key={index}>
-          <SplitCell
-            line={row.left}
-            side="left"
-            filePath={filePath}
-            onAddComment={onAddComment}
-          />
-          <SplitCell
-            line={row.right}
-            side="right"
-            filePath={filePath}
-            onAddComment={onAddComment}
-          />
-        </div>
-      ))}
+      {rows.map((row, index) => {
+        const left = row.left?.oldLine && lineNote ? lineNote(row.left.oldLine, "left") : null;
+        const right = row.right?.newLine && lineNote ? lineNote(row.right.newLine, "right") : null;
+        return (
+          <Fragment key={index}>
+            <div className="diff-split-row">
+              <SplitCell
+                line={row.left}
+                side="left"
+                filePath={filePath}
+                onAddComment={onAddComment}
+              />
+              <SplitCell
+                line={row.right}
+                side="right"
+                filePath={filePath}
+                onAddComment={onAddComment}
+              />
+            </div>
+            {left ? <div className="diff-line-note">{left}</div> : null}
+            {right ? <div className="diff-line-note">{right}</div> : null}
+          </Fragment>
+        );
+      })}
     </>
   );
 }
 
-function FileDiffBody({ file, split, wrap, hunkSlot, onAddComment }: {
+function FileDiffBody({ file, split, wrap, hunkSlot, onAddComment, lineNote }: {
   file: DiffFile; split: boolean; wrap: boolean; hunkSlot?: HunkSlot;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  lineNote?: LineNote;
 }) {
   const prepared = useMemo(() => {
     let count = 0;
@@ -227,8 +247,8 @@ function FileDiffBody({ file, split, wrap, hunkSlot, onAddComment }: {
         // A hunk continued from the previous page keeps its heading, not its controls.
         const slot = from === 0 ? hunkSlot : undefined;
         return split
-          ? <SplitHunk key={item.start} hunk={item.hunk} index={item.index} slot={slot} rows={item.rows.slice(from, to)} filePath={file.path} onAddComment={onAddComment} />
-          : <UnifiedHunk key={item.start} hunk={{ ...item.hunk, lines: item.hunk.lines.slice(from, to) }} index={item.index} slot={slot} filePath={file.path} onAddComment={onAddComment} />;
+          ? <SplitHunk key={item.start} hunk={item.hunk} index={item.index} slot={slot} rows={item.rows.slice(from, to)} filePath={file.path} onAddComment={onAddComment} lineNote={lineNote} />
+          : <UnifiedHunk key={item.start} hunk={{ ...item.hunk, lines: item.hunk.lines.slice(from, to) }} index={item.index} slot={slot} filePath={file.path} onAddComment={onAddComment} lineNote={lineNote} />;
       })}
     </div>
   </>;
@@ -242,8 +262,10 @@ export function FileDiff({
   expanded,
   onExpandedChange,
   onAddComment,
+  lineNote,
   hunkSlot,
   tools,
+  headerActions,
   viewed = false,
   onViewedChange,
 }: {
@@ -254,9 +276,12 @@ export function FileDiff({
   expanded?: boolean;
   onExpandedChange?: (open: boolean) => void;
   onAddComment?: (filePath: string, line: number, side: "left" | "right") => void;
+  lineNote?: LineNote;
   hunkSlot?: HunkSlot;
   /** File-wide controls shown above the hunks while the file is open. */
   tools?: ReactNode;
+  /** Small buttons beside the header, such as Copy path; they show while the header is hovered or focused. */
+  headerActions?: ReactNode;
   viewed?: boolean;
   /** Shows a "Viewed" checkbox in the file's header row. */
   onViewedChange?: (viewed: boolean) => void;
@@ -296,22 +321,25 @@ export function FileDiff({
         {file.status !== "modified" ? (
           <span className={`file-diff-status file-diff-status--${file.status}`}>{label}</span>
         ) : null}
-        <span className="pr-diff-stat">
-          <span className="file-diff-chip file-diff-chip--add">+{file.additions}</span>
-          <span className="file-diff-chip file-diff-chip--del">−{file.deletions}</span>
-        </span>
+        {file.binary ? <span className="file-diff-status file-diff-status--binary">Binary</span> : (
+          <span className="pr-diff-stat">
+            <span className="file-diff-chip file-diff-chip--add">+{file.additions}</span>
+            <span className="file-diff-chip file-diff-chip--del">−{file.deletions}</span>
+          </span>
+        )}
       </button>
   );
   return (
     <section className={`file-diff ${open ? "is-open" : ""}${viewed ? " is-viewed" : ""}`}>
-      {onViewedChange ? (
+      {onViewedChange || headerActions ? (
         <div className="file-diff-head-row">
           {head}
-          <label className="file-diff-viewed" title={viewed ? "Mark as not viewed" : "Mark as viewed and fold"}>
+          {headerActions ? <span className="file-diff-head-actions">{headerActions}</span> : null}
+          {onViewedChange ? <label className="file-diff-viewed" title={viewed ? "Mark as not viewed" : "Mark as viewed and fold"}>
             <input type="checkbox" checked={viewed} onChange={(event) => onViewedChange(event.target.checked)}
               aria-label={`Viewed ${file.path}`} />
             <span>Viewed</span>
-          </label>
+          </label> : null}
         </div>
       ) : head}
       {open ? (
@@ -324,7 +352,7 @@ export function FileDiff({
         ) : (
           <>
             {tools}
-            <FileDiffBody file={file} split={split} wrap={wrap} hunkSlot={hunkSlot} onAddComment={onAddComment} />
+            <FileDiffBody file={file} split={split} wrap={wrap} hunkSlot={hunkSlot} onAddComment={onAddComment} lineNote={lineNote} />
           </>
         )
       ) : null}

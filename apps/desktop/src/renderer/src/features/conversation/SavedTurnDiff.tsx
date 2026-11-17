@@ -83,7 +83,7 @@ export function SavedTurnDiff({ runId, path, initialPatch, rejectable = false }:
   if (!current) return <p role="status" className="faint">Loading saved changes…</p>;
   if (current.error) return <p role="alert">{current.error} <button type="button" className="ghost" onClick={() => setRetry((value) => value + 1)}>Retry diff</button></p>;
   return <>
-    {current.truncated && <p className="faint" role="status">Preview limited to 512 KB. {path ? "Inspect the saved checkpoint in Git for the complete change." : "Select a file in the list above to load its own preview."}</p>}
+    {current.truncated && <p className="faint" role="status">Preview limited to 512 KB.{path ? "" : " Select a file in the list above to load its own preview."}</p>}
     {files.length ? <PagedFileDiffs files={files} split={false} hunkSlot={hunkSlot} /> : <p className="faint">No text diff in this preview.</p>}
   </>;
 }

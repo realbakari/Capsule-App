@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { clearHighlightCache, highlight } from "./highlight.js";
+import { clearHighlightCache, highlight, highlightLines } from "./highlight.js";
 
 const render = (code: string, lang?: string) =>
   renderToStaticMarkup(highlight(code, lang) as never);
@@ -93,5 +94,25 @@ describe("highlight", () => {
     for (let i = 0; i < 40; i += 1) highlight(`const filler${i} = ${i};`, "ts");
     // Evicted, so this is tokenised afresh rather than handed back.
     expect(highlight(first, "ts")).not.toBe(original);
+  });
+});
+
+describe("highlightLines", () => {
+  const rows = (code: string, lang?: string) => highlightLines(code, lang).map((line) => renderToStaticMarkup(createElement(Fragment, null, line)));
+  const text = (html: string) => html.replace(/<[^>]+>/g, "").replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+
+  it("gives one row per line, with a comment that spans lines coloured on each", () => {
+    const code = "/* one\n   two */\nconst n = 1;";
+    const html = rows(code, "typescript");
+    expect(html).toHaveLength(3);
+    expect(html.map(text)).toEqual(code.split("\n"));
+    expect(html[0]).toContain('class="tok-com"');
+    expect(html[1]).toContain('class="tok-com"');
+    expect(html[2]).toContain('class="tok-kw"');
+  });
+
+  it("keeps empty lines and plain text when there is no language", () => {
+    expect(highlightLines("a\n\nb", undefined)).toEqual(["a", "", "b"]);
+    expect(rows("a\n\nb", "typescript").map(text)).toEqual(["a", "", "b"]);
   });
 });

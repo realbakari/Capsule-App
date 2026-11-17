@@ -118,6 +118,77 @@ export async function runReviewHunkRegressions(host: HTMLElement, base: Record<s
     root.render(<SavedTurnDiff key="older" runId="turn-fixture" initialPatch={turnPatch} rejectable={false} />);
     await until(() => document.querySelector(".file-diff") && !document.querySelector(".hunk-action"));
 
+    // A large change: what fits shows, the rest is listed with a way to see each file.
+    const testHead = "diff --git a/app.test.ts b/app.test.ts\n--- a/app.test.ts\n+++ b/app.test.ts\n@@ -1 +1 @@\n-old\n+new\n";
+    const binary = "diff --git a/image.png b/image.png\nnew file mode 100644\nindex 0000000..1234567\nBinary files /dev/null and b/image.png differ\n";
+    const shownFiles: string[] = [];
+    const opens: unknown[][] = [];
+    const copied: string[] = [];
+    let draft = "draft so far";
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { copied.push(text); } } });
+    window.testWorkspace = { ...workspace, project: { id: "review-fixture", workingDirectory: "/fixture/repo" }, session: { id: "review-thread" }, settings: {},
+      setNotice: (message: string) => { throw new Error(`Unexpected notice: ${message}`); },
+      setDraft: (value: string | ((current: string) => string)) => { draft = typeof value === "function" ? value(draft) : value; },
+      api: { ...api, openInApp: async (...args: unknown[]) => { opens.push(args); },
+        gitScopedDiff: async (_project: string, scope: keyof typeof PATCHES) => ({ patch: (scope === "uncommitted" ? PATCHES.uncommitted + testHead + binary : PATCHES[scope]),
+          omitted: scope === "uncommitted" ? [{ path: "big.log", reason: "too-large", bytes: 2 * 1024 * 1024 }, ...Array.from({ length: 22 }, (_, index) => ({ path: `gen/${index}.ts`, reason: "limit" }))] : undefined }) } };
+    root.render(<ReviewDiff key="large" projectId="review-fixture" sessionId="review-thread" thread="review-large" selection={{ kind: "uncommitted" }} ignoreWhitespace={false} onShowAll={() => {}} onShowFile={(file) => shownFiles.push(file)} />);
+    await until(() => document.querySelector(".review-omitted"));
+    const omittedBox = document.querySelector<HTMLElement>(".review-omitted")!;
+    assert(omittedBox.querySelector(".review-omitted-head")?.textContent === "23 files not shown", "The omitted files are not counted");
+    assert(omittedBox.textContent?.includes("Too large to show (2.0 MB)"), "A too-large file does not say why it is missing");
+    const omittedButton = (label: string) => Array.from(omittedBox.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.textContent === label);
+    omittedButton("Show")!.click();
+    assert(shownFiles[0] === "gen/0.ts", "Show did not read the left-out file on its own");
+    assert(omittedButton("3 more files not shown"), "The omitted list is not capped with a count of the rest");
+    omittedButton("Open in editor")!.click();
+    await until(() => opens.length === 1);
+    assert(opens[0]![3] === "/fixture/repo/big.log", "Open in editor did not open the left-out file");
+    const imageHead = Array.from(document.querySelectorAll(".review-diff .file-diff-head")).find((item) => item.textContent?.includes("image.png"));
+    assert(imageHead?.querySelector(".file-diff-status--binary")?.textContent === "Binary", "A binary file is not marked as one");
+
+    document.querySelector<HTMLButtonElement>('[aria-label="Copy path of app.ts"]')!.click();
+    await until(() => copied[0] === "app.ts");
+    const headRow = document.querySelector<HTMLElement>(".review-diff .file-diff-head-row")!;
+    assert(getComputedStyle(headRow.querySelector(".file-diff-head-actions")!).opacity === "0", "Header actions show before the header is pointed at");
+    document.querySelector<HTMLButtonElement>('[aria-label="Open app.ts in editor"]')!.focus();
+    await until(() => getComputedStyle(headRow.querySelector(".file-diff-head-actions")!).opacity === "1");
+
+    const hideTests = Array.from(document.querySelectorAll<HTMLButtonElement>(".review-diff-bar button")).find((item) => item.textContent === "Hide tests")!;
+    hideTests.click();
+    await until(() => !Array.from(document.querySelectorAll(".review-diff .file-diff-head")).some((item) => item.textContent?.includes("app.test.ts")));
+    assert(document.querySelector(".review-diff")?.textContent?.includes("1 test file hidden."), "Hidden tests are not counted");
+    hideTests.click();
+    await until(() => Array.from(document.querySelectorAll(".review-diff .file-diff-head")).some((item) => item.textContent?.includes("app.test.ts")));
+
+    // A note on a line goes to the composer as one block, after it can be edited.
+    const inserted = Array.from(document.querySelectorAll<HTMLElement>(".review-diff .diff-row--add")).find((row) => row.textContent?.includes("inserted"))!;
+    inserted.querySelector<HTMLButtonElement>(".diff-gutter-add-btn")!.click();
+    await until(() => document.querySelector(".review-note-editor textarea"));
+    const field = document.querySelector<HTMLTextAreaElement>(".review-note-editor textarea")!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Why is this here?");
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    await until(() => !document.querySelector<HTMLButtonElement>(".review-note-editor .send")?.disabled);
+    document.querySelector<HTMLButtonElement>(".review-note-editor .send")!.click();
+    await until(() => document.querySelector(".review-note p")?.textContent === "Why is this here?");
+    const tray = () => document.querySelector<HTMLElement>(".review-notes-tray");
+    assert(tray()?.textContent?.includes("1 note"), "The notes tray does not count the note");
+    Array.from(document.querySelectorAll<HTMLButtonElement>(".review-note button")).find((item) => item.textContent === "Edit")!.click();
+    await until(() => document.querySelector(".review-note-editor textarea"));
+    const editField = document.querySelector<HTMLTextAreaElement>(".review-note-editor textarea")!;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(editField, "Why is this line here?");
+    editField.dispatchEvent(new Event("input", { bubbles: true }));
+    await until(() => document.querySelector<HTMLButtonElement>(".review-note-editor .send")?.textContent === "Save" && !document.querySelector<HTMLButtonElement>(".review-note-editor .send")!.disabled);
+    document.querySelector<HTMLButtonElement>(".review-note-editor .send")!.click();
+    await until(() => document.querySelector(".review-note p")?.textContent === "Why is this line here?");
+    Array.from(tray()!.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.textContent === "Add to message")!.click();
+    await until(() => !tray());
+    assert(draft === "draft so far\n\nReview comments:\n- app.ts:22 — Why is this line here?", `The composer got the wrong notes block: ${JSON.stringify(draft)}`);
+    assert(!document.querySelector(".review-note"), "Sent notes stayed on their lines");
+    if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard); else delete (navigator as { clipboard?: unknown }).clipboard;
+    window.testWorkspace = workspace;
+
     // Each scope is a palette command that selects it and opens Review.
     let opened: string | undefined;
     window.testWorkspace = { ...workspace, palette: true, paletteQuery: "review", setPaletteQuery: () => {}, setPalette: () => {},
