@@ -355,6 +355,13 @@ export interface EngineState {
   selectedSessionId?: string;
 }
 
+/** What a force-stopped turn's log says, by who owns the agent's process. */
+const FORCE_STOP_NOTES = {
+  direct: "Force stopped. Capsule ended the agent's process.",
+  gateway: "Force stopped. Capsule closed the agent's session on the Gateway.",
+  none: "Stopped waiting. The Gateway runs this agent, so Capsule can't end it from here.",
+} as const;
+
 export class CapsuleEngine {
   readonly sharedChannels: SharedRelayClient;
   readonly channelHarness: ChannelHarness;
@@ -3024,8 +3031,6 @@ export class CapsuleEngine {
       // that its work stopped. A timeout must not leave a clickable stale Allow.
       this.settleRunApprovals(run.id);
       await this.direct.cancelAcp(session.openclawSessionKey!);
-      const latest = this.requireRun(runId);
-      if (latest.completedAt) return latest;
     } else if (run.openclawRunId || this.usingMock) {
       try {
         await this.runtime.cancelRun(run.openclawRunId ?? run.id);
@@ -3038,7 +3043,48 @@ export class CapsuleEngine {
       }
     }
     // Otherwise the Gateway never accepted this turn: there is nothing to abort there.
-    run.result = this.resultWriter.finish(runId) ?? run.result;
+    // The turn may have ended while the agent was being told: it finished, or Force stop settled it.
+    const latest = this.requireRun(runId);
+    if (latest.completedAt) return latest;
+    return unreachable
+      ? this.settleStopped(run, session, "Stopped in Capsule. The Gateway couldn't be reached, so it wasn't told to stop.", { gatewayUnreachable: true })
+      : this.settleStopped(run, session, "Run cancelled");
+  }
+
+  /**
+   * Stop for an agent that ignores Stop. The turn is recorded as stopped
+   * first, so the dying agent's last words cannot settle it as a failure, and
+   * then its process ends: direct mode owns the process and kills it; on the
+   * Gateway, `/acp close` ends the agent's session. A thread with no ACP agent
+   * has nothing Capsule can end, so it only stops waiting. The next message
+   * starts the agent again.
+   */
+  async forceStopRun(runId: string): Promise<Run> {
+    const run = this.requireRun(runId);
+    if (run.completedAt) return run;
+    const session = this.requireSession(run.sessionId);
+    const key = session.openclawSessionKey;
+    const route = isDirectSessionKey(key) ? "direct" : !this.usingMock && session.harnessId && key ? "gateway" : "none";
+    const stopped = this.settleStopped(run, session, FORCE_STOP_NOTES[route], { forceStopped: route });
+    if (route === "none" || !key) return stopped;
+    try {
+      await this.acpHost(key).closeAcp(key);
+      session.harnessState = "closed";
+    } catch (error) {
+      session.harnessState = "error";
+      throw error;
+    } finally {
+      session.updatedAt = nowIso();
+      this.repos.updateSession(session);
+      this.events.emit("state", { command: "harness-updated" });
+    }
+    this.log(`Force stopped run ${run.id} and closed its agent`);
+    return stopped;
+  }
+
+  /** Record a turn as stopped, keeping whatever reply arrived before it. */
+  private settleStopped(run: Run, session: Session, message: string, data?: Record<string, unknown>): Run {
+    run.result = this.resultWriter.finish(run.id) ?? run.result;
     if (session.openclawSessionKey) {
       const reply = this.replyBuffers.take(`acp:${session.openclawSessionKey}`);
       if (reply) run.result = reply;
@@ -3047,7 +3093,7 @@ export class CapsuleEngine {
     run.updatedAt = nowIso();
     run.completedAt = nowIso();
     this.repos.updateRun(run);
-    this.appendEvent(run.id, "cancelled", unreachable ? "Stopped in Capsule. The Gateway couldn't be reached, so it wasn't told to stop." : "Run cancelled", unreachable ? { gatewayUnreachable: true } : undefined);
+    this.appendEvent(run.id, "cancelled", message, data);
     this.settleRunApprovals(run.id);
     this.events.emit("run", run);
     return run;
@@ -3249,7 +3295,7 @@ export class CapsuleEngine {
     this.events.emit("approval", approval);
   }
 
-  listFiles(projectId: string, relative = ".", root?: string) {
+  async listFiles(projectId: string, relative = ".", root?: string): Promise<FileEntry[]> {
     const project = this.requireProject(projectId);
     const decision = decidePolicy(this.repos.listPolicies(), "filesystem", "read");
     if (decision.decision === "block") throw new Error("Filesystem read is blocked by policy");

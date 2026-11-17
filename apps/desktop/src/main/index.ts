@@ -1505,6 +1505,7 @@ function registerIpc(): void {
     requireEngine().sendMessage(input as Parameters<CapsuleEngine["sendMessage"]>[0]),
   );
   handleArgs(IPC_CHANNELS.stopRun, [id], (runId: string) => requireEngine().stopRun(runId));
+  handleArgs(IPC_CHANNELS.forceStopRun, [id], (runId: string) => requireEngine().forceStopRun(runId));
   handleArgs(IPC_CHANNELS.getRun, [id], (runId: string) => requireEngine().getRun(runId));
   handleArgs(IPC_CHANNELS.listRuns, [optStr], (sessionId: string | undefined) =>
     requireEngine().listRuns(sessionId),

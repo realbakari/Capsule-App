@@ -108,6 +108,8 @@ const READ_SET = new Set<string>(READ_CHANNELS);
 // Paired conversation control is not desktop administration or a generic shell.
 export const CONTROL_CHANNELS = [
   "createSession", "sendMessage", "stopRun", "resolveApproval", "answerAgentQuestion",
+  // Stop for an agent that ignores Stop: it ends that turn's agent, and only a turn that is running.
+  "forceStopRun",
   // Queueing a follow-up is sending one later; it belongs with sendMessage.
   "updateFollowUps",
   // Plan or Act decides how the next message is sent, so it travels with sendMessage.

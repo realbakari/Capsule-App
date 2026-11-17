@@ -1074,15 +1074,15 @@ window.runRendererRegressions = async () => {
   rejectStop(new Error("Runtime did not stop")); await stopping;
   await until(() => !actualWorkspace.stoppingRunIds.length && actualWorkspace.notice?.includes("Runtime did not stop"));
   assert(actualWorkspace.activeRun?.status === "running", "Rejected stop claimed the agent had ended");
-  // An unconfirmed stop offers to close the agent instead of leaving the person with a dead end.
-  const closed: string[] = [];
-  window.capsule.closeHarness = async (id: string) => { closed.push(id); return undefined as never; };
+  // An unconfirmed stop offers Force stop for that turn instead of leaving the person with a dead end.
+  const forced: string[] = [];
+  window.capsule.forceStopRun = async (id: string) => { forced.push(id); return undefined as never; };
   const unconfirmed = actualWorkspace.stopRun();
   await until(() => Boolean(rejectStop) && actualWorkspace.stoppingRunIds.includes("next-run"));
   rejectStop(new Error("Error invoking remote method 'capsule:stopRun': Error: The agent has not confirmed cancellation. It may still be working; close the agent to stop its process.")); await unconfirmed;
-  await until(() => actualToasts.some((toast) => toast.action?.label === "Close agent"));
-  await actualToasts.find((toast) => toast.action?.label === "Close agent")!.action!.run();
-  assert(closed.join() === running.sessionId, "Close agent did not close this conversation's agent");
+  await until(() => actualToasts.some((toast) => toast.action?.label === "Force stop"));
+  await actualToasts.find((toast) => toast.action?.label === "Force stop")!.action!.run();
+  assert(forced.join() === "next-run", "Force stop did not target the turn that ignored Stop");
 
   // A message sent during a turn: one Enter queues once, the draft clears at once, and ⌘Enter moves on.
   const added: string[] = [];

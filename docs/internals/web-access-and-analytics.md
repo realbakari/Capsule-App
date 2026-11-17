@@ -7,7 +7,8 @@ service or replacement agent runtime. Direct work stays in the host's installed
 CLI; Gateway threads keep their route and execute wherever that Gateway runs.
 
 The existing `read` grants are unchanged. The new `control` grant adds exactly
-`createSession`, `sendMessage`, `stopRun`, and `resolveApproval`. It cannot mint
+`createSession`, `sendMessage`, `stopRun`, `forceStopRun` (only for a turn whose
+agent ignores Stop), and `resolveApproval`. It cannot mint
 grants, change settings, write files directly, attach local paths, administer
 channels, or open a terminal. New conversations target an existing project and
 are forced to local workspace mode and strict permissions. Approval decisions

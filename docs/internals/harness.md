@@ -106,7 +106,15 @@ SDK and update accepted state only after acknowledgement. Settings are local
 to the session, not written to the user's CLI configuration. The CLI owns tool
 execution; permission callbacks feed Capsule's existing once-only approvals.
 Stop settles approvals and awaits the interrupted turn. Close terminates only
-the owned process. Resume requires the exact saved UUID and canonical working
+the owned process. Force stop (`forceStopRun`) is for an agent that ignores
+Stop: it records the run as cancelled first, so the dying agent's last frames
+cannot settle it as failed, then closes the agent without waiting on the
+pending cancel: `closeAcp` on the direct host (SIGTERM, SIGKILL after three
+seconds) or `/acp close` on the Gateway. A thread without an ACP session only
+stops waiting and says so in the run log. The pending Stop then returns the
+already-settled run instead of writing a second cancellation. The session's
+harness state becomes `closed`, or `error` when the process will not exit; the
+next message spawns the agent again. Resume requires the exact saved UUID and canonical working
 folder, and replays saved settings before the next prompt. Missing transcripts
 fail explicitly instead of silently starting a different conversation. Text,
 images, tool activity and per-turn usage feed the existing run records; cumulative
@@ -240,6 +248,7 @@ both routes. No approval callback survives the process that created it.
 | **Status** | `/acp status` — backend, mode, state, model, advertised model catalog, cwd, permissions, timeout. |
 | **Tune** | `/acp permissions`, `/acp model`, `/acp timeout`, `/acp set-mode`. Advertised models become a selector; others retain a free-form model id. Engine refuses live cwd changes rather than rewriting the project. |
 | **Close** | `/acp close` — ends the ACP session and unbinds. Capsule keeps the conversation history. |
+| **Force stop** | Settle the run as cancelled, then `/acp close` without waiting on the abort Stop already sent. Offered once Stop has gone unanswered for eight seconds. |
 
 `sessions.create` does **not** accept `runtime: "acp"`. `sessions_spawn({ runtime: "acp" })` is an agent tool, not a Gateway session-create field.
 

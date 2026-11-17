@@ -47,6 +47,7 @@ export const IPC_CHANNELS = {
   sendMessage: "capsule:sendMessage",
   startRun: "capsule:startRun",
   stopRun: "capsule:stopRun",
+  forceStopRun: "capsule:forceStopRun",
   getRun: "capsule:getRun",
   listRuns: "capsule:listRuns",
   listRunPage: "capsule:listRunPage",

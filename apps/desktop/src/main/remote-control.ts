@@ -34,7 +34,7 @@ export interface RemoteCaller {
 /** Rebuild remote mutation arguments; never pass arbitrary renderer fields through. */
 export function remoteControlArgs(channel: string, args: unknown[], caller: RemoteCaller | "browser" | "phone" = "browser"): unknown[] {
   const { transport, uploads } = typeof caller === "string" ? { transport: caller, uploads: undefined } : caller;
-  if (channel === "stopRun") return [id(args[0], channel, 0)];
+  if (channel === "stopRun" || channel === "forceStopRun") return [id(args[0], channel, 0)];
   if (channel === "resolveApproval") {
     const decision = args[1];
     // "For this thread" lasts only as long as the agent session, and only a

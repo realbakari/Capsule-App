@@ -9,6 +9,7 @@ import { formatTokens, type ContextUsage } from "../../lib/context-window";
 import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
+import type { FindMatch } from "./thread-find";
 import { PromptJump } from "./PromptJump";
 import { shortcutLabel } from "../../lib/keybindings";
 import { detectUsageLimit, formatResetTime, tasksFromRunEvents } from "@capsule/shared";
@@ -95,7 +96,7 @@ const MessageRow = memo(function MessageRow({
   onRate?: (runId: string, value: RatingValue | 0) => void;
 }) {
   return (
-    <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`}>
+    <div className={`msg ${message.role}${isNew ? " motion-enter-conversation" : ""}`} data-message-id={message.id}>
       <h2 className="sr-only">
         {message.role === "user" ? (message.kind === "steer" ? "You, steering" : "You") : "Agent"}
       </h2>
@@ -167,6 +168,16 @@ function formatTime(iso: string): string {
 const KEEP_EXPANDED_TURNS = 3;
 
 
+/** How long Stop may go unanswered before the line offers to force it. */
+const STOP_UNANSWERED_MS = 8_000;
+
+/* What Force stop can do, by who owns the agent's process. */
+const FORCE_STOP = {
+  direct: { label: "Force stop", detail: "Force stop ends the agent's process." },
+  gateway: { label: "Force stop", detail: "Force stop closes the agent's session on the Gateway." },
+  none: { label: "Stop waiting", detail: "The Gateway runs this agent, so Capsule can't end it from here." },
+} as const;
+
 /**
  * Elapsed time for the running turn, ticking once a second.
  *
@@ -180,7 +191,7 @@ const KEEP_EXPANDED_TURNS = 3;
  * beside the word "Working", the token count inside a ring's tooltip, and what
  * the agent was actually doing further down the work log. Waiting is the whole
  * experience of a slow turn, and this is the line someone watches while it
- * happens.
+ * happens. When Stop goes unanswered, it says so and offers Force stop.
  */
 function TurnStatusLine({
   run,
@@ -197,12 +208,24 @@ function TurnStatusLine({
 }) {
   // The agent's own most recent step when there is one; otherwise the honest
   // answer, which is that nothing has come back yet.
-  const { pendingApproval } = useWorkspace();
+  const { pendingApproval, session, forceStopRun } = useWorkspace();
   const asking = Boolean(pendingApproval?.runId === run.id && pendingApproval.details?.questions?.length);
-  const state = stopping ? "Stopping — waiting for the agent to finish its current step" : asking ? runActivityLabel(run, false, true) : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
+  /* Stop is pending on this device only where it was pressed, which is also where Force stop is allowed. */
+  const [unanswered, setUnanswered] = useState(false);
+  const [forcing, setForcing] = useState(false);
+  useEffect(() => {
+    setUnanswered(false);
+    if (!stopping) return;
+    const timer = window.setTimeout(() => setUnanswered(true), STOP_UNANSWERED_MS);
+    return () => window.clearTimeout(timer);
+  }, [stopping, run.id]);
+  const stuck = Boolean(stopping && unanswered);
+  const key = session?.id === run.sessionId ? session.openclawSessionKey : undefined;
+  const force = FORCE_STOP[key?.startsWith("direct:") ? "direct" : key && session?.harnessId ? "gateway" : "none"];
+  const state = stuck ? force.detail : stopping ? "Stopping — waiting for the agent to finish its current step" : asking ? runActivityLabel(run, false, true) : `${runActivityLabel(run)} · ${activity?.trim() || `Waiting for ${agentName}`}`;
   return (
-    <div className="turn-status">
-      <span>{stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run, false, asking)}</span>
+    <div className="turn-status" role={stuck ? "alert" : undefined}>
+      <span className={stuck ? "turn-status-stuck" : undefined}>{stuck ? "Not responding to Stop" : stopping ? "Stopping" : run.status === "running" ? "Working" : runActivityLabel(run, false, asking)}</span>
       {run.createdAt && <><span>for</span><RunElapsed startedAt={run.createdAt} /></>}
       {usage ? (
         <>
@@ -219,6 +242,10 @@ function TurnStatusLine({
         <span className="turn-status-dot" aria-hidden>·</span>
         <span className="turn-status-state" title={state}>{stuck ? force.detail : activity?.trim() || `Waiting for ${agentName}`}</span>
       </>}
+      {stuck && <button type="button" className="chip" disabled={forcing}
+        onClick={() => { setForcing(true); void forceStopRun(run.id).finally(() => setForcing(false)); }}>
+        {forcing ? "Stopping…" : force.label}
+      </button>}
     </div>
   );
 }
@@ -480,6 +507,12 @@ export function Conversation() {
     setFocusTurn((current) => ({ id: turn.id, nonce: (current?.nonce ?? 0) + 1, flash }));
   }, [openTurn, setStick, turns]);
   const jumpToPrompt = useCallback((messageId: string) => locateMessage(messageId, true), [locateMessage]);
+  /* Find's current match: its turn's folded work opens, and an unmounted message is scrolled to so find can highlight it. */
+  const [findReveal, setFindReveal] = useState<FindMatch>();
+  const revealMatch = useCallback((match: FindMatch | undefined) => {
+    setFindReveal(match);
+    if (match && !scroller.current?.querySelector(`[data-message-id="${CSS.escape(match.messageId)}"]`)) locateMessage(match.messageId);
+  }, [locateMessage]);
   useEffect(() => {
     if (!focusTurn?.flash) return;
     const timer = window.setTimeout(() => setFocusTurn((current) => current === focusTurn ? undefined : current), 1800);
@@ -607,7 +640,7 @@ export function Conversation() {
       )}
       {api.isDesktop !== false && <QuoteSelection scroller={scroller} />}
       <TrustNotice />
-      {threadFind && <ThreadFind messages={messages} onLocate={locateMessage} onClose={() => setThreadFind(false)} />}
+      {threadFind && <ThreadFind turns={turns} scroller={scroller} onReveal={revealMatch} onClose={() => setThreadFind(false)} />}
       <div
         className="conversation"
         ref={scroller}
@@ -714,7 +747,7 @@ export function Conversation() {
                   <Fragment key={turn.id}>
                   {turn.id === firstNewTurnId && <div className="thread-visit-rule" role="note">New since your last visit</div>}
                   <TurnTranscript key={transcripts.get(turn.id)?.run.id ?? turn.id}
-                    onOpenFile={openFile}
+                    onOpenFile={openFile} reveal={findReveal?.turnId === turn.id ? findReveal.messageId : undefined}
                     rows={transcripts.get(turn.id)?.rows ?? turn.messages.map((message) => ({ kind: "message" as const, id: message.id, message }))}
                     run={transcripts.get(turn.id)?.run} partial={transcripts.get(turn.id)?.partial} plan={transcripts.get(turn.id)?.plan}
                     stopping={stoppingRunIds?.includes(transcripts.get(turn.id)?.run.id ?? "")}

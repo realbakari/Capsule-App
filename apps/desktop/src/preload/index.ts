@@ -125,6 +125,7 @@ const api = {
   sendMessage: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.sendMessage, input),
   startRun: (input: unknown) => ipcRenderer.invoke(IPC_CHANNELS.startRun, input),
   stopRun: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.stopRun, id),
+  forceStopRun: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.forceStopRun, id),
   getRun: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.getRun, id),
   listRuns: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.listRuns, sessionId),
   listRunPage: (query?: import("@capsule/shared").RunHistoryQuery): Promise<import("@capsule/shared").RunHistoryPage> => ipcRenderer.invoke(IPC_CHANNELS.listRunPage, query),

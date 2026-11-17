@@ -302,7 +302,13 @@ provider objects are not shown as raw data.
 
 **Sending** means Capsule is submitting the prompt, not that the agent is
 already running. **Stopping** means a cancellation request is pending; a failed
-stop returns to the reported run state and shows its error. **Completed** does
+stop returns to the reported run state and shows its error. If the agent has not
+stopped eight seconds after you pressed Stop, the line says **Not responding to
+Stop** and offers **Force stop**. Force stop records the turn as stopped and
+ends the agent: a direct agent's process exits, and an agent on the Gateway has
+its session closed there. Your next message starts the agent again. Where the
+Gateway runs the agent without a session Capsule can close, the button reads
+**Stop waiting**: Capsule stops waiting for the turn but cannot end the agent. **Completed** does
 not mean verified: **Verified** requires a passing recorded check for that run.
 Failed, cancelled, blocked and stale-check states remain distinct. Expand the
 run log for diagnostics rather than reading raw status messages as agent replies.

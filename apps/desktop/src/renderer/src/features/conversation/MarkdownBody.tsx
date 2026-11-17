@@ -9,25 +9,28 @@ import { FencedCode } from "./FencedCode";
 import { InlineCode } from "./InlineCode";
 import { MarkdownImage, type LoadImage } from "./MarkdownImage";
 import { MathTex } from "./MathTex";
+import { openInSystemBrowser } from "./link-actions";
 
 interface MarkdownActions {
   githubBaseUrl?: string;
   onOpenFile?: (path: string) => void;
   onOpenLink?: (href: string) => void;
+  /** A web link's context menu, at the pointer. */
+  onLinkMenu?: (href: string, point: { x: number; y: number }) => void;
   renderText?: (text: string) => ReactNode;
   /** Reads a project image; without it a local image stays a file link. */
   loadImage?: LoadImage;
   inLink?: boolean;
 }
 
-interface MarkdownNode {
+export interface MarkdownNode {
   token: Token;
   children: MarkdownNode[];
   text?: string;
 }
 
 /** Pair parser tokens once, without rescanning the rest of a list or quote. */
-function tokenTree(tokens: Token[]): MarkdownNode[] {
+export function tokenTree(tokens: Token[]): MarkdownNode[] {
   const roots: MarkdownNode[] = [];
   const stack = [roots];
   for (const token of tokens) {
@@ -49,11 +52,18 @@ function WebLink({ href, title, children, actions }: {
       ? <button type="button" className="md-file-link" title={path} onClick={() => actions.onOpenFile?.(path)}>{children}</button>
       : <>{children}</>;
   }
-  return <a href={safeHref} title={title} onClick={(event) => {
-    event.preventDefault();
-    if (actions.onOpenLink) actions.onOpenLink(safeHref);
-    else window.open(safeHref, "_blank", "noopener");
-  }}>{children}</a>;
+  const { onOpenLink, onLinkMenu } = actions;
+  return <a href={safeHref} title={title}
+    onClick={(event) => {
+      event.preventDefault();
+      // Option-click skips the browser panel for the system browser.
+      if (onOpenLink && !event.altKey) onOpenLink(safeHref);
+      else openInSystemBrowser(safeHref);
+    }}
+    onContextMenu={onLinkMenu && ((event) => {
+      event.preventDefault();
+      onLinkMenu(safeHref, { x: event.clientX, y: event.clientY });
+    })}>{children}</a>;
 }
 
 function parsedContent(text: string, actions: MarkdownActions, inline = false, allowHtml = true): ReactNode {
@@ -72,12 +82,14 @@ function presentationHtml(raw: string, actions: MarkdownActions, inline: boolean
   });
 }
 
-function renderNodes(nodes: MarkdownNode[], actions: MarkdownActions): ReactNode[] {
-  const output: ReactNode[] = [];
+/**
+ * Sibling nodes as they render: one node at a time, except that an HTML
+ * anchor or unsafe container split into inline tokens comes back whole as
+ * `html`, so a badge keeps its label and script text is discarded.
+ */
+export function* markdownRuns(nodes: MarkdownNode[]): Generator<{ index: number; node: MarkdownNode; html?: string }> {
   for (let index = 0; index < nodes.length; index++) {
     const node = nodes[index]!;
-    // HTML anchors and unsafe containers are split into inline tokens. Convert
-    // the complete span so a badge keeps its label and script text is discarded.
     const opening = node.token.type === "html_inline" && /^<(a|script|style|iframe|object)\b/i.exec(node.token.content);
     if (opening) {
       const closing = new RegExp(`^<\\/${opening[1]}\\s*>`, "i");
@@ -86,18 +98,26 @@ function renderNodes(nodes: MarkdownNode[], actions: MarkdownActions): ReactNode
       const limit = Math.min(nodes.length, index + 64);
       while (end < limit && !closing.test(nodes[end]!.token.content)) end++;
       if (end < limit) {
-        const raw = nodes.slice(index, end + 1).map((part) => part.token.content).join("");
-        output.push(<Fragment key={index}>{presentationHtml(raw, actions, true)}</Fragment>);
+        yield { index, node, html: nodes.slice(index, end + 1).map((part) => part.token.content).join("") };
         index = end;
         continue;
       }
     }
-    output.push(<Fragment key={index}>{renderNode(node, actions)}</Fragment>);
+    yield { index, node };
   }
-  return output;
 }
 
-function firstInline(node: MarkdownNode): MarkdownNode | undefined {
+function renderNodes(nodes: MarkdownNode[], actions: MarkdownActions): ReactNode[] {
+  return Array.from(markdownRuns(nodes), ({ index, node, html }) => <Fragment key={index}>
+    {html !== undefined ? presentationHtml(html, actions, true) : renderNode(node, actions)}
+  </Fragment>);
+}
+
+export const ALERT_MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\n|$)/i;
+export const ALERT_PREFIX = /^\[![A-Z]+\]/i;
+export const TASK_MARKER = /^\[([ xX])\]\s+/;
+
+export function firstInline(node: MarkdownNode): MarkdownNode | undefined {
   const paragraph = node.children[0];
   return paragraph?.token.type === "paragraph_open" ? paragraph.children[0] : undefined;
 }
@@ -108,7 +128,7 @@ function attribute(token: Token, name: string): string | undefined {
 }
 
 /** Remove a task/alert prefix from a copy, preserving the parsed inline markup. */
-function withoutPrefix(node: MarkdownNode, prefix: RegExp): MarkdownNode {
+export function withoutPrefix(node: MarkdownNode, prefix: RegExp): MarkdownNode {
   const children = [...node.children];
   const paragraph = children[0];
   const inline = firstInline(node);
@@ -151,7 +171,7 @@ function renderNode(node: MarkdownNode, actions: MarkdownActions): ReactNode {
       const parts = (children[0]?.children ?? []).filter((part) => part.token.type !== "text" || part.token.content !== "");
       // Preserve Capsule's compact bold-only section headings.
       if (parts.length === 1 && parts[0]?.token.type === "strong_open") {
-        return <h4 className="md-h">{renderNodes(parts[0].children, actions)}</h4>;
+        return <h4 className="md-h md-h-bold">{renderNodes(parts[0].children, actions)}</h4>;
       }
       return <p className="md-p">{renderNodes(children, actions)}</p>;
     }
@@ -161,23 +181,23 @@ function renderNode(node: MarkdownNode, actions: MarkdownActions): ReactNode {
       return createElement(`h${level}`, { className: "md-h" }, renderNodes(children, actions));
     }
     case "blockquote_open": {
-      const marker = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\n|$)/i.exec(firstInline(node)?.token.content ?? "");
+      const marker = ALERT_MARKER.exec(firstInline(node)?.token.content ?? "");
       if (!marker) return <blockquote className="md-quote">{renderNodes(children, actions)}</blockquote>;
       const kind = marker[1]!.toLowerCase();
       return <aside className={`md-alert md-alert--${kind}`}>
         <b className="md-alert-title">{kind[0]!.toUpperCase() + kind.slice(1)}</b>
-        {renderNodes(withoutPrefix(node, /^\[![A-Z]+\]/i).children, actions)}
+        {renderNodes(withoutPrefix(node, ALERT_PREFIX).children, actions)}
       </aside>;
     }
     case "bullet_list_open": return <ul className="md-list">{renderNodes(children, actions)}</ul>;
     case "ordered_list_open": return <ol className="md-list" start={Number(token.attrGet("start") ?? 1)}>{renderNodes(children, actions)}</ol>;
     case "list_item_open": {
-      const task = /^\[([ xX])\]\s+/.exec(firstInline(node)?.token.content ?? "");
+      const task = TASK_MARKER.exec(firstInline(node)?.token.content ?? "");
       if (!task) return <li>{renderNodes(children, actions)}</li>;
       const done = task[1] !== " ";
       return <li className={`md-task${done ? " is-done" : ""}`}>
         <span className="md-task-mark" role="img" aria-label={done ? "Completed" : "Not completed"}>{done ? "✓" : ""}</span>
-        <div>{renderNodes(withoutPrefix(node, /^\[[ xX]\]\s+/).children, actions)}</div>
+        <div>{renderNodes(withoutPrefix(node, TASK_MARKER).children, actions)}</div>
       </li>;
     }
     case "table_open": return <div className="md-table-wrap" tabIndex={0} role="region" aria-label="Table">
@@ -210,7 +230,7 @@ function markdownSections(content: string, actions: MarkdownActions, depth = 0):
 
 /** Safe React nodes shared by chat, review, skills and read-only paired views. */
 export function MarkdownBody({ content, ...actions }: Omit<MarkdownActions, "inLink"> & { content: string }) {
-  const { githubBaseUrl, onOpenFile, onOpenLink, renderText, loadImage } = actions;
-  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, renderText, loadImage }), [content, githubBaseUrl, onOpenFile, onOpenLink, renderText, loadImage]);
+  const { githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage } = actions;
+  const body = useMemo(() => markdownSections(content, { githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage }), [content, githubBaseUrl, onOpenFile, onOpenLink, onLinkMenu, renderText, loadImage]);
   return <div className="body">{body}</div>;
 }

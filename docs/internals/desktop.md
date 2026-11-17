@@ -1059,16 +1059,31 @@ the queue but not steer. A queue an older build left in
 opens. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
 (newest first, steers and repeats skipped); `↓` walks forward and restores
 the original draft; typing ends the walk. `⌘F` (`find-in-thread`, also in the
-palette) opens `ThreadFind` above the transcript: it counts matching messages,
-Enter / Shift+Enter walk them, and the matching turn is unfolded, scrolled to
-through `VirtualTurns`' `focus` prop and outlined. It searches loaded messages
-only; while `hasOlderMessages` is true it says "Searching loaded messages" and
-offers **Load older** (`loadOlderMessages`). `⇧⌘J` (`jump-to-prompt`,
-also **Jump to a prompt…** in the palette, and a list button pinned to the
-transcript's top-right corner once a thread has two prompts) opens
-`PromptJump`: the thread's loaded prompts from `promptIndex` in
-`@capsule/shared`, newest first, numbered in thread order, filtered by every
-typed word. Arrows move, Enter or click scrolls through the same `focus` prop
+palette) opens `ThreadFind` above the transcript. `thread-find.ts` turns each
+message into the text of its rendered blocks by walking the same markdown-it
+tokens `MarkdownBody` renders (sharing `markdownRuns`, `tokenTree` and the
+alert/task markers), so virtualized and folded messages count too; a parity
+test renders Markdown both ways and requires equal blocks. Every
+case-insensitive occurrence is a match, and a match never spans two blocks.
+Mounted matches are painted with the CSS Custom Highlight API
+(`::highlight(capsule-find)`, current one `capsule-find-current`), never by
+rewriting the DOM: `collectTextSegments` reads a message row's `.body`
+(`[data-message-id]`), skipping code bars, task marks, images, diagrams and
+typeset math, and `alignSegments` pairs blocks by text so a block the page does
+not show as text leaves only its own matches unhighlighted. Enter /
+Shift+Enter walk the matches; typing selects the first match at or below the
+view. The current match's message is revealed: a folded older turn opens, an
+unmounted turn is scrolled to through `VirtualTurns`' `focus` prop, a closed
+**Worked for** fold opens through `TurnTranscript`'s `reveal` prop, and a
+folded `LongPrompt` opens on a `beforematch` event; then the range is scrolled
+into view. A `MutationObserver` repaints as rows mount and replies stream. It
+searches loaded messages only; while `hasOlderMessages` is true it says "Searching loaded messages" and
+offers **Load older** (`loadOlderMessages`). `⇧⌘J` (`jump-to-prompt`, also
+**Jump to a prompt…** in the palette) opens `PromptJump`: the thread's loaded
+prompts from `promptIndex` in `@capsule/shared`, newest first, numbered in
+thread order, filtered by every typed word. It has no button of its own; the
+minimap below is the on-screen way between prompts, and one navigation widget
+is enough. Arrows move, Enter or click scrolls through the same `focus` prop
 with `flash`, which outlines the turn for 1.6 s (`turn-flash`) and then clears.
 When older history is not loaded, the list offers **Load earlier prompts**.
 
@@ -1108,7 +1123,13 @@ unit. After the first turn, the composer returns to the bottom dock so the
 transcript remains the primary reading surface.
 
 HTTP and HTTPS links in rendered Markdown open the Inspector's embedded Browser
-surface. Non-web schemes keep the platform handler fallback.
+surface. Option-click opens the system browser, and the link's context menu
+(native, with `ActionMenu` as the fallback) offers Open, Open in system browser
+and Copy link (`link-actions.ts`). The system browser is `window.open`, which
+the main window's `setWindowOpenHandler` hands to `shell.openExternal` for web
+and mail addresses only, so no IPC channel is involved. A paired device has no
+browser panel: a link opens a new tab there, and the menu drops the
+system-browser row. Non-web schemes keep the platform handler fallback.
 File chips inside a link belong to that link and cannot also activate a local
 file. Emphasis scanning is linear for unmatched marker runs and uses bounded
 nesting rather than recursive tails. Task plans accept an empty replacement;
@@ -1277,7 +1298,12 @@ focus on selection or Escape. Unavailable rows remain readable without dispatch.
 Run activity distinguishes submission, running, pending cancellation, failure and
 completion. The renderer deduplicates cancellation requests per run and shows
 Stopping until that request settles; this is transient window state, not a
-persisted runtime status. Verified requires a passing check whose evidence belongs
+persisted runtime status. Eight seconds into an unsettled Stop, `TurnStatusLine`
+says "Not responding to Stop" and offers Force stop (`forceStopRun`, a control
+channel, so a control pairing has it too), with copy chosen by route: direct
+ends the process, Gateway closes the agent's session, and a thread with no ACP
+session gets "Stop waiting". The 30-second unconfirmed-stop toast offers the
+same action. Verified requires a passing check whose evidence belongs
 to the displayed run. Merely folding a finished work log never earns a success
 badge. Raw run events and session diagnostics remain expandable.
 Touched-file chips are separate keyboard-operable buttons below the disclosure

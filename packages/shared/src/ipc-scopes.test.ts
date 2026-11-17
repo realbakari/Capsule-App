@@ -5,7 +5,8 @@ import { isChannelAllowed, isRemoteEvent, READ_ONLY_CHANNELS, scopeForChannel } 
 
 describe("ipc scopes", () => {
   it("limits conversation control to named operations, never administration", () => {
-    for (const channel of ["sendMessage", "createSession", "stopRun", "resolveApproval", "listSessions"]) expect(isChannelAllowed(channel, ["control"])).toBe(true);
+    for (const channel of ["sendMessage", "createSession", "stopRun", "forceStopRun", "resolveApproval", "listSessions"]) expect(isChannelAllowed(channel, ["control"])).toBe(true);
+    expect(isChannelAllowed("forceStopRun", ["read"])).toBe(false);
     for (const channel of ["terminalStart", "updateSettings", "remotePair", "remoteRevoke", "writeFile", "deleteSession", "connectRelay", "analyticsStatus", "constructor"]) expect(isChannelAllowed(channel, ["control"])).toBe(false);
     // Tidying threads is reversible and allowed; deleting one is not.
     for (const channel of ["renameSession", "archiveSession", "restoreSession", "pinSession"]) {

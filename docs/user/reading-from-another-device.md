@@ -22,7 +22,8 @@ content on the desktop instead.
 
 A paired device can **read** by default. Existing pairings stay read-only.
 To send prompts, create a new **Conversation control** pairing on the host.
-Control also permits new threads in existing projects, stopping runs, and
+Control also permits new threads in existing projects, stopping runs (and
+force-stopping one whose agent ignores Stop), and
 once-only approval decisions. New threads are Supervised and use the project's
 local folder. Existing threads keep their permissions and runtime route.
 Your installed agents still own execution; no agent runs inside the browser.

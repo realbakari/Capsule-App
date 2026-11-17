@@ -10782,6 +10782,12 @@ fieldset.harness-options:disabled { opacity: .7; }
 .thread-find input { flex: 1; min-width: 0; height: 1.75rem; padding: 0 0.5rem; border: 1px solid var(--border-color); border-radius: var(--control-radius); background: var(--bg); color: var(--text); font-size: var(--text-ui); }
 .thread-find-count { color: var(--text-muted); font-size: var(--text-xs); min-width: 5rem; }
 .turn-focus { outline: 2px solid color-mix(in srgb, var(--text) 25%, transparent); outline-offset: 2px; border-radius: var(--radius-md); }
+::highlight(capsule-find) { background-color: color-mix(in srgb, var(--yellow) 30%, transparent); }
+::highlight(capsule-find-current) { background-color: var(--yellow); color: var(--bg); }
+.turn-status-stuck { color: var(--yellow); }
+/* Only the state gives way in a narrow column; the label and the clock keep one line. */
+.turn-status > span:not(.turn-status-state) { flex-shrink: 0; white-space: nowrap; }
+.turn-status .chip { flex-shrink: 0; margin-left: auto; }
 
 /* Usage limits and compaction. */
 .thread-resume { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; padding: 0.45rem 0.7rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--surface-0); font-size: var(--text-ui); color: var(--text-muted); }

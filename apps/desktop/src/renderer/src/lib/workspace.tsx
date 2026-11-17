@@ -351,6 +351,8 @@ export interface WorkspaceValue {
   toggleSidebar: () => void;
   toggleInspector: () => void;
   stopRun: () => Promise<void>;
+  /** End the agent of a turn that ignores Stop; the next message starts it again. */
+  forceStopRun: (runId: string) => Promise<void>;
   stoppingRunIds: string[];
   skillId?: string;
   setSkillId: (id?: string) => void;
@@ -1017,7 +1019,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     const current = requests.capture("git");
     try {
       const result = await api.gitStatus(projectId, sessionId);
-      if (current()) setGit(result);
+      if (current()) { setGit(result); setGitError(undefined); }
     } catch (error) {
       if (current()) { setGit(undefined); setNotice(formatUserError(error)); }
     }
@@ -2381,7 +2383,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   async function stopRun() {
     if (!activeRun || stoppingRuns.current.has(activeRun.id)) return;
     const runId = activeRun.id;
-    const threadId = activeRun.sessionId;
     stoppingRuns.current.add(runId);
     setStoppingRunIds([...stoppingRuns.current]);
     try {
@@ -2389,17 +2390,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       await refresh();
     } catch (error) {
       const detail = formatUserError(error);
-      // The agent may still be working; closing it ends its process, which a stop could not.
-      if (UNCONFIRMED_STOP.test(detail) && api.isDesktop !== false) {
+      // The agent may still be working; Force stop ends its process, which a stop could not.
+      if (UNCONFIRMED_STOP.test(detail) && (api.isDesktop !== false || api.remoteMode === "control")) {
         showToast({
           key: `stop:${runId}`, tone: "error", timeoutMs: 0,
           title: "The agent hasn't confirmed it stopped.",
-          detail: "It may still be working. Close the agent to end it.",
-          action: { label: "Close agent", run: () => closeHarness(threadId) },
+          detail: "It may still be working. Force stop ends it.",
+          action: { label: "Force stop", run: () => forceStopRun(runId) },
         });
       } else setNotice(detail);
     }
     finally { stoppingRuns.current.delete(runId); setStoppingRunIds([...stoppingRuns.current]); }
+  }
+
+  async function forceStopRun(runId: string) {
+    try {
+      await api.forceStopRun(runId);
+      await refresh();
+    } catch (error) { setNotice(formatUserError(error)); }
   }
 
   async function pinSession(id: string, pinned: boolean) {
@@ -2476,6 +2484,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const next = await operation();
       if (!current()) return requests.isCurrent(scope);
       setGit(next);
+      setGitError(undefined);
       setNotice(undefined);
       return true;
     } catch (error) {
@@ -2882,6 +2891,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       toggleSidebar: () => setSidebarCollapsed((value) => !value),
       toggleInspector: () => setInspectorOpen((value) => !value),
       stopRun,
+      forceStopRun,
       stoppingRunIds,
       skillId,
       setSkillId,
