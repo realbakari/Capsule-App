@@ -48,12 +48,20 @@ what the agent did, such as "Read 6 files, ran 2 commands (1 failed), edited
 the work that failed. Open the line to see each step, and open a step to see
 the command and its output.
 
-To get back to an earlier prompt in a long conversation, press `⇧⌘J`, choose
-**Jump to a prompt…** in the command palette, or click the list button in the
-conversation's top-right corner. It lists this conversation's prompts, newest
-first. Type to filter, use the arrow keys, and press `Enter`: the conversation
-scrolls to that turn and outlines it for a moment. If older messages are not
-loaded yet, **Load earlier prompts** brings them in.
+A conversation long enough to scroll shows a column of short ticks at its left
+edge, one for each prompt you sent. The ticks for the turns on screen are
+brighter, and the turn you are reading is a little wider. Point at a tick to
+see its prompt and how the reply ended, and click it to go to that turn. The
+arrows above and below the ticks step to the previous or next turn. With the
+keyboard, `Tab` to the ticks, move with the arrow keys, `Home` and `End`, and
+press `Enter` to go. Scrolling over the ticks scrolls the conversation. The
+ticks hide when the window is too narrow to fit them beside the messages.
+
+To find a prompt by its words, press `⇧⌘J` or choose **Jump to a prompt…** in
+the command palette. It lists this conversation's prompts, newest first. Type
+to filter, use the arrow keys, and press `Enter`: the conversation scrolls to
+that turn and outlines it for a moment. If older messages are not loaded yet,
+**Load earlier prompts** brings them in.
 
 If a send fails, your draft and attachments return to the composer. Once the
 failed turn is recorded, its error appears once below the work log rather than
@@ -157,12 +165,46 @@ copy of tool output. Agent replies remain separate from this diagnostic limit.
 
 ## Model, effort, and permissions
 
-When the shield chip (Approvals) already sets the agent's own permission mode,
-as it does for Claude Code, the composer shows only the shield, so the two
-can't disagree. Agents whose mode it doesn't set keep their own permissions
-choice beside it.
+The composer's footer holds attach on the left and, on the right, the agent
+and model with its reasoning effort after it in a quieter tone ("Opus High"),
+then dictation and send. The **Plan** chip, and a permissions chip while the
+conversation's approvals differ from your default, sit just left of the model.
 
-Open the model control to search the selected agent's models or star favorites.
+Open the model control for one panel in three columns:
+
+- **Agents** on the left: a star for your favorite models, then one icon per
+  agent, the selected one marked by a short bar. Point at an agent that cannot
+  run to see why, such as a missing sign-in. **…** lists every agent and your
+  profiles.
+- **Models** in the middle, with a search field. Each row is the model's name;
+  the current one has a check. Point at a row to star it or save it for Plan or
+  Act. `⌘1` to `⌘9` pick the first nine rows while the panel is open. **Show
+  more** reveals models the agent marks as legacy; search always looks at all
+  of them.
+- **Reasoning** on the right, headed by the current model: the effort levels
+  the agent reports, with a check on the current one. When there are none to
+  choose, the column says why. On the Gateway route effort is not adjustable;
+  the agent uses its own default.
+
+Under the columns, **Permissions** names the current approval mode with its
+icon. It opens a small panel: the three modes as icons (a lock for Ask, a
+shield with a check for Auto, a struck-through shield for Full), the selected
+mode's name and what it means here, and, when the agent reports them, its own
+**Agent mode** and **Agent permissions**. When Approvals already sets the
+agent's own permission mode, as it does for Claude Code, Agent permissions is
+not shown, so the two can't disagree.
+
+Use the arrow keys to move through models; Right moves to the Reasoning column
+and Left comes back. Enter picks, Escape closes the panel and returns to the
+composer. `⇧⌘M` opens the panel, `⇧⌘E` opens it on the current effort level,
+and `⇧⌘P` opens Permissions.
+
+Plan mode, compacting and agent commands are not in this panel: use the
+**Plan** chip, `⇧Tab` or `/plan`; `/compact` or the context ring; and the
+command palette's **Agent commands**. The agent's capabilities are in
+**Agents**.
+
+Search the selected agent's models or star favorites from the same panel.
 For local Claude Code and Codex conversations, Capsule uses the installed CLI
 and discovers its models automatically; a separate ACP adapter is not needed.
 Older conversations created through an ACP adapter keep that connection. Start
@@ -193,10 +235,13 @@ Rejected settings show an error rather than claiming success.
 
 ### Approvals: Ask, Auto and Full
 
-The shield chip in the composer sets how much the agent may do before you say
-yes. It applies to the conversation; **Settings → Agent defaults → Approvals for
-new conversations** sets the starting choice. The command palette offers
-**Approvals: Ask**, **Auto** and **Full** too.
+**Approvals**, under **Permissions** in the model control, sets how much the
+agent may do before you say yes. It applies to the conversation; **Settings →
+Agents → New conversations → Permissions** sets the starting choice.
+Under a new conversation's composer, the row beside the branch names the mode
+and opens the same Permissions panel. Once the conversation has started and
+its choice differs from that default, a chip beside the model control shows
+it. The command palette offers **Approvals: Ask**, **Auto** and **Full** too.
 
 - **Ask**: every edit and command asks first.
 - **Auto**: reads and edits inside the conversation's folder go ahead.
@@ -256,11 +301,12 @@ navigation and Escape; closing one returns focus to its trigger.
 
 ## Plan mode
 
-The **Plan / Act** chip beside the model control decides what the next turn
-does. In **Plan**, the agent reads and investigates, then replies with a
-numbered plan instead of changing files. In **Act**, it works with the
-conversation's permissions. Press `⇧Tab` in the prompt, click the chip, or use
-**Switch to Plan mode** in the command palette. Each conversation keeps its own
+Plan mode decides what the next turn does. While it is on, the agent reads and
+investigates, then replies with a numbered plan instead of changing files, and
+a **Plan** chip sits beside the model control. Otherwise the agent acts with
+the conversation's permissions, and nothing extra is shown. Press `⇧Tab` in the
+prompt, type `/plan`, or use **Switch to Plan mode** in the command palette. Click the **Plan** chip to turn
+it off. Each conversation keeps its own
 choice; **Settings → Agents → Plan mode → Start in Plan mode** makes new
 conversations begin in Plan.
 
@@ -576,7 +622,7 @@ harness manager; **Side chat** remains a separate surface.
 
 ## Agent commands
 
-Choose **Conversation tools → Agent commands**, or open **Agent commands** from the command palette.
+Open **Agent commands** from the command palette.
 Direct agents can advertise commands and optional input hints. Choose one and
 press **Run command** to send a separate turn; your prompt, attachments and skill
 selection remain in the composer. Commands wait for any active turn to finish.

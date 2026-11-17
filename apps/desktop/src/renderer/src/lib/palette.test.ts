@@ -18,7 +18,24 @@ const ids = (ranked: Array<{ id: string }>) => ranked.map((item) => item.id);
 
 describe("rankPalette", () => {
   it("keeps the given order with no query, hides search-only rows and caps groups", () => {
-    expect(ids(rankPalette(entries, "  ", { Conversations: 2 }))).toEqual(["recent-1", "recent-2", "new", "settings", "dark", "light"]);
+    expect(ids(rankPalette(entries, "  ", { limits: { Conversations: 2 } }))).toEqual(["recent-1", "recent-2", "new", "settings", "dark", "light"]);
+  });
+
+  it("lists each group once with no query, where its first entry was given", () => {
+    const mixed = [entry("a1", "New conversation", "Actions"), entry("w1", "Show terminal", "Workspace"), entry("a2", "Open folder", "Actions"), entry("w2", "Open browser", "Workspace")];
+    expect(ids(rankPalette(mixed, ""))).toEqual(["a1", "a2", "w1", "w2"]);
+  });
+
+  it("hides what cannot run with no query, and shows it with the reason once typed", () => {
+    const fork = entry("fork", "Fork conversation from last turn", "Actions", { disabledReason: "Open a conversation first." });
+    expect(ids(rankPalette([...entries, fork], ""))).not.toContain("fork");
+    expect(rankPalette([...entries, fork], "fork")[0]).toMatchObject({ id: "fork", disabledReason: "Open a conversation first." });
+  });
+
+  it("ranks a command above a thread that matches as well", () => {
+    const tie = [entry("thread", "New login page", "Conversations"), entry("new", "New conversation in Example", "Actions")];
+    expect(ids(rankPalette(tie, "new", { content: ["Conversations"] }))).toEqual(["new", "thread"]);
+    expect(ids(rankPalette(tie, "new login", { content: ["Conversations"] }))[0]).toBe("thread");
   });
 
   it("puts the group holding the best match first", () => {
@@ -42,7 +59,7 @@ describe("rankPalette", () => {
 
   it("caps a group after ranking, so the best rows survive", () => {
     const threads = ["Alpha", "Beta notes", "Notes"].map((label, index) => entry(`t${index}`, label, "Conversations"));
-    expect(ids(rankPalette(threads, "notes", { Conversations: 1 }))).toEqual(["t2"]);
+    expect(ids(rankPalette(threads, "notes", { limits: { Conversations: 1 } }))).toEqual(["t2"]);
   });
 
   it("returns the matched label positions", () => {

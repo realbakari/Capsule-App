@@ -77,6 +77,24 @@
   --markdown-important: light-dark(#28646a, #91c2c6);
   --markdown-warning: light-dark(#73550d, #dbc18a);
   --markdown-caution: light-dark(#9b3d3d, #dda0a0);
+  /* The shell's sixteen ANSI colours, from the code palette. "White" stays
+     readable on a light page, where programs still print it as body text. */
+  --terminal-black: light-dark(#161614, #3a3a38);
+  --terminal-red: light-dark(#9b3d3d, #dda0a0);
+  --terminal-green: light-dark(#40632d, #a8c990);
+  --terminal-yellow: light-dark(#73550d, #dbc18a);
+  --terminal-blue: light-dark(#305d8a, #91b8e5);
+  --terminal-magenta: light-dark(#7a4a84, #c9a8d8);
+  --terminal-cyan: light-dark(#28646a, #91c2c6);
+  --terminal-white: light-dark(#5c5c58, #c8c8c4);
+  --terminal-bright-black: light-dark(#6a6a66, #7a7a76);
+  --terminal-bright-red: light-dark(#b04a4a, #ecb6b6);
+  --terminal-bright-green: light-dark(#4d7838, #bedcab);
+  --terminal-bright-yellow: light-dark(#8a6a14, #ead5a6);
+  --terminal-bright-blue: light-dark(#3f73a6, #aecbee);
+  --terminal-bright-magenta: light-dark(#8f589a, #dbc0e6);
+  --terminal-bright-cyan: light-dark(#307a80, #aed5d8);
+  --terminal-bright-white: light-dark(#3a3a36, #f2f2f2);
 
   --background: 0 0% 3.9%;
   --foreground: 60 14% 95%;

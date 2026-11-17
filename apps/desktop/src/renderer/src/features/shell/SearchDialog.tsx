@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatUserError } from "../../lib/errors";
 import { highlightRuns } from "../../lib/palette";
-import { SearchIcon, XIcon } from "./icons";
+import { ArrowLeftIcon, ChevronRightIcon, SearchIcon, XIcon } from "./icons";
 
 export interface SearchDialogItem {
   id: string;
@@ -10,6 +10,8 @@ export interface SearchDialogItem {
   group: string;
   icon?: ReactNode;
   shortcut?: string;
+  /** Quiet right-hand context, such as how long ago a thread moved. */
+  meta?: string;
   disabledReason?: string;
   /** Label indices to highlight as matching the query. */
   matches?: readonly number[];
@@ -32,7 +34,7 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
   onClose: () => void;
   selectLabel?: string;
   className?: string;
-  /** Backspace in an empty field returns here, for a nested page. */
+  /** The way back from a nested page: a button in place of the search glyph, and Backspace in an empty field. */
   onBack?: () => void;
 }) {
   const id = useId();
@@ -100,7 +102,9 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
       }}>
       <div className="palette-search-row">
-        <SearchIcon size={16} />
+        {onBack
+          ? <button type="button" className="search-dialog-back" aria-label="Back" onClick={() => { onBack(); input.current?.focus(); }}><ArrowLeftIcon size={16} /></button>
+          : <SearchIcon size={16} />}
         <input ref={input} aria-label={title} role="combobox" aria-expanded="true" aria-autocomplete="list"
           aria-controls={`${id}-list`} aria-activedescendant={activeId} autoComplete="off" spellCheck={false}
           placeholder={placeholder} value={query} readOnly={busy}
@@ -123,7 +127,8 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
         <span>{actionError ?? error}</span>
         {error && onRetry && <button type="button" onClick={onRetry}>Retry</button>}
       </div>}
-      {status && <p className="search-dialog-status" role="status">{status}</p>}
+      {/* With rows on screen the status waits in the footer, so the list does not shift while results arrive. */}
+      {status && !items.length && <p className="search-dialog-status" role="status">{status}</p>}
       {items.length === 0 && !status && !error && <div className="palette-empty">{empty}</div>}
       <div className="palette-list" id={`${id}-list`} role="listbox" aria-label={`${title} results`} aria-busy={Boolean(status) || busy}>
         {items.map((item, itemIndex) => <div key={item.id} role="presentation">
@@ -143,11 +148,16 @@ export function SearchDialog({ title, placeholder, query, onQueryChange, items, 
             onClick={() => void select(item)}>
             <span className="search-dialog-icon" aria-hidden>{item.icon}</span>
             <span className="search-dialog-copy"><span>{item.matches?.length ? highlightRuns(item.label, item.matches).map((run, runIndex) => run.match ? <mark key={runIndex}>{run.text}</mark> : run.text) : item.label}</span>{(item.disabledReason || item.detail) && <small>{item.disabledReason ?? item.detail}</small>}</span>
+            {item.meta && <span className="search-dialog-meta">{item.meta}</span>}
             {item.shortcut && <kbd>{item.shortcut}</kbd>}
+            {item.keepOpen && <ChevronRightIcon size={14} className="search-dialog-more" aria-hidden />}
           </button>
         </div>)}
       </div>
-      <div className="palette-hints" aria-hidden><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>Enter</kbd> {selectLabel}</span>{onBack && <span><kbd>⌫</kbd> Back</span>}<span><kbd>Esc</kbd> Close</span></div>
+      <div className="palette-hints">
+        <span aria-hidden><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span aria-hidden><kbd>Enter</kbd> {selectLabel}</span>{onBack && <span aria-hidden><kbd>⌫</kbd> Back</span>}<span aria-hidden><kbd>Esc</kbd> Close</span>
+        {status && items.length > 0 && <span className="search-dialog-pending" role="status">{status}</span>}
+      </div>
     </div>
   </div>;
 }

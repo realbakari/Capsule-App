@@ -283,8 +283,18 @@ attachment validation still receives the original native path.
 ```
 
 - Graphite and off-white. No purple. No app mark in the titlebar.
+- Surface steps are small. The dark palette lifts raised surfaces about 3% off
+  the canvas (`appearanceCssVars` `elevatedMix`), borders are about 8% white,
+  and `--bg-active` (pressed, selected) sits 3% above `--bg-hover`. Popovers
+  share a 10%-of-text hairline and a long soft shadow (`--shadow-raised`).
+- No rule under the titlebar or the sidebar header; the transcript fades out
+  under the header with a 1.25rem top mask on `.conversation`. The breadcrumb
+  shows the project muted and the conversation in full text.
+- The transcript column defaults to 46rem. Replies render at 90% text colour;
+  code blocks in a reply sit on a faint fill with no frame or header band in
+  dark (`--reply-code-bg`, `--reply-code-border`).
 - 52px titlebar is an Electron drag region. Interactive controls must be **no-drag children of the titlebar**, not `position: fixed` overlays. Fixed siblings are swallowed by `-webkit-app-region: drag`.
-- Centered chat column. Glass composer dock. Inspector closed until opened (`⌘\`, `/inspect`, or the titlebar control). Width persists as `capsule.inspectorWidth`.
+- Centered chat column. Glass composer dock. Inspector closed until opened (`⌘\`, the command palette, or the titlebar control). Width persists as `capsule.inspectorWidth`.
 - Sidebar and inspector resizing share a pointer-owned interaction. Release
   applies the final coordinate even without a move; cancellation, lost capture,
   window blur, hiding and unmount remove its listeners. Inspector restore and
@@ -328,8 +338,17 @@ attachment validation still receives the original native path.
   palette). Selection changes are recorded by effect in `navigation-history`,
   bounded to 50 places; a move made by Back or Forward is not recorded as a
   new place, and archived or deleted conversations are pruned.
-- Project rows reveal a `+` beside `···` on hover that starts a conversation
-  in that project (`createTask(projectId)`), expanding the project.
+- The toolbar is one row: search, the **Group conversations** `MenuSelect`
+  as an icon, Add project, and New conversation (a pen icon,
+  `NewConversationButton`). New conversation's context menu holds New temporary
+  conversation and From a GitHub issue…; the palette lists both too. A
+  read-only viewer gets neither Add project nor New conversation.
+- Project rows keep their pull request, new conversation (pen,
+  `createTask(projectId)`, expanding the project) and `···` controls in one
+  `.project-actions` cluster at the row's end. Folded away the buttons take no
+  width, so only a pull request count, once read, holds space; hover or focus
+  opens them side by side. They used to be three absolutely positioned buttons
+  at the same spot, so `···` covered the other two.
 - Unpinned worktree threads show a small branch glyph in the pin slot with the
   branch name in its tooltip.
   Search and project rows are flat by default;
@@ -398,12 +417,17 @@ attachment validation still receives the original native path.
 - The folder-plus control adds a local project. The adjacent Git control opens
   repository cloning; clone is delegated to `git clone -- <url> <destination>`
   with no shell, and a project row is inserted only after it succeeds.
-- The titlebar carries the conversation's name (a menu), Stop while a turn
-  runs, the panel icon bar, and the connection dot only while the Gateway is
-  down. Workspace controls live in **Conversation details** (`SessionDetails`
-  in `SurfaceBar.tsx`): the folder row with Reveal in Finder and Open in
-  Terminal, the Open in split button (see Open in below), the branch, `ProjectActionsControl` and `CommitControl` as rows,
-  and Initialize Git. Their menus open from inside the popover;
+- The titlebar carries the conversation's name (a menu), the panel icon bar,
+  and the connection dot only while the Gateway is down. It has no Stop: the
+  composer's Stop button and Esc, the palette's **Stop the running turn** and
+  the running turn in Conversation details cover it. Workspace controls live
+  in **Conversation details** (`SessionDetails` in `SurfaceBar.tsx`): the
+  folder row with Reveal in Finder and Open in Terminal, the Open in split
+  button (see Open in below), the branch (`BranchRow`: a menu of local
+  branches that checks out through the same `checkoutBranch` the composer
+  used before the first message, with a filter past eight branches; a
+  read-only paired viewer sees the name only), `ProjectActionsControl` and
+  `CommitControl` as rows, and Initialize Git. Their menus open from inside the popover;
   `HeaderPopover` treats a popover or dialog opened after it as its own, so
   clicking there does not close it, and Escape closes only the topmost layer.
   A paired browser sees the details but not these rows.
@@ -1174,17 +1198,107 @@ Conversation details shows `+added −removed` from Git status beside
 push or from Review. The icon bar's More menu offers Agents, Side chat and the
 keep-awake-while-running toggle, mirrored in Settings.
 
-The composer is one box: the prompt, then a single row of the controls that
-shape a turn — model, reported effort and permissions, and the context meter. The strip
-below it is reference (folder, branch, terminal), not state. The steer field
-appears only while a turn is running, which is the only time it means
-anything. The shield chip is the approval preset (Ask, Auto, Full) on both
-routes, for a draft as well as a live thread. Each menu row is the preset's
-summary plus, when the route does not carry it exactly, a caveat sentence from
-`approvalOptionDetail`, and the agent mode that matches it where known. A draft
-keeps its choice in `draftApproval` and creates the thread with it. The chip is
-hidden for a read-only viewer and for an agent with no runtime route. An agent's
-own reported permission option keeps its own names under **Agent permissions**.
+The composer is one box: the prompt, then one footer row. Left: attach.
+Right, in order: a **Plan** chip only while plan mode is on; a Permissions
+chip only on a started conversation whose approvals differ from the project or
+app default; the `AgentModelPicker` trigger, which reads agent glyph, model and
+the current effort in a muted span ("Opus High"); dictation and the primary
+button. Nothing else by default.
+
+The picker is one popover (`AgentModelPicker.tsx`, 36rem wide via
+`useAnchoredPopover`'s width argument) in three columns and a footer row:
+
+- **Rail** (`.agent-model-rail`): a favorites star, a hairline, up to four
+  agents and **…** for the full agent list with profiles and **Manage
+  agents**. The selected agent is marked by a 3px accent bar at the button's
+  right edge, not a filled tile. An agent `agentReadinessReason` calls
+  unavailable is titled "<Agent>: Unavailable. <harness detail>"; an agent a
+  live thread cannot switch to is disabled.
+- **Models**: search with a hairline that turns accent on focus, then one-line
+  rows (agent glyph, name, a check on the current one). The star and the Plan
+  and Act buttons appear on row hover or focus and stay once chosen; Plan and
+  Act take no width until then. The first nine enabled rows carry `⌘1`–`⌘9`
+  badges and those keys pick them while the picker has focus. **Show more**
+  toggles models the agent marks `isLegacy`; a search always covers them. The
+  foot of the column (`.agent-model-footnote`) holds the sign-in hint and
+  **Retry**, **Open Agents** or **Set up harness** when they apply. Capsule
+  knows no per-model minimum versions, so it carries nothing else.
+- **Reasoning**: a header with "Reasoning" and the current model's name, then
+  the effort option as `ChoiceRows` (one radiogroup, a check on the current
+  row). Effort is direct-route only because `setHarnessConfig` refuses Gateway
+  sessions, so on the Gateway route the column says "Effort isn't adjustable on
+  the Gateway route." A direct agent that reports none says so; while draft
+  discovery runs it says it is loading.
+- **Footer**: only `PermissionsMenu`, right-aligned, reading the approval
+  preset's icon and name with a chevron.
+
+`PermissionsMenu` opens a 18rem popover (`.permissions-pop`): a **Permissions**
+heading, the presets as an icon-only radiogroup (lock for Ask, shield-check for
+Auto, shield-off for Full; `APPROVAL_ICONS`), then the shown preset's name and
+`approvalOptionDetail`. Hover or focus previews another preset's text; every
+preset's text is laid out in one grid cell with only the shown one visible, so
+a preview never changes the popover's height, and `useAnchoredPopover` keeps
+the side it chose for as long as the popover is open (a window resize chooses
+again), so content cannot flip it under the pointer. The direct route's
+reported **Agent mode** and **Agent permissions** follow as labelled
+`ChoiceRows`: Claude Code's and Codex's modes are permission modes, so they sit
+with approvals rather than with effort. The same component is the started
+thread's chip and the permissions entry in the row under a new conversation.
+
+Plan mode, **Compact conversation**, **Agent commands** and
+`CapabilityDetails` are not in the picker: plan mode has the chip, `⇧Tab`,
+`/plan` and the palette; compact has `/compact` and the context card; agent
+commands have the palette; capabilities are in Agents.
+
+Keyboard: Up and Down move within the rail, the model list or a `ChoiceRows`
+group; Right from a model reaches the Reasoning column's tab stop, Left comes
+back to the current model; Tab cycles inside the popover; Escape closes the
+innermost popover and restores focus to its trigger. The picker ignores pointer
+and Escape events that belong to a nested popover (`.menu-select-pop`,
+`.permissions-pop`). Search and the permissions segment take focus only once
+`useAnchoredPopover` has placed the popover, since a hidden element cannot.
+Its trigger lists the reachable setting labels in `data-settings` ("Reasoning
+effort", "Permissions"); `openComposerControl` (⇧⌘P, ⇧⌘M, ⇧⌘E) presses a
+composer control carrying that `aria-label` or `data-setting` when one is
+drawn, otherwise opens the picker and, a frame later, opens the Permissions
+trigger or focuses the effort group's current row. It says "This agent does
+not offer…" when the label is absent.
+
+A read-only paired viewer sees the same picker with model rows and rail
+disabled, stars read-only, effort rows `aria-disabled` with "Change agent
+settings on the desktop.", and the approval segments `aria-disabled` with
+"Change approvals on the desktop."
+
+The approval preset (Ask, Auto, Full) works on both routes, for a draft as
+well as a live thread. Each menu row is the preset's summary plus, when the
+route does not carry it exactly, a caveat sentence from `approvalOptionDetail`,
+and the agent mode that matches it where known. A draft keeps its choice in
+`draftApproval` and creates the thread with it. Approvals are hidden for an
+agent with no runtime route and read-only for a paired viewer. Approvals and an
+agent's reported permission option are different settings: Approvals is what
+Capsule answers on the agent's behalf, the agent's option is what the agent
+asks about. Both live in the Permissions popover; **Agent permissions** keeps the agent's
+own names and is hidden when Approvals already sets the agent's mode.
+
+`composerPrimaryAction` (`lib/composer-primary-action.ts`) decides the one
+primary button: Send; Queue follow-up or Steer this turn while a turn runs and
+the draft has content (steer when `followUpBehavior` is steer, no attachment or
+skill, and `canSteerTurn`); Stop only while a turn runs and the draft is empty;
+Run command for a `!command`; Compact and send when the context is critical,
+the agent reports a compact command, and the person has not chosen Keep. There
+is no separate steer input. Compact and send is a small state machine in the
+composer: it runs the compact command, waits for that run to start and end,
+then submits the draft; sending by hand or switching thread cancels it. The
+context ring renders only at warn or critical (`contextTone`); at normal usage
+the details popover and `/compact` carry it. The placeholder is
+`composerPlaceholder`: "Ask anything. @ files, $ skills, / commands" when idle,
+"Queue a follow-up" or "Steer this turn" while a turn runs, never a key glyph.
+
+The `/` menu holds only conversation actions: `/new`, `/init`, `/model` (opens
+the picker), `/plan`, `/compact` (when the agent offers it), `/stash`, saved
+prompts, skills, and the repository's own commands. Navigation (panel,
+terminal, folder, Agents, Approvals, Settings) is the command palette's, and
+choosing an agent is `/model`'s.
 Attach and send share the controls row in the expanded layout at both narrow
 and wide widths. In compact mode those actions share the prompt line; the
 workspace row remains entirely below the glass surface. Geometry is tested in the
@@ -1304,13 +1418,11 @@ the composer's picker shows only effort and the permission-like options. Values 
 of either the setting or follow-up refresh must release the pending UI. Provider/
 process changes remount the controls. Restorable direct identities also govern
 composer readiness after restart, even if the new-thread default is Gateway.
-The compact capabilities popover wraps both availability and settings in one
-bounded scrolling surface; nested disclosures do not expand the composer toolbar.
-The wrench-marked Conversation tools control owns context, drafts, commands and
-capabilities at every composer width. Reported effort, permissions, and agent
-mode are also directly reachable beside the model, without a nested menu. Tools and
-tool servers remain agent-owned; the popover explicitly distinguishes reported
-session configuration from individual tool selection.
+Capabilities are not in the composer. There is no catch-all tools menu: file
+mentions are `@`, skills `$` or `/`, the prompt stash `⌘S` or `/stash`, agent
+commands the palette. Tools and tool
+servers remain agent-owned; capabilities distinguish reported session
+configuration from individual tool selection.
 
 Menu, header, capability, context and sidebar preview surfaces share semantic
 background, foreground, border, radius and raised-shadow rules. Dialogs use a
@@ -1583,8 +1695,8 @@ in the palette and the search API without changing sidebar pin order.
 
 `Palette.tsx` builds every row as a `PaletteEntry` (`lib/palette.ts`): label,
 group, optional `keywords`, optional keybinding `command` id, `disabledReason`,
-`searchOnly` (projects, hidden until the person types), `keepOpen` (opens a
-nested page) and `run`. `rankPalette` ranks with `fuzzyScore` from
+`searchOnly` (hidden until the person types), `keepOpen` (opens a nested page)
+and `run`. `rankPalette` ranks with `fuzzyScore` from
 `@capsule/shared`: the best subsequence alignment, first letter on a word start,
 bonuses for word starts and consecutive runs, an affine gap cost, shorter labels
 winning ties, then input order (threads are pre-sorted by recency). Groups
@@ -2348,11 +2460,9 @@ reported embedded-context capability; unsupported routes/payloads remain inline.
 Shift–Cmd/Ctrl–V bypasses conversion. Failed conversion uses prompt-stash recovery;
 selection and caret update only when the original draft revision still matches.
 
-The composer groups file mentions, skills, stash, agent commands and capabilities
-under **Conversation tools**, leaving Attach and Send as direct actions. Existing
-keyboard shortcuts and narrow-layout permission/mode controls remain available.
-Capabilities open in a bounded panel without navigating away from the draft.
-Agent commands are discoverable from that menu and the command palette. They use
+File mentions, skills and stash have their own keys (`@`, `$`, `⌘S`) and `/`
+entries; agent commands are in the command palette and capabilities in
+Agents, leaving Attach and Send as the only direct actions. They use
 normal turn admission with no draft attachments or skill, never an independent
 queue or agent loop. The current draft is preserved on success and rejection.
 See [harness.md](harness.md) for report ownership and protocol limits.
@@ -2899,8 +3009,7 @@ and the chips read that table rather than keeping their own lists.
   file preview maps a DOM range or textarea offsets to `path:start-end` and
   keeps its last selection across the focus change; the browser asks its
   webview. Right-click on a selection shows a native menu with **Copy** and
-  **Send selection to thread**; the browser's More menu and the palette offer
-  the same. In the terminal that entry sits in the pane's one menu, beside
+  **Send selection to thread**; the palette offers the same. In the terminal that entry sits in the pane's one menu, beside
   **Add Selection to Chat** (which quotes into the draft instead).
 - **`/init` and templates.** `/init` sends `initPrompt(found)` through
   `sendPrompt`, which leaves the draft alone. The project screen's **Write /
@@ -3058,6 +3167,14 @@ draft.
   for Responsive it is the icon alone, and the tooltip names the measured
   frame size. The user agent and touch input are not
   emulated.
+- **⋮ menu.** Find on page, Hard reload, Open/Close DevTools (the label reads
+  `isDevToolsOpened()` when the menu opens), zoom, **Clear cache** and **Clear
+  cookies and site data**. The zoom percentage is the reset button. Opening in
+  the system browser lives only on the address bar's arrow, sending a selection
+  only on the page's context menu and the palette, and the local-servers page
+  is reached with a new tab. The address input selects its text on focus.
+  `normalizedBrowserUrl` treats several words, or one word with no dot or port
+  that is not a local name, as a web search.
 - **Palette.** "Inspect element in browser" and "Browser size: …" open the
   Browser panel and queue a `BrowserCommand` (`lib/browser-commands.ts`) that a
   mounted page takes on mount or on the event.

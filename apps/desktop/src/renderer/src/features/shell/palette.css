@@ -12,3 +12,9 @@
   text-underline-offset: 0.18em;
 }
 .search-dialog-item[aria-disabled="true"] mark { color: inherit; }
+
+/* Row anatomy after the label: quiet context, the shortcut, then a chevron for a row that opens a page. */
+.search-dialog-meta { flex-shrink: 0; color: var(--text-faint); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
+.search-dialog-more { flex-shrink: 0; color: var(--text-faint); }
+.search-dialog .search-dialog-back { width: 1.75rem; height: 1.75rem; margin-inline-start: -0.375rem; padding: 0.375rem; flex-shrink: 0; justify-content: center; color: var(--text-muted); }
+.palette-hints .search-dialog-pending { margin-inline-start: auto; }
