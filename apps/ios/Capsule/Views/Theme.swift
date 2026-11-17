@@ -76,24 +76,6 @@ enum Icons {
         default: "wrench.adjustable"
         }
     }
-
-    static func file(_ path: String) -> String {
-        let name = (path as NSString).lastPathComponent.lowercased()
-        let ext = (name as NSString).pathExtension
-        if name == "package.json" || name == "cargo.toml" || name == "project.yml" || name.hasSuffix(".lock") { return "shippingbox" }
-        if name.hasPrefix("readme") || ext == "md" || ext == "mdx" { return "doc.richtext" }
-        if name.hasPrefix(".") || ["json", "yml", "yaml", "toml", "plist", "xcprivacy", "env"].contains(ext) { return "gearshape" }
-        switch ext {
-        case "swift": return "swift"
-        case "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "rb", "go", "rs", "java", "kt", "c", "h", "cpp", "m", "sh", "zsh":
-            return "chevron.left.forwardslash.chevron.right"
-        case "css", "scss", "html": return "paintbrush"
-        case "png", "jpg", "jpeg", "gif", "svg", "webp", "heic", "icns": return "photo"
-        case "sql", "sqlite": return "cylinder"
-        case "test": return "checkmark.seal"
-        default: return "doc"
-        }
-    }
 }
 
 /// A rounded square holding an SF Symbol, the anchor of every list row and step.
@@ -338,4 +320,49 @@ enum Highlighted {
         cache.setObject(Box(text), forKey: cacheKey)
         return text
     }
+}
+
+/*
+ * Grouped screens on the app's own surfaces. The system's grouped colours are
+ * a cool grey with pure white rows in light mode and near black in dark, so a
+ * Form beside a thread read as a different app. These keep the warm screen
+ * behind and the app's card colour on every row.
+ */
+struct CapsuleForm<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        Form { content.listRowBackground(Color.card) }
+            .scrollContentBackground(.hidden)
+            .background(Color.screen)
+    }
+}
+
+struct CapsuleList<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        List { content.listRowBackground(Color.card) }
+            .scrollContentBackground(.hidden)
+            .background(Color.screen)
+    }
+}
+
+/// A label and its value in the app's own tones: every value one warm grey,
+/// unless the value itself says otherwise (a green "Connected", a red "Ended").
+struct CapsuleLabeledContentStyle: LabeledContentStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.label.foregroundStyle(Color.textPrimary)
+            Spacer(minLength: 8)
+            configuration.content
+                .foregroundStyle(Color.textMuted)
+                .multilineTextAlignment(.trailing)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension LabeledContentStyle where Self == CapsuleLabeledContentStyle {
+    static var capsule: CapsuleLabeledContentStyle { .init() }
 }

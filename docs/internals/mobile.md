@@ -20,8 +20,8 @@ uses. It adds nothing to the channel allowlist:
   - Threads: `listProjects`, `listSessions`, `listLatestRuns`,
     `listApprovals`, `listMessagePage`, `listRuns` and `listRunEventPage`.
   - Changes: `turnDiff` is called first with `summaryOnly` for the file list,
-    then with `relative` for one file's patch, so a big turn never sends a
-    whole patch.
+    then with `relative` (and `ignoreWhitespace` when Hide whitespace changes
+    is on) for one file's patch, so a big turn never sends a whole patch.
   - Project view: `gitStatus`, `gitDiff`, `listFiles`, `previewFile` and
     `listPullRequests`.
   - New-thread picker: `listAgents`.
@@ -46,7 +46,7 @@ configured. It is described below.
   pairings.
 - **Pairing code.**
   `capsule://pair?host=…&port=…&fp=<sha256 of cert DER>&token=…&name=…`,
-  shown as a QR code under Settings → Gateway → Browser access → Phone. The
+  shown as a QR code under Settings → Devices & access → Remote access → Phone. The
   `--remote` launch flag also prints one.
 - **Trust.** The app accepts exactly the certificate whose SHA-256 matches
   `fp` (`PinnedTrust.swift`). The system CA list is not consulted. A mismatch
@@ -88,7 +88,7 @@ configured. It is described below.
 - **Restarts.** Phone sessions survive a desktop restart. Their token hashes
   and metadata, never a usable token, are kept in
   `remote/remote-phone-sessions.json` (`0600`). Revoke rewrites the file, and
-  turning Browser access **Off** clears it. Browser sessions stay in memory
+  turning remote access **Off** clears it. Browser sessions stay in memory
   only.
 
 Behind `CAPSULE_REMOTE_PUBLIC_URL` (an HTTPS proxy) the phone listener is not
@@ -133,6 +133,46 @@ control channel; a control channel without rules there is refused.
   the agent asked. `setSessionTurnMode` takes a thread id and `plan` or `act`
   only. Every control channel has an argument rebuilder in
   `apps/desktop/src/main/remote-control.ts`; one without is refused.
+- **Force stop.** `forceStopRun` takes a run id only, like `stopRun`.
+
+### What the phone uses, and what it leaves on the computer
+
+- **Approval choices the computer refuses aren't drawn.** The card, the
+  notification and the Lock Screen read `details.canApproveOnce`: when it is
+  `false` they offer only Deny (the notification uses the
+  `capsule.approval.denyOnly` category, the activity state carries
+  `denyOnly`). **Allow for this thread** is hidden on a thread whose
+  `openclawSessionKey` starts with `direct:`. Both match the engine's checks
+  in `resolveApproval`.
+- **Questions.** An approval whose `details.questions` is non-empty is a
+  question: `QuestionCard` answers it through `answerAgentQuestion`, and
+  "Don't answer" sends `resolveApproval(id, "denied")`. Its notification uses
+  the `capsule.question` category with no actions (tap opens the thread), and
+  its Live Activity shows the question with no intent buttons.
+- **Plan.** The composer's **Plan** chip and the new-thread **Plan first**
+  toggle call `setSessionTurnMode`; the thread's `turnMode` drives the chip.
+  The old five-mode picker and the `mode` field on `sendMessage` are gone.
+- **Force stop.** Eight seconds after Stop with the run still live, the strip
+  reads "Not responding to Stop" and offers a confirmed **Force stop**.
+- **Retry.** A failed latest turn offers **Retry**, which sends `run.prompt`
+  again with `sendMessage`. Files sent with the original stay on the
+  computer: the phone never names a path, so they aren't re-attached.
+- **Not on the phone yet**, because each needs a new control channel and a
+  security decision first:
+  - *Git actions*: `gitCommit(projectId, message, sessionId?, scope?)`
+    rebuilt as a known project id, a message of 1 to 500 characters, the
+    thread's own id and no `scope` beyond the defaults; `gitPush(projectId,
+    sessionId?, toDefaultBranch?)` with `toDefaultBranch` forced to `false`
+    from a phone; `gitDiscard(projectId, relative, sessionId?)` and
+    `gitStage` with `relative` checked against that project's current
+    `gitStatus` files, never a free path. Discard destroys work, so it also
+    needs a decision on whether a phone may do it at all.
+  - *Model switching*: `setHarnessOption({ sessionId, key, value })` limited
+    to `key: "model"` and a value from the models the thread's agent last
+    reported; any other key is refused.
+  - *Steering a running turn*: `steerHarness(sessionId, instruction)` rebuilt
+    as a thread id plus text capped like a message, no attachments, only
+    while that thread has a live run.
 
 ## Notifications while the app is closed (designed, not built)
 
@@ -214,11 +254,24 @@ Rules the code keeps:
   backup, and is shown with a "saved N ago" banner while disconnected.
 - **Secrets.** Session tokens are kept in the Keychain
   (`AfterFirstUnlockThisDeviceOnly`), never in defaults or the snapshot.
-- **Notifications.** Notifications are local only: an approval request, and a
-  live run reaching a final status. They are posted while connected, during a
-  25 s background grace period, and from `BGAppRefreshTask` checks. They show
-  the thread title, never message content. Remote push would need a relay
-  service and is not implemented.
+- **Notifications.** Notifications are local only: an approval or question,
+  and a live run reaching a final status. They are posted while connected,
+  during a 25 s background grace period, and from `BGAppRefreshTask` checks.
+  The wording is a Swift port of `packages/shared/src/notices.ts`
+  (`Model/Notices.swift`): the thread's name is the title; the body says what
+  happened and, for a failure, its first line, for a usage limit when it
+  resets, for a question the question. A stopped turn posts nothing. Turn
+  endings within a second of each other post as one notification ("2 threads
+  need you") that opens the most urgent; approvals and questions post alone
+  because each carries its own answer. Replies are never shown. Remote push
+  would need a relay service and is not implemented.
+- **Editable while reconnecting.** `Workspace.mayControl` follows the
+  pairing's scope even while the socket is down; `canControl` adds "connected
+  now". The composer, approval and question cards stay on screen with
+  `mayControl` and only their send buttons wait for `canControl`. Nothing is
+  queued on the phone: a draft is text in the box, never a pending write.
+- **Status after reading.** A failed turn counts toward **Needs you** (and the
+  widget) only until the thread is opened after it ended.
 
 ## Live Activity and widget
 
@@ -313,6 +366,30 @@ carries. No server is involved.
 - **Ask about lines.** `PatchLines` takes an `ask` closure; tapped lines form
   a range and `PatchLines.quote` writes `path` lines N–M plus a diff block
   into `pendingInsert`.
+- **Changes review** (`Views/DiffView.swift`, `Views/PatchLines.swift`,
+  `Model/ChangeList.swift`). `FolderGrouping` strips the folder every file
+  shares and groups the rest; the same order drives the pager's previous and
+  next. `ViewedMarks` keys a mark by run and by path, status and counts, in
+  `UserDefaults` (`diff.viewed.v1`, newest 40 runs). The desktop hashes the
+  patch instead; the phone's list has no patch, and a run's diff is fixed by
+  its checkpoints. The title menu (`toolbarTitleMenu`) lists the thread's
+  finished turns with a checkpoint and the working tree (`gitStatus` /
+  `gitDiff`). Branch scope is not offered: no read channel returns a branch
+  comparison's file list. The parser turns `@@` headers into
+  `UnifiedDiff.Hunk` ("Lines 26–32") and `new file` / `deleted file` /
+  `rename from` into the patch's `status` and `oldPath` instead of rows.
+  Wrap, Hide whitespace and the one-time tap hint are `@AppStorage`.
+- **Review comments.** Notes on selected lines are `ReviewComment` values in
+  `Workspace.reviewComments`, per thread, in memory only (a draft, as on the
+  desktop). **Add to message** writes `ReviewComment.block`, the desktop's
+  "Review comments:" format, into `pendingInsert`; nothing is sent.
+- **File kinds** (`Model/FileKind.swift`). One table, mirroring the desktop's
+  `file-kind`, gives each name an SF Symbol or letters and a theme tone;
+  `FileGlyph` draws it in every file list.
+- **Skill picker** (`Views/SkillPicker.swift`). A sheet with `.medium` and
+  `.large` detents. `SkillSearch.rank` orders name prefix, word start, name or
+  id substring, then description; with no query, recent first (`RecentSkills`,
+  six ids in `UserDefaults`). The composer's "/" list uses the same ranking.
 - **Pull request detail.** `getPullRequest` (read) decoded leniently into
   `PullRequestDetail`; files open the patch from its `diff`.
 - **Syntax colour** (`Model/SyntaxHighlighter.swift`). A single-pass
@@ -355,13 +432,37 @@ carries. No server is involved.
   accept, which bent the Codex and Gemini marks out of shape.
 - **Composer.** The thread's agent mark and name sit at the right of the
   composer's controls row, and the placeholder reads "Reply to <agent>".
+- **Settled turns fold** (`TranscriptItem.build`, `WorkLogView`). As on the
+  computer: prompt, then one fold ("Worked for 3m", "You stopped after 40s",
+  "Interrupted after 2m" when the run's error starts with "Interrupted") with
+  the end time, then the agent's last message. The fold holds the steps,
+  reasoning (`thinking` events, consecutive chunks joined), notes
+  (`approval.resolved`, `question.answered`, `compaction`) and the agent's
+  interim messages, merged by time (`WorkEntry.timeline`). Other event types
+  are ignored, so a new desktop event never shows raw. A search hit inside a
+  fold opens it (`ThreadModel.openFolds`). Live turns stay chronological.
+- **Compaction.** A turn whose prompt is `/compact` or `/context-compact`
+  renders as one divider (`CompactionDivider`), hiding the prompt and the
+  agent's summary.
+- **Run log pages.** `listRunEventPage` returns the newest 200 events and a
+  `before` cursor; the fold says "Earlier steps are on your computer" with
+  **Show earlier**, which pages back with that cursor.
+- **Files in replies.** A code span that `FileRef.read` (a port of the
+  desktop's `readFileRef`) takes for a file becomes a `capsule-file://` link;
+  the transcript's `openURL` handler opens `FilePreviewView`, scrolled to the
+  line when the span named one and the preview holds it.
+- **Long prompts.** A message of 16 or more wrapped lines shows its first 8
+  with **Show full message**.
 - **Deny and reply.** Denies, then focuses the composer through an empty
   `pendingInsert`; the agent hears why from the next message.
 
 ## Performance
 
-- **Transcript.** The transcript is lazy and Markdown parses are cached
-  (`MarkdownBlock.cachedParse`, an `NSCache` keyed by text).
+- **Transcript.** The transcript is a plain `VStack`, not lazy: exact
+  heights keep it opening at, and pinned to, the newest message. Pages load
+  60 messages at a time, settled turns fold their steps and interim messages
+  into one row, and Markdown parses are cached (`MarkdownBlock.cachedParse`,
+  an `NSCache` keyed by text).
 - **Observation.** `ThreadModel`, each run's `RunLog` and each streaming
   `LiveReply` are separate observable objects, so a streaming token redraws
   one bubble, not the thread.

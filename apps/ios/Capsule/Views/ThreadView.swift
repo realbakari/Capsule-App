@@ -32,41 +32,82 @@ enum TranscriptItem: Identifiable, Equatable {
     case loadOlder
     case day(String)
     case message(ChatMessage)
-    case work(runID: String)
+    /// A turn's work: live steps, or a settled turn's fold holding its interim messages.
+    case work(runID: String, interim: [ChatMessage], answerAt: String?)
     case liveReply(runID: String)
     case runProblem(runID: String)
+    /// A turn that only compacted the agent's context, shown as one divider.
+    case compaction(runID: String)
 
     var id: String {
         switch self {
         case .loadOlder: "older"
         case .day(let key): "d-\(key)"
         case .message(let m): "m-\(m.id)"
-        case .work(let id): "w-\(id)"
+        case .work(let id, _, _): "w-\(id)"
         case .liveReply(let id): "r-\(id)"
         case .runProblem(let id): "p-\(id)"
+        case .compaction(let id): "c-\(id)"
         }
+    }
+
+    /// "/compact" and its alias ask the agent to summarise its own history.
+    static func isCompaction(_ message: ChatMessage) -> Bool {
+        guard message.role == .user else { return false }
+        let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["/compact", "/context-compact"].contains { text == $0 || text.hasPrefix($0 + " ") || text.hasPrefix($0 + "\n") }
     }
 
     /// `streaming` is the runs with a reply in flight; their text is read by the
     /// reply's own view, so a streamed character never rebuilds this list.
+    ///
+    /// A settled turn reads prompt, fold, answer: the agent's earlier messages
+    /// fold with its steps, and only its last message stays open.
     static func build(messages: [ChatMessage], runs: [String: Run], streaming: Set<String>, hasOlder: Bool) -> [TranscriptItem] {
         var items: [TranscriptItem] = hasOlder ? [.loadOlder] : []
+        var answers: [String: ChatMessage] = [:]
+        var interim: [String: [ChatMessage]] = [:]
+        var compactions = Set<String>()
+        for message in messages {
+            guard let runID = message.runId, runs[runID] != nil else { continue }
+            if isCompaction(message) { compactions.insert(runID) }
+            if message.role == .assistant { answers[runID] = message }
+        }
+        for message in messages where message.role == .assistant {
+            guard let runID = message.runId, let run = runs[runID], !run.status.isLive, answers[runID]?.id != message.id else { continue }
+            interim[runID, default: []].append(message)
+        }
+        let folded = Set(interim.values.flatMap { $0.map(\.id) })
+
         var placed = Set<String>()
         var lastDay: String?
-        for message in messages {
+        func dayBreak(_ message: ChatMessage) {
             // A separator where the day changes, so "yesterday's" reply isn't mistaken for today's.
             if let day = message.createdAt.dayKey, day != lastDay {
                 if lastDay != nil || messages.count > 1 { items.append(.day(day)) }
                 lastDay = day
             }
-            items.append(.message(message))
-            if message.role == .user, let runID = message.runId, runs[runID] != nil, !placed.contains(runID) {
-                placed.insert(runID)
-                items.append(.work(runID: runID))
-                if let run = runs[runID], run.status == .failed || run.status == .blocked, run.error != nil {
-                    items.append(.runProblem(runID: runID))
-                }
+        }
+        func placeWork(_ runID: String) {
+            guard placed.insert(runID).inserted, let run = runs[runID] else { return }
+            items.append(.work(runID: runID, interim: interim[runID] ?? [], answerAt: answers[runID]?.createdAt))
+            if run.status == .failed || run.status == .blocked, run.error != nil { items.append(.runProblem(runID: runID)) }
+        }
+        for message in messages {
+            let runID = message.runId.flatMap { runs[$0] != nil ? $0 : nil }
+            if let runID, compactions.contains(runID) {
+                if placed.insert(runID).inserted { dayBreak(message); items.append(.compaction(runID: runID)) }
+                continue
             }
+            if folded.contains(message.id) {
+                // Its prompt is on an earlier page: the fold still goes before the answer.
+                if let runID { placeWork(runID) }
+                continue
+            }
+            dayBreak(message)
+            if message.role != .user, let runID { placeWork(runID) }
+            items.append(.message(message))
+            if message.role == .user, let runID { placeWork(runID) }
         }
         // A live turn's reply is shown once the user message is there to anchor it.
         for runID in streaming.sorted() where placed.contains(runID) && runs[runID]?.status.isLive == true {
@@ -75,6 +116,12 @@ enum TranscriptItem: Identifiable, Equatable {
             }
         }
         return items
+    }
+
+    /// The settled turn whose fold holds this message, if any.
+    static func fold(holding messageID: String, in items: [TranscriptItem]) -> String? {
+        for case .work(let runID, let interim, _) in items where interim.contains(where: { $0.id == messageID }) { return runID }
+        return nil
     }
 }
 
@@ -91,6 +138,9 @@ struct TranscriptView: View {
     @State private var highlight: String?
     @State private var diffRun: DiffRequest?
     @State private var showProject = false
+    /// A file a reply named, opened from its code span.
+    @State private var openedFile: OpenedFile?
+    @State private var outsideFile: String?
 
     private var inspectorShown: Binding<Bool> {
         Binding(get: { diffRun != nil || showProject }, set: { if !$0 { closeInspector() } })
@@ -98,7 +148,7 @@ struct TranscriptView: View {
 
     @ViewBuilder private var panel: some View {
         if let request = diffRun {
-            DiffView(runID: request.runID, threadID: threadID, close: closeInspector).id(request.runID)
+            DiffView(runID: request.runID, turns: reviewableRuns, threadID: threadID, close: closeInspector).id(request.runID)
         } else if showProject, let thread {
             ProjectInspector(projectID: thread.projectId,
                              projectName: workspace.project(thread.projectId)?.name ?? String(localized: "Project"),
@@ -117,16 +167,22 @@ struct TranscriptView: View {
         let items = TranscriptItem.build(messages: model.messages, runs: model.runs, streaming: Set(model.replies.keys), hasOlder: model.hasOlder)
         let approvals = workspace.approvals(for: model)
         ScrollView {
-            // Not lazy: a page is at most 60 messages, and exact heights are what
-            // let the transcript open at, and stay pinned to, the newest message.
+            // Not lazy: exact heights are what let the transcript open at, and
+            // stay pinned to, the newest message. Pages come 60 messages at a
+            // time, and settled turns fold, which keeps the row count down.
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(items) { item in
-                    row(item)
+                    row(item, highlight: highlight)
                         .background(highlight == item.id ? Color.attention.opacity(0.12) : .clear,
                                     in: .rect(cornerRadius: 12))
                 }
                 ForEach(approvals) { approval in
-                    ApprovalCard(approval: approval, runIsLive: model.runs[approval.runId]?.status.isLive ?? true)
+                    let runIsLive = model.runs[approval.runId]?.status.isLive ?? true
+                    if approval.isQuestion {
+                        QuestionCard(approval: approval, runIsLive: runIsLive)
+                    } else {
+                        ApprovalCard(approval: approval, runIsLive: runIsLive)
+                    }
                 }
                 if model.messages.isEmpty, !model.isLoading {
                     emptyThread
@@ -146,13 +202,25 @@ struct TranscriptView: View {
             guard await workspace.reveal(jump.messageID, in: model) else { return }
             settled = true
             nearBottom = false
-            withAnimation(.snappy) { position.scrollTo(id: "m-\(jump.messageID)", anchor: .center) }
+            // A progress note the agent wrote mid-turn lives in that turn's fold: open it and go there.
+            let target: String
+            let current = TranscriptItem.build(messages: model.messages, runs: model.runs, streaming: [], hasOlder: model.hasOlder)
+            if let runID = TranscriptItem.fold(holding: jump.messageID, in: current) {
+                model.openFolds.insert(runID)
+                target = "w-\(runID)"
+            } else {
+                target = "m-\(jump.messageID)"
+            }
+            withAnimation(.snappy) { position.scrollTo(id: target, anchor: target.hasPrefix("w-") ? .top : .center) }
             highlight = "m-\(jump.messageID)"
             try? await Task.sleep(for: .seconds(2))
             withAnimation(.easeOut(duration: 0.6)) { highlight = nil }
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
+        // Over the plain screen colour there is no edge: the cover under the bar hides what
+        // scrolls up. Over a backdrop the system's soft edge stays; a hard one drew a second bar.
+        .scrollEdgeEffectHidden(workspace.backdrop(for: colorScheme) == nil, for: .top)
         .onScrollGeometryChange(for: Bool.self) { geometry in
             // visibleRect accounts for the floating composer's inset.
             geometry.visibleRect.maxY >= geometry.contentSize.height + geometry.contentInsets.bottom - 60
@@ -164,7 +232,7 @@ struct TranscriptView: View {
         .onChange(of: model.isLoading) { wasLoading, loading in
             guard wasLoading, !loading, !settled else { return }
             settled = true
-            // Twice: once now, once after the lazy rows have measured themselves.
+            // Twice: once now, once after the rows have measured their text.
             position.scrollTo(edge: .bottom)
             Task {
                 try? await Task.sleep(for: .milliseconds(150))
@@ -172,19 +240,25 @@ struct TranscriptView: View {
             }
         }
         .onChange(of: approvals.count) { _, _ in follow() }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .bottom) {
             if !nearBottom {
+                // Says what's down there: a decision waiting outranks new text.
+                let waiting = approvals.first { model.runs[$0.runId]?.status.isLive ?? true }
                 Button {
                     withAnimation(.snappy) { position.scrollTo(edge: .bottom) }
                 } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.textPrimary)
-                        .frame(width: 38, height: 38)
-                        .glassSurface(cornerRadius: 19)
+                    HStack(spacing: 6) {
+                        Image(systemName: waiting == nil ? "arrow.down" : waiting!.isQuestion ? "questionmark.bubble.fill" : "hand.raised.fill")
+                            .foregroundStyle(waiting == nil ? Color.textPrimary : Color.attention)
+                        Text(waiting == nil ? "Scroll to end" : waiting!.isQuestion ? "Question waiting" : "Approval waiting")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.textPrimary)
+                    .padding(.horizontal, 14)
+                    .frame(height: 38)
+                    .glassSurface(cornerRadius: 19)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("Jump to latest"))
                 .padding(16)
                 .transition(.scale.combined(with: .opacity))
             }
@@ -193,7 +267,14 @@ struct TranscriptView: View {
             // Edge to edge, under the bars and the composer, like the plain background before it.
             if let backdrop = workspace.backdrop(for: colorScheme) { ConversationBackdrop(backdrop: backdrop) } else { Color.screen.ignoresSafeArea() }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { ConnectionBanner() }
+        .modifier(FileLinks(open: openFileLink, outside: $outsideFile))
+        .sheet(item: $openedFile) { file in
+            NavigationStack {
+                FilePreviewView(projectID: file.projectID, path: file.ref.path, threadID: threadID, line: file.ref.line)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { openedFile = nil } } }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) { CoveredBanner(cover: workspace.backdrop(for: colorScheme) == nil) }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerView(model: model)
         }
@@ -264,7 +345,20 @@ struct TranscriptView: View {
         }
     }
 
-    @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
+    /// A tapped file name. An absolute path opens only inside the project's folder; the computer serves nothing else.
+    private func openFileLink(_ url: URL) -> OpenURLAction.Result {
+        guard let ref = FileRef(url: url) else { return .systemAction }
+        guard let projectID = thread?.projectId else { return .discarded }
+        let root = workspace.projects.first { $0.id == projectID }?.workingDirectory
+        if let relative = FileRef.inProject(ref.path, root: root) {
+            openedFile = OpenedFile(projectID: projectID, ref: FileRef(path: relative, line: ref.line, name: ref.name))
+        } else {
+            outsideFile = ref.path
+        }
+        return .handled
+    }
+
+    @ViewBuilder private func row(_ item: TranscriptItem, highlight: String?) -> some View {
         switch item {
         case .loadOlder:
             Button {
@@ -281,48 +375,74 @@ struct TranscriptView: View {
         case .day(let key):
             DaySeparator(key: key)
         case .message(let message):
-            MessageView(message: message)
-        case .work(let runID):
+            MessageView(message: message, actions: message.role == .assistant)
+        case .work(let runID, let interim, let answerAt):
             if let run = model.runs[runID], let log = model.logs[runID] {
-                WorkLogView(run: run, log: log, model: model) { showProject = false; diffRun = DiffRequest(runID: runID) }
+                WorkLogView(run: run, log: log, model: model, interim: interim, answerAt: answerAt, highlight: highlight) {
+                    showProject = false; diffRun = DiffRequest(runID: runID)
+                }
             }
+        case .compaction(let runID):
+            CompactionDivider(run: model.runs[runID])
         case .liveReply(let runID):
             if let reply = model.replies[runID] {
                 LiveReplyView(reply: reply, follow: follow)
             }
         case .runProblem(let runID):
-            if let error = model.runs[runID]?.error {
-                HStack(alignment: .top, spacing: 10) {
-                    IconTile(symbol: "exclamationmark.triangle.fill", tint: .failure, background: .clear)
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(Color.textPrimary)
-                        .textSelection(.enabled)
-                        .padding(.top, 3)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.failureBackground, in: .rect(cornerRadius: 14, style: .continuous))
+            if let run = model.runs[runID], let error = run.error {
+                RunProblem(run: run, error: error, model: model)
             }
         }
     }
 
-    private var emptyThread: some View {
-        ContentUnavailableView("No messages yet", systemImage: "text.bubble",
-                               description: Text(workspace.canControl ? "Send the first message below." : "Messages sent from your computer appear here."))
-            .padding(.top, 60)
+    @ViewBuilder private var emptyThread: some View {
+        // Nothing saved and no connection says nothing about the thread; don't call it empty.
+        if workspace.isConnected {
+            ContentUnavailableView("No messages yet", systemImage: "text.bubble",
+                                   description: Text(workspace.canControl ? "Send the first message below." : "Messages sent from your computer appear here."))
+                .padding(.top, 60)
+        } else {
+            ContentUnavailableView("Not loaded yet", systemImage: "arrow.trianglehead.2.clockwise",
+                                   description: Text("This conversation loads when your computer is connected."))
+                .padding(.top, 60)
+        }
     }
 
-    private var latestReviewableRun: Run? {
+    /// Finished turns with a saved checkpoint, newest first: the ones whose changes can be shown.
+    private var reviewableRuns: [Run] {
         model.runs.values
             .filter { !$0.status.isLive && $0.checkpointRef != nil }
-            .max { $0.createdAt < $1.createdAt }
+            .sorted { $0.createdAt > $1.createdAt }
     }
+
+    private var latestReviewableRun: Run? { reviewableRuns.first }
 
     private func follow() {
         guard nearBottom else { return }
         withAnimation(.snappy) { position.scrollTo(edge: .bottom) }
     }
+}
+
+/// Opens tapped file names, and says so when one lies outside the project.
+private struct FileLinks: ViewModifier {
+    let open: (URL) -> OpenURLAction.Result
+    @Binding var outside: String?
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.openURL, OpenURLAction(handler: open))
+            .alert("Outside this project", isPresented: Binding(get: { outside != nil }, set: { if !$0 { outside = nil } })) {
+                Button("OK", role: .cancel) { outside = nil }
+            } message: {
+                Text("\(outside ?? "") is outside this conversation's project, so it can't be opened from your phone.")
+            }
+    }
+}
+
+struct OpenedFile: Identifiable {
+    let projectID: String
+    let ref: FileRef
+    var id: String { "\(ref.path):\(ref.line ?? 0)" }
 }
 
 struct DiffRequest: Identifiable {
@@ -425,5 +545,103 @@ private struct SidePanel<Panel: View>: ViewModifier {
         } else {
             content.sheet(isPresented: $isPresented, content: panel)
         }
+    }
+}
+
+/// Why a turn failed, with Retry on the thread's latest turn.
+private struct RunProblem: View {
+    @Environment(Workspace.self) private var workspace
+    let run: Run
+    let error: String
+    let model: ThreadModel
+    @State private var retrying = false
+    @State private var retryError: String?
+
+    /// Only the newest turn: retrying an old failure would answer a conversation that moved on.
+    private var canRetry: Bool {
+        workspace.mayControl && run.prompt?.isEmpty == false
+            && model.runs.values.allSatisfy { $0.id == run.id || $0.createdAt <= run.createdAt }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            IconTile(symbol: "exclamationmark.triangle.fill", tint: .failure, background: .clear)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(Color.textPrimary)
+                    .textSelection(.enabled)
+                if let retryError {
+                    Text(retryError).font(.footnote).foregroundStyle(Color.failure)
+                }
+                if canRetry {
+                    Button {
+                        Task { await retry() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if retrying { ProgressView().controlSize(.mini) } else { Image(systemName: "arrow.clockwise") }
+                            Text("Retry")
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.subtleStrong, in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.textPrimary)
+                    .disabled(retrying || !workspace.canControl)
+                    .accessibilityHint(Text("Sends the same message again."))
+                }
+            }
+            .padding(.top, 3)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.failureBackground, in: .rect(cornerRadius: 14, style: .continuous))
+    }
+
+    private func retry() async {
+        retrying = true
+        defer { retrying = false }
+        do {
+            try await workspace.retry(run, in: model)
+            retryError = nil
+            Haptics.success()
+        } catch {
+            retryError = error.localizedDescription
+            Haptics.warning()
+        }
+    }
+}
+
+/// Compacting is bookkeeping, not conversation: one line instead of a "/compact" bubble and its summary.
+struct CompactionDivider: View {
+    let run: Run?
+
+    static func label(_ run: Run?) -> String {
+        switch run?.status {
+        case nil, .queued?, .running?, .waiting?, .approvalRequired?: String(localized: "Compacting context")
+        case .failed?, .blocked?: String(localized: "Context compaction failed")
+        case .cancelled?: String(localized: "Context compaction stopped")
+        case .completed?: String(localized: "Context compacted")
+        }
+    }
+
+    var body: some View {
+        let failed = run?.status == .failed || run?.status == .blocked
+        let reason = failed ? Notice.firstLine(run?.error) : nil
+        HStack(spacing: 10) {
+            Rectangle().fill(Color.hairline).frame(height: 1)
+            Text(reason.map { "\(Self.label(run)): \($0)" } ?? Self.label(run))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(failed ? Color.failure : Color.textTertiary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .shimmering(run?.status.isLive ?? true)
+                .layoutPriority(1)
+            Rectangle().fill(Color.hairline).frame(height: 1)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }

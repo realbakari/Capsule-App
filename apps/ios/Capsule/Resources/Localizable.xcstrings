@@ -4,38 +4,26 @@
     "" : {
 
     },
-    " for %@" : {
+    "%@" : {
 
     },
-    " · %lld steps" : {
+    "%@ asks" : {
+
+    },
+    "%@ is outside this conversation's project, so it can't be opened from your phone." : {
+
+    },
+    "%@ · %lld unviewed" : {
       "localizations" : {
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : " · %lld step"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : " · %lld steps"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$lld unviewed"
           }
         }
       }
     },
-    " · 1 step" : {
-
-    },
-    "%@" : {
-
-    },
-    "%@ is waiting for you" : {
+    "%@ · all viewed" : {
 
     },
     "%@%@%@" : {
@@ -109,6 +97,12 @@
         }
       }
     },
+    "%lld comments" : {
+
+    },
+    "%lld failed" : {
+
+    },
     "%lld files" : {
       "localizations" : {
         "en" : {
@@ -130,6 +124,15 @@
           }
         }
       }
+    },
+    "%lld finished" : {
+
+    },
+    "%lld lines added" : {
+
+    },
+    "%lld min ago" : {
+
     },
     "%lld need you" : {
       "localizations" : {
@@ -153,13 +156,38 @@
         }
       }
     },
+    "%lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        }
+      }
+    },
     "%lld queued" : {
+
+    },
+    "%lld removed" : {
+
+    },
+    "%lld threads finished" : {
+
+    },
+    "%lld threads need you" : {
 
     },
     "%lld working" : {
 
     },
     "%lld%%" : {
+
+    },
+    "%lld-hour window" : {
+
+    },
+    "%lld-minute window" : {
 
     },
     "%lld/%lld" : {
@@ -187,13 +215,22 @@
     "1 changed file" : {
 
     },
+    "1 comment" : {
+
+    },
     "1 file" : {
 
     },
     "1 queued" : {
 
     },
+    "1 thread needs you" : {
+
+    },
     "A phone code from your computer is encrypted and lets you send messages and answer approvals. A browser link over plain HTTP only lets you read." : {
+
+    },
+    "A rule stopped it before it ran." : {
 
     },
     "A running turn stays on the Lock Screen and in the Dynamic Island, with Allow and Deny when the agent asks. Turns started while Capsule is closed don't get one." : {
@@ -202,8 +239,30 @@
     "About" : {
 
     },
+    "Add" : {
+
+    },
+    "Add %lld comments to message" : {
+
+    },
+    "Add 1 comment to message" : {
+
+    },
     "Add a skill" : {
 
+    },
+    "Add to message" : {
+
+    },
+    "Added, line %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added, line %1$@: %2$@"
+          }
+        }
+      }
     },
     "Added: %@" : {
 
@@ -220,10 +279,19 @@
     "Agent is replying: %@" : {
 
     },
+    "Agent: %@" : {
+
+    },
     "All" : {
 
     },
+    "All files viewed" : {
+
+    },
     "All projects" : {
+
+    },
+    "All skills" : {
 
     },
     "Allow for this thread" : {
@@ -238,19 +306,28 @@
     "Allows this kind of request until the agent session ends." : {
 
     },
-    "An agent is waiting for you" : {
-
-    },
     "Another computer needs you" : {
 
     },
+    "Answer this on your computer. This device can read but not answer." : {
+
+    },
     "Answer this on your computer. This device can read but not approve." : {
+
+    },
+    "Answer this question to continue." : {
+
+    },
+    "Anyone on the network could read this connection, so this device can only read." : {
 
     },
     "Approval" : {
 
     },
     "Approval needed: %@" : {
+
+    },
+    "Approval waiting" : {
 
     },
     "Approvals" : {
@@ -265,7 +342,23 @@
     "As last reported by a running agent; not a live balance." : {
 
     },
+    "As of %@" : {
+
+    },
+    "As of %@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "As of %1$@ · %2$@"
+          }
+        }
+      }
+    },
     "Ask about %lld lines" : {
+
+    },
+    "Ask about 1 line" : {
 
     },
     "Ask about this file" : {
@@ -277,6 +370,15 @@
     "Attach" : {
 
     },
+    "Attached" : {
+
+    },
+    "Back" : {
+
+    },
+    "Backdrop from your computer" : {
+
+    },
     "Binary changes can't be shown as text." : {
 
     },
@@ -284,6 +386,9 @@
 
     },
     "Camera viewfinder for the pairing code" : {
+
+    },
+    "Can" : {
 
     },
     "Can send and approve" : {
@@ -304,6 +409,9 @@
     "Capsule couldn't save the pairing securely on this device (%d)." : {
 
     },
+    "Capsule couldn't save the pairing securely on this device (error %@)." : {
+
+    },
     "Capsule finds your computer on the same network by itself. Set an address for a VPN or private network. The computer's identity is still checked." : {
 
     },
@@ -322,9 +430,6 @@
     "Changes aren't available" : {
 
     },
-    "Chat" : {
-
-    },
     "Checks" : {
 
     },
@@ -334,16 +439,25 @@
     "Choose a thread" : {
 
     },
+    "Choose an answer, or type one." : {
+
+    },
     "Clear saved copy" : {
 
     },
     "Clear selection" : {
 
     },
-    "Code" : {
+    "Coding agent" : {
 
     },
-    "Coding agent" : {
+    "Comment" : {
+
+    },
+    "Comments wait here until you add them to the message." : {
+
+    },
+    "Compacting context" : {
 
     },
     "Computers" : {
@@ -365,6 +479,15 @@
 
     },
     "Connection lost." : {
+
+    },
+    "Context compacted" : {
+
+    },
+    "Context compaction failed" : {
+
+    },
+    "Context compaction stopped" : {
 
     },
     "Conversation" : {
@@ -424,7 +547,16 @@
     "Dark" : {
 
     },
+    "Delete comment" : {
+
+    },
+    "Denies this request, then lets you tell the agent what to do instead." : {
+
+    },
     "Deny" : {
+
+    },
+    "Deny and reply" : {
 
     },
     "Description" : {
@@ -445,19 +577,34 @@
     "Dictation stopped." : {
 
     },
+    "Discard comments" : {
+
+    },
     "Discard dictation" : {
 
     },
     "Dismiss" : {
 
     },
+    "Dismiss summary" : {
+
+    },
     "Display" : {
+
+    },
+    "Don't answer" : {
 
     },
     "Done" : {
 
     },
     "Done dictating" : {
+
+    },
+    "Earlier steps are on your computer." : {
+
+    },
+    "Earlier turn" : {
 
     },
     "Edit address" : {
@@ -472,10 +619,16 @@
     "Empty folder" : {
 
     },
+    "Encrypted" : {
+
+    },
     "Encrypted (HTTPS)" : {
 
     },
     "Encrypted to your computer, verified by its code" : {
+
+    },
+    "Encrypted with the computer's HTTPS certificate." : {
 
     },
     "Encrypted, verified by pairing code" : {
@@ -484,7 +637,13 @@
     "Ended" : {
 
     },
+    "Ended %@" : {
+
+    },
     "Ends" : {
+
+    },
+    "Ends the agent running this turn on your computer." : {
 
     },
     "Error" : {
@@ -517,10 +676,25 @@
     "Files" : {
 
     },
+    "Filter" : {
+
+    },
+    "Filter files" : {
+
+    },
     "Find a file" : {
 
     },
+    "Finished" : {
+
+    },
     "Finished turns" : {
+
+    },
+    "Force stop" : {
+
+    },
+    "Force stop this turn?" : {
 
     },
     "Forget" : {
@@ -535,10 +709,22 @@
     "Forget this computer?" : {
 
     },
+    "From %@" : {
+
+    },
     "Getting ready to listen" : {
 
     },
     "Group by project" : {
+
+    },
+    "Has the agent plan first, without changing files." : {
+
+    },
+    "Hide viewed files" : {
+
+    },
+    "Hide whitespace changes" : {
 
     },
     "Hides the output." : {
@@ -547,7 +733,13 @@
     "Hides the queued messages." : {
 
     },
+    "Hides the reasoning." : {
+
+    },
     "Hides the steps." : {
+
+    },
+    "Hides the work." : {
 
     },
     "Idle" : {
@@ -568,13 +760,16 @@
     "Input" : {
 
     },
+    "Interrupted" : {
+
+    },
+    "Interrupted after %@" : {
+
+    },
     "It expired or was removed on your computer. Pair again to see live updates." : {
 
     },
-    "Jump to latest" : {
-
-    },
-    "Just answers" : {
+    "Just looking around" : {
 
     },
     "Know when an agent needs you, while Capsule is open" : {
@@ -586,6 +781,9 @@
     "Last problem" : {
 
     },
+    "Latest turn" : {
+
+    },
     "Latest turn's changes" : {
 
     },
@@ -594,6 +792,29 @@
     },
     "Light" : {
 
+    },
+    "Line %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Line %lld" : {
+
+    },
+    "Lines %lld–%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Lines %1$lld–%2$lld"
+          }
+        }
+      }
     },
     "Listening" : {
 
@@ -613,10 +834,25 @@
     "Made-up threads to explore. Nothing is sent anywhere." : {
 
     },
+    "Mark all as unviewed" : {
+
+    },
+    "Mark all as viewed" : {
+
+    },
     "Mark as read" : {
 
     },
     "Mark as unread" : {
+
+    },
+    "Mark as unviewed" : {
+
+    },
+    "Mark as viewed" : {
+
+    },
+    "May be out of date" : {
 
     },
     "Merged" : {
@@ -626,12 +862,6 @@
 
     },
     "Messages sent from your computer appear here." : {
-
-    },
-    "Mode" : {
-
-    },
-    "Mode: %@" : {
 
     },
     "More" : {
@@ -646,9 +876,6 @@
     "Needs you" : {
 
     },
-    "Needs your approval" : {
-
-    },
     "New" : {
 
     },
@@ -659,6 +886,15 @@
 
     },
     "New thread in %@" : {
+
+    },
+    "Next" : {
+
+    },
+    "Next file" : {
+
+    },
+    "No computer paired" : {
 
     },
     "No file changes" : {
@@ -674,6 +910,9 @@
 
     },
     "No network connection." : {
+
+    },
+    "No newline at end of file" : {
 
     },
     "No open pull requests" : {
@@ -706,7 +945,19 @@
     "Not connected to your computer." : {
 
     },
+    "Not encrypted" : {
+
+    },
     "Not encrypted — reading only" : {
+
+    },
+    "Not in use" : {
+
+    },
+    "Not loaded yet" : {
+
+    },
+    "Not responding to Stop" : {
 
     },
     "Nothing here" : {
@@ -715,16 +966,31 @@
     "Notifications" : {
 
     },
+    "OK" : {
+
+    },
+    "Off" : {
+
+    },
     "Offline" : {
 
     },
     "Offline · retrying" : {
 
     },
-    "On your computer, open Capsule → Settings → Gateway → Browser access." : {
+    "On" : {
 
     },
-    "On your computer: Settings → Gateway → Browser access → Pair a phone." : {
+    "On your computer, open Capsule → Settings → Devices & access." : {
+
+    },
+    "On your computer, open Capsule → Settings → General → Browser access." : {
+
+    },
+    "On your computer: Settings → Devices & access → Pair a phone." : {
+
+    },
+    "On your computer: Settings → General → Browser access → Pair a phone." : {
 
     },
     "On your other computers" : {
@@ -734,6 +1000,12 @@
 
     },
     "Only the file's mode or name changed." : {
+
+    },
+    "Only this computer can read what this device sends; the pairing code proved it was yours." : {
+
+    },
+    "Only whitespace changed" : {
 
     },
     "Open" : {
@@ -748,6 +1020,9 @@
     "Open Capsule to check the approval before answering again." : {
 
     },
+    "Open file" : {
+
+    },
     "Open in New Window" : {
 
     },
@@ -760,13 +1035,25 @@
     "Opens a larger view." : {
 
     },
+    "Opens the thread." : {
+
+    },
     "Options for queued message %lld" : {
+
+    },
+    "Or type your own answer" : {
 
     },
     "Other" : {
 
     },
     "Output" : {
+
+    },
+    "Output · exit %lld" : {
+
+    },
+    "Outside this project" : {
 
     },
     "Pair" : {
@@ -791,6 +1078,9 @@
 
     },
     "Pairing ended" : {
+
+    },
+    "Pairing ended. Pair again to reconnect." : {
 
     },
     "Pairing ends %@" : {
@@ -820,10 +1110,16 @@
     "Plan" : {
 
     },
-    "Plans first, without changing files" : {
+    "Plan first" : {
 
     },
     "Port" : {
+
+    },
+    "Port %@" : {
+
+    },
+    "Previous file" : {
 
     },
     "Privacy policy" : {
@@ -841,6 +1137,9 @@
     "Pull requests unavailable" : {
 
     },
+    "Question waiting" : {
+
+    },
     "Queue" : {
 
     },
@@ -851,6 +1150,9 @@
 
     },
     "Read" : {
+
+    },
+    "Read aloud" : {
 
     },
     "Read only" : {
@@ -868,7 +1170,7 @@
     "Reading text sets how agent replies are set. Code, tables and the rest of the app always use the system font." : {
 
     },
-    "Reads and explains, without changing files" : {
+    "Reading text sets how agent replies are set. Code, tables and the rest of the app always use the system font. The backdrop is the scene your computer's theme draws behind conversations; images stay on the computer." : {
 
     },
     "Recent" : {
@@ -892,6 +1194,19 @@
     "Remove %@" : {
 
     },
+    "Remove skill" : {
+
+    },
+    "Removed, old line %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Removed, old line %1$@: %2$@"
+          }
+        }
+      }
+    },
     "Removed: %@" : {
 
     },
@@ -907,19 +1222,28 @@
     "Renamed" : {
 
     },
+    "Renamed from %@" : {
+
+    },
     "Reply" : {
 
     },
-    "Research" : {
+    "Reply to %@" : {
 
     },
     "Resets %@" : {
+
+    },
+    "Resets at %@" : {
 
     },
     "Restore" : {
 
     },
     "Restored" : {
+
+    },
+    "Retry" : {
 
     },
     "Retry now" : {
@@ -952,7 +1276,13 @@
     "Scan the code it shows, or paste its link below." : {
 
     },
+    "Scroll to end" : {
+
+    },
     "Search" : {
+
+    },
+    "Search skills" : {
 
     },
     "Search threads and messages" : {
@@ -976,6 +1306,9 @@
     "Send" : {
 
     },
+    "Send answer" : {
+
+    },
     "Send the first message below." : {
 
     },
@@ -983,6 +1316,9 @@
 
     },
     "Sends after the current turn finishes." : {
+
+    },
+    "Sends the same message again." : {
 
     },
     "Sent %@" : {
@@ -994,10 +1330,16 @@
     "Serif" : {
 
     },
+    "Session window" : {
+
+    },
     "Set the reach to This network, then choose Pair a phone." : {
 
     },
     "Settings" : {
+
+    },
+    "Share" : {
 
     },
     "Shortened by your computer." : {
@@ -1006,10 +1348,16 @@
     "Shortened here. Open it on your computer for the full reply." : {
 
     },
+    "Show %lld more" : {
+
+    },
     "Show all %lld lines" : {
 
     },
     "Show archived" : {
+
+    },
+    "Show earlier" : {
 
     },
     "Show earlier messages" : {
@@ -1018,10 +1366,16 @@
     "Show formatted" : {
 
     },
+    "Show full message" : {
+
+    },
     "Show less" : {
 
     },
     "Show source" : {
+
+    },
+    "Show viewed files" : {
 
     },
     "Showing what was saved %@." : {
@@ -1042,10 +1396,16 @@
     "Shows what it ran and returned." : {
 
     },
+    "Shows what the agent was thinking." : {
+
+    },
     "Skill" : {
 
     },
     "Skill: %@" : {
+
+    },
+    "Skills" : {
 
     },
     "Someone" : {
@@ -1057,10 +1417,16 @@
     "Start a conversation in Capsule on your computer and it appears here." : {
 
     },
+    "Status" : {
+
+    },
     "Steered the running turn" : {
 
     },
     "Stop" : {
+
+    },
+    "Stop reading" : {
 
     },
     "Stop the running turn" : {
@@ -1087,7 +1453,34 @@
     "That file is over 3 MB." : {
 
     },
-    "That isn't a Capsule pairing code. On your computer, open Settings → Gateway → Browser access and create a new one." : {
+    "That isn't a Capsule pairing code. On your computer, open Settings → Devices & access and create a new one." : {
+
+    },
+    "That isn't a Capsule pairing code. On your computer, open Settings → General → Browser access and create a new one." : {
+
+    },
+    "The agent" : {
+
+    },
+    "The agent asks" : {
+
+    },
+    "The agent continues with its own judgement." : {
+
+    },
+    "The agent didn't stop when asked. Force stop closes the agent's session." : {
+
+    },
+    "The agent didn't stop when asked. Force stop ends the agent's process." : {
+
+    },
+    "The agent has a question: %@" : {
+
+    },
+    "The agent plans before it changes any files. You can turn this off in the thread." : {
+
+    },
+    "The agent plans first, without changing files. Turns it off." : {
 
     },
     "The computer's security certificate doesn't match the pairing code. Nothing was sent. Create a new code on your computer." : {
@@ -1111,10 +1504,19 @@
     "Theme" : {
 
     },
+    "These threads are made up, and nothing you do here is sent anywhere." : {
+
+    },
     "Thinking" : {
 
     },
+    "This agent didn't offer Allow once. Deny, or change the agent's settings on your computer." : {
+
+    },
     "This change is large; some files are shown on your computer only." : {
+
+    },
+    "This conversation loads when your computer is connected." : {
 
     },
     "This device can" : {
@@ -1150,6 +1552,9 @@
     "This session" : {
 
     },
+    "This turn" : {
+
+    },
     "This turn didn't change any files." : {
 
     },
@@ -1160,6 +1565,9 @@
 
     },
     "This week" : {
+
+    },
+    "Thought" : {
 
     },
     "Thread" : {
@@ -1183,6 +1591,9 @@
     "Too many requests are waiting. Try again in a moment." : {
 
     },
+    "Top level" : {
+
+    },
     "Transcribed on this device. The words go in the message box; nothing is sent." : {
 
     },
@@ -1201,10 +1612,28 @@
     "Turn finished" : {
 
     },
+    "Turn from %@" : {
+
+    },
+    "Turn off Hide whitespace changes to see them." : {
+
+    },
     "Turn stopped" : {
 
     },
+    "Turns" : {
+
+    },
+    "Type the answer; it isn't kept in the thread" : {
+
+    },
+    "Type your answer" : {
+
+    },
     "Uncommitted changes" : {
+
+    },
+    "Under Remote access, set Who can reach it to This network, then choose Pair a phone." : {
 
     },
     "Undo" : {
@@ -1217,6 +1646,9 @@
 
     },
     "Untitled thread" : {
+
+    },
+    "Unviewed" : {
 
     },
     "Up to date" : {
@@ -1234,16 +1666,34 @@
     "Version" : {
 
     },
-    "Waiting for your approval" : {
+    "Viewed" : {
+
+    },
+    "Waiting for you" : {
 
     },
     "Waiting for your computer" : {
 
     },
+    "Waiting for your computer…" : {
+
+    },
+    "Weekly window" : {
+
+    },
+    "What should change here?" : {
+
+    },
     "What should the agent do?" : {
 
     },
+    "While you were away" : {
+
+    },
     "Worked" : {
+
+    },
+    "Worked for %@" : {
 
     },
     "Working" : {
@@ -1252,16 +1702,16 @@
     "Working tree clean" : {
 
     },
-    "Works on its own, asking when it needs to" : {
-
-    },
-    "Writes and changes code in the project" : {
+    "Wrap lines" : {
 
     },
     "Yesterday" : {
 
     },
-    "You can reply once your computer is connected." : {
+    "You stopped after %@" : {
+
+    },
+    "You stopped this turn" : {
 
     },
     "You: %@" : {
@@ -1291,6 +1741,9 @@
     "added" : {
 
     },
+    "an untitled thread" : {
+
+    },
     "capsule://pair?…" : {
 
     },
@@ -1304,6 +1757,24 @@
 
     },
     "deleted" : {
+
+    },
+    "ends %@" : {
+
+    },
+    "failed" : {
+
+    },
+    "finished" : {
+
+    },
+    "has a question" : {
+
+    },
+    "hit a usage limit" : {
+
+    },
+    "less than a minute ago" : {
 
     },
     "line %lld" : {
@@ -1322,6 +1793,9 @@
     "modified" : {
 
     },
+    "needs your approval" : {
+
+    },
     "not connected" : {
 
     },
@@ -1337,10 +1811,25 @@
     "renamed" : {
 
     },
+    "since %@" : {
+
+    },
     "untracked" : {
 
     },
+    "viewed" : {
+
+    },
+    "wants to" : {
+
+    },
     "· %@" : {
+
+    },
+    "… %@ lines not kept …" : {
+
+    },
+    "… 1 line not kept …" : {
 
     },
     "−%lld" : {

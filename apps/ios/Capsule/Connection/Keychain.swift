@@ -48,7 +48,7 @@ nonisolated enum Keychain {
     struct KeychainError: LocalizedError {
         let status: OSStatus
         var errorDescription: String? {
-            String(localized: "Capsule couldn't save the pairing securely on this device (\(status)).")
+            String(localized: "Capsule couldn't save the pairing securely on this device (error \(String(status))).")
         }
     }
 }

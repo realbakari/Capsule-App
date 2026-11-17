@@ -30,6 +30,13 @@ nonisolated struct PairingLink: Equatable, Sendable {
     var security: Security
     var hostName: String?
 
+    /// The address names the device it is read on (127.0.0.1, ::1, localhost). Only a
+    /// simulator on the same computer can follow it; a phone would be calling itself.
+    var isLoopback: Bool {
+        let name = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        return name == "localhost" || name == "::1" || name.hasPrefix("127.")
+    }
+
     var baseURL: URL {
         var c = URLComponents()
         c.scheme = security == .plaintext ? "http" : "https"
@@ -43,7 +50,7 @@ nonisolated struct PairingLink: Equatable, Sendable {
 
         var errorDescription: String? {
             switch self {
-            case .notAPairingLink: String(localized: "That isn't a Capsule pairing code. On your computer, open Settings → Gateway → Browser access and create a new one.")
+            case .notAPairingLink: String(localized: "That isn't a Capsule pairing code. On your computer, open Settings → Devices & access and create a new one.")
             case .missingToken: String(localized: "The pairing code is incomplete. Create a new one on your computer.")
             case .badHost: String(localized: "The pairing code doesn't include a valid computer address.")
             case .badFingerprint: String(localized: "The pairing code's security fingerprint is invalid. Create a new one on your computer.")

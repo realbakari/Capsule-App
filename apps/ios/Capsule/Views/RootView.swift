@@ -163,7 +163,7 @@ struct WelcomeView: View {
                 .foregroundStyle(Color.brandText.opacity(0.75))
                 .padding(.top, 12)
                 .accessibilityHint(Text("Explore Capsule with made-up threads. Nothing is sent anywhere."))
-            Text("On your computer: Settings → Gateway → Browser access → Pair a phone.")
+            Text("On your computer: Settings → Devices & access → Pair a phone.")
                 .font(.footnote)
                 .foregroundStyle(Color.brandText.opacity(0.5))
                 .multilineTextAlignment(.center)

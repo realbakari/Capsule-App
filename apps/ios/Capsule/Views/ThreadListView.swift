@@ -38,15 +38,19 @@ struct ThreadListView: View {
                     selection = threadID
                 }
             })
+            // Labels are rows, not section headers: a plain list pins headers and paints
+            // a band behind them as the list scrolls under the top bar.
             ForEach(sections) { section in
                 Section {
+                    SectionDivider(label: section.title).listDividerRow()
                     ForEach(section.threads) { thread in row(thread) }
-                } header: {
-                    SectionDivider(label: section.title)
                 }
             }
-            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            // Nothing matched anywhere: the full-screen "No Results" says it alone.
+            let nothingAnywhere = visible.isEmpty && messageHits.isEmpty && !searchingMessages && workspace.isConnected
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty, !nothingAnywhere {
                 Section {
+                    SectionDivider(label: "In messages").listDividerRow()
                     ForEach(messageHits) { hit in
                         Button {
                             workspace.pendingJump = (hit.sessionId, hit.id)
@@ -58,17 +62,17 @@ struct ThreadListView: View {
                         .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
                         .listRowBackground(Color.screen)
                     }
-                } header: {
-                    SectionDivider(label: "In messages")
-                } footer: {
+                    // A row, not a footer: a plain list paints footers black in dark mode.
                     Group {
                         if !workspace.isConnected { Text("Searching messages needs your computer. Showing title matches only.") }
                         else if searchingMessages { ProgressView().frame(maxWidth: .infinity) }
                         else if messageHits.isEmpty { Text("No messages match.") }
                     }
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(Color.textTertiary)
-                    .padding(.horizontal, 20)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                    .listRowBackground(Color.screen)
+                    .listRowSeparator(.hidden)
                 }
             }
         }
@@ -86,7 +90,8 @@ struct ThreadListView: View {
         .contentMargins(.top, 0, for: .scrollContent)
         .background(Color.screen)
         .overlay { emptyState }
-        .safeAreaInset(edge: .top, spacing: 0) { ConnectionBanner() }
+        .scrollEdgeEffectHidden(true, for: .top)
+        .safeAreaInset(edge: .top, spacing: 0) { CoveredBanner() }
         .animation(.snappy, value: workspace.connectionState)
         .searchable(text: $query, isPresented: $searchFocused, prompt: Text("Search threads and messages"))
         .background {
@@ -383,7 +388,7 @@ struct SectionDivider: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(label)
-                .font(.caption.weight(.medium))
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(Color.textTertiary)
                 .textCase(nil)
             Rectangle().fill(Color.hairline).frame(height: 1 / scale)
@@ -391,6 +396,15 @@ struct SectionDivider: View {
         .padding(.top, 6)
         .padding(.bottom, 2)
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension View {
+    /// A `SectionDivider` placed as a list row: screen-coloured, no separator, tight insets.
+    func listDividerRow() -> some View {
+        listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 2, trailing: 20))
+            .listRowBackground(Color.screen)
+            .listRowSeparator(.hidden)
     }
 }
 
@@ -407,22 +421,22 @@ struct ThreadRow: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             // At accessibility sizes the meta line stacks instead of truncating.
             let meta = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))
             meta {
-                ProjectIcon(name: project ?? "?", dataURL: projectIcon, size: 15)
+                ProjectIcon(name: project ?? "?", dataURL: projectIcon, size: 16)
                 Text(project ?? String(localized: "No project"))
-                    .font(.footnote.weight(.medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color.textMuted)
                     .lineLimit(1)
                     .layoutPriority(1)
                 if let agent {
                     HStack(spacing: 4) {
-                        if let harness { HarnessMark(harness, size: 13) } else { Text(verbatim: "·") }
+                        if let harness { HarnessMark(harness, size: 14) } else { Text(verbatim: "·") }
                         Text(agent)
                     }
-                    .font(.footnote)
+                    .font(.subheadline)
                     .foregroundStyle(Color.textTertiary)
                     .lineLimit(1)
                     .padding(.leading, harness == nil ? 0 : 4)
@@ -442,14 +456,14 @@ struct ThreadRow: View {
                         .accessibilityLabel(Text("New"))
                 }
                 Text(title.isEmpty ? String(localized: "Untitled thread") : title)
-                    .font(.callout.weight(.medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
                     .lineSpacing(1)
             }
             if archived {
                 Label("Archived", systemImage: "archivebox")
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(Color.textTertiary)
             }
         }
@@ -463,11 +477,11 @@ struct ThreadRow: View {
                 if status == .working { WorkingPulse() }
                 Text(label)
             }
-            .font(.caption.weight(.medium))
+            .font(.footnote.weight(.medium))
             .foregroundStyle(status.tint)
         } else {
             Text(updatedAt.relativeTime)
-                .font(.caption.monospacedDigit())
+                .font(.footnote.monospacedDigit())
                 .foregroundStyle(Color.textTertiary)
         }
     }
@@ -495,7 +509,7 @@ enum AgentName {
         switch id.lowercased() {
         case "codex": return "Codex"
         case "claude", "claude-code", "claudecode": return "Claude Code"
-        case "grok", "grok-build": return "Grok"
+        case "grok", "grok-build": return "Grok Build"
         case "gemini": return "Gemini"
         case "coding": return String(localized: "Coding agent")
         default: return id.prefix(1).uppercased() + id.dropFirst()
@@ -677,11 +691,11 @@ struct MessageHitRow: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Image(systemName: fromAgent ? "sparkle" : "person.fill")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(Color.textTertiary)
-                Text(title).font(.footnote.weight(.medium)).foregroundStyle(Color.textMuted).lineLimit(1)
+                Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Color.textMuted).lineLimit(1)
             }
-            Text(highlighted).font(.callout).foregroundStyle(Color.textPrimary).lineLimit(3)
+            Text(highlighted).font(.body).foregroundStyle(Color.textPrimary).lineLimit(3)
         }
         .accessibilityElement(children: .combine)
     }
@@ -727,12 +741,12 @@ private struct OtherComputersSection: View {
                 ForEach(items, id: \.approval.id) { item in
                     Button { open(item.host.id, item.thread.id) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Image(systemName: "hand.raised.fill").font(.footnote).foregroundStyle(Color.attention)
+                            Image(systemName: "hand.raised.fill").font(.subheadline).foregroundStyle(Color.attention)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(item.host.name).font(.footnote.weight(.medium)).foregroundStyle(Color.textMuted)
+                                Text(item.host.name).font(.subheadline.weight(.medium)).foregroundStyle(Color.textMuted)
                                 Text(item.thread.title.isEmpty ? String(localized: "Untitled thread") : item.thread.title)
-                                    .font(.body).foregroundStyle(Color.textPrimary).lineLimit(2)
-                                Text(item.approval.action).font(.footnote).foregroundStyle(Color.textSecondary).lineLimit(1)
+                                    .font(.body.weight(.medium)).foregroundStyle(Color.textPrimary).lineLimit(2)
+                                Text(item.approval.headline).font(.subheadline).foregroundStyle(Color.textSecondary).lineLimit(1)
                             }
                             Spacer(minLength: 0)
                             Image(systemName: "arrow.left.arrow.right").font(.caption).foregroundStyle(Color.textTertiary)

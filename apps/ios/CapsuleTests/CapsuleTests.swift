@@ -16,6 +16,15 @@ struct PairingLinkTests {
         #expect(link.baseURL.absoluteString == "https://192.168.1.20:51102")
     }
 
+    @Test func loopbackAddressesAreRecognised() throws {
+        for host in ["127.0.0.1", "127.1.2.3", "localhost", "LOCALHOST", "::1", "[::1]"] {
+            #expect(PairingLink(host: host, port: 1, token: "t", security: .plaintext).isLoopback, "\(host)")
+        }
+        for host in ["192.168.1.20", "10.0.0.5", "studio.local", "fe80::1"] {
+            #expect(!PairingLink(host: host, port: 1, token: "t", security: .plaintext).isLoopback, "\(host)")
+        }
+    }
+
     @Test func formEncodedNameDecodesSpaces() throws {
         let link = try PairingLink.parse("capsule://pair?host=h&port=1&fp=\(fp)&token=t&name=Sam%E2%80%99s+MacBook+Air")
         #expect(link.hostName == "Sam\u{2019}s MacBook Air")
@@ -520,5 +529,285 @@ struct BackdropTests {
         let slice = try JSONDecoder().decode(ConfigSnapshotSlice.self, from: Data(json.utf8))
         #expect(slice.backdrops.light == Backdrop(scene: .mesh, opacity: 0.8, blur: 4, dim: 0.2))
         #expect(slice.backdrops.dark == nil)
+    }
+}
+
+@Suite("Settled turns")
+struct SettledTurnTests {
+    func message(_ id: String, _ role: ChatMessage.Role, _ content: String = "x", run: String? = "r", at: String) -> ChatMessage {
+        ChatMessage(id: id, sessionId: "s", role: role, content: content, runId: run, createdAt: at)
+    }
+
+    @Test func interimMessagesFoldAndTheAnswerStaysOpen() {
+        let run = Run(id: "r", sessionId: "s", status: .completed, createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:03:00Z",
+                      completedAt: "2026-01-01T10:03:00Z")
+        let messages = [message("p", .user, at: "2026-01-01T10:00:00Z"), message("a1", .assistant, at: "2026-01-01T10:01:00Z"),
+                        message("a2", .assistant, at: "2026-01-01T10:02:59Z")]
+        let items = TranscriptItem.build(messages: messages, runs: ["r": run], streaming: [], hasOlder: false)
+        #expect(items.map(\.id).filter { !$0.hasPrefix("d-") } == ["m-p", "w-r", "m-a2"])
+        #expect(TranscriptItem.fold(holding: "a1", in: items) == "r")
+        #expect(TranscriptItem.fold(holding: "a2", in: items) == nil)
+    }
+
+    @Test func liveTurnsStayChronological() {
+        let run = Run(id: "r", sessionId: "s", status: .running, createdAt: "2026-01-01T10:00:00Z", updatedAt: "2026-01-01T10:00:00Z")
+        let messages = [message("p", .user, at: "2026-01-01T10:00:00Z"), message("a1", .assistant, at: "2026-01-01T10:01:00Z")]
+        let items = TranscriptItem.build(messages: messages, runs: ["r": run], streaming: [], hasOlder: false)
+        #expect(items.map(\.id).filter { !$0.hasPrefix("d-") } == ["m-p", "w-r", "m-a1"])
+    }
+
+    @Test func foldStillPrecedesTheAnswerWhenThePromptIsOnAnEarlierPage() {
+        let run = Run(id: "r", sessionId: "s", status: .completed, createdAt: "1", updatedAt: "3")
+        let messages = [message("a1", .assistant, at: "2026-01-01T10:01:00Z"), message("a2", .assistant, at: "2026-01-01T10:02:00Z")]
+        let ids = TranscriptItem.build(messages: messages, runs: ["r": run], streaming: [], hasOlder: true).map(\.id).filter { !$0.hasPrefix("d-") }
+        #expect(ids == ["older", "w-r", "m-a2"])
+    }
+
+    @Test func compactTurnsAreOneDivider() {
+        let run = Run(id: "r", sessionId: "s", status: .completed, createdAt: "1", updatedAt: "2")
+        let messages = [message("p", .user, "/compact", at: "2026-01-01T10:00:00Z"), message("a", .assistant, "Summary…", at: "2026-01-01T10:00:05Z")]
+        let items = TranscriptItem.build(messages: messages, runs: ["r": run], streaming: [], hasOlder: false)
+        #expect(items.map(\.id).filter { !$0.hasPrefix("d-") } == ["c-r"])
+        #expect(CompactionDivider.label(run) == "Context compacted")
+        #expect(CompactionDivider.label(nil) == "Compacting context")
+        #expect(!TranscriptItem.isCompaction(message("q", .user, "/compactor", at: "1")))
+    }
+
+    @Test(arguments: [(42.0, "42s"), (180, "3m"), (185, "3m 5s"), (3600, "1h"), (3720, "1h 2m")])
+    func durationsDropZeroUnits(_ seconds: Double, _ expected: String) {
+        #expect(TurnLabel.duration(seconds) == expected)
+    }
+
+    @Test func foldLabelsSayWhoEndedTheTurn() {
+        var run = Run(id: "r", sessionId: "s", status: .completed, createdAt: "2026-01-01T10:00:00Z", updatedAt: "x",
+                      completedAt: "2026-01-01T10:02:00Z")
+        #expect(TurnLabel.fold(run, answerAt: nil) == "Worked for 2m")
+        run.status = .cancelled
+        #expect(TurnLabel.fold(run, answerAt: nil) == "You stopped after 2m")
+        run.error = "Interrupted: the computer restarted"
+        #expect(TurnLabel.fold(run, answerAt: nil) == "Interrupted after 2m")
+        run.completedAt = nil
+        #expect(TurnLabel.fold(run, answerAt: "2026-01-01T10:00:30Z") == "Interrupted after 30s")
+    }
+
+    @Test func workTimelineMergesStepsNotesThoughtsAndMessages() {
+        func event(_ id: String, _ type: String, _ message: String, data: JSONValue? = nil) -> RunEvent {
+            RunEvent(id: id, runId: "r", sessionId: "s", timestamp: "2026-01-01T10:00:0\(id)Z", type: type, message: message, data: data)
+        }
+        let events = [
+            event("1", "thinking", "Look at "), event("2", "thinking", "the tests"),
+            event("3", "tool", "npm test", data: .object(["toolCallId": .string("a"), "title": .string("npm test"), "kind": .string("execute"),
+                                                          "status": .string("completed"), "details": .object(["exitCode": .number(1)])])),
+            event("4", "question.answered", "Answered a question"),
+            event("5", "mystery.future", "ignored"),
+            event("7", "compaction", "Context compacted"),
+        ]
+        let interim = ChatMessage(id: "m", sessionId: "s", role: .assistant, content: "Halfway", runId: "r", createdAt: "2026-01-01T10:00:06Z")
+        let ids = WorkEntry.timeline(events: events, interim: [interim]).map(\.id)
+        #expect(ids == ["t-1", "s-a", "n-4", "m-m", "n-7"])
+        if case .thought(_, let text, _)? = WorkEntry.timeline(events: events).first { #expect(text == "Look at the tests") }
+        #expect(ToolStep.fold(events).first?.exitCode == 1)
+    }
+
+    @Test func longOutputKeepsItsHeadAndTail() throws {
+        #expect(ToolStep.keptOutput(head: "a\nb", tail: "y\nz", omitted: 120) == "a\nb\n… 120 lines not kept …\ny\nz")
+        #expect(ToolStep.keptOutput(head: "a", tail: "z", omitted: 1) == "a\n… 1 line not kept …\nz")
+        #expect(ToolStep.keptOutput(head: "all of it", tail: nil, omitted: nil) == "all of it")
+        #expect(ToolStep.keptOutput(head: "all of it", tail: "", omitted: 0) == "all of it")
+        let event = RunEvent(id: "1", runId: "r", sessionId: nil, timestamp: "1", type: "tool", message: "",
+                             data: .object(["toolCallId": .string("a"), "status": .string("failed"),
+                                            "details": .object(["output": .string("head"), "outputTail": .string("Error: boom"),
+                                                                "omittedLines": .number(300), "exitCode": .number(2)])]))
+        let step = try #require(ToolStep.fold([event]).first)
+        #expect(step.isOutputSplit)
+        #expect(step.exitCode == 2)
+        #expect(ToolStep.keptOutput(head: step.output!, tail: step.outputTail, omitted: step.omittedLines).hasSuffix("Error: boom"))
+    }
+
+    @Test func thinkingSegmentsArePartsOfOneThought() {
+        func thinking(_ id: String, _ text: String, segment: Bool) -> RunEvent {
+            RunEvent(id: id, runId: "r", sessionId: "s", timestamp: id, type: "thinking", message: text,
+                     data: segment ? .object(["streamKind": .string("thinking"), "segment": .bool(true)]) : nil)
+        }
+        let entries = WorkEntry.timeline(events: [thinking("1", "Read the ", segment: false), thinking("2", "parser first.", segment: false),
+                                                  thinking("3", "Now edit it.", segment: true)])
+        guard case .thought(_, let text, _)? = entries.first else { Issue.record("no thought"); return }
+        #expect(text == "Read the parser first.\n\nNow edit it.")
+        #expect(entries.count == 1)
+    }
+
+    @Test func olderStepsArePagedBackByCursor() {
+        let log = RunLog(runID: "r")
+        let newest = RunEvent(id: "b", runId: "r", sessionId: nil, timestamp: "2", type: "tool", message: "", data: nil)
+        log.replace(with: [newest])
+        log.setEarlier(RunEventPage(events: [newest], hasMore: true, before: .init(timestamp: "2", id: "b")))
+        #expect(log.hasEarlier)
+        log.prepend(RunEventPage(events: [RunEvent(id: "a", runId: "r", sessionId: nil, timestamp: "1", type: "tool", message: "", data: nil)], hasMore: false))
+        #expect(log.events.map(\.id) == ["a", "b"])
+        #expect(!log.hasEarlier)
+    }
+}
+
+@Suite("Questions and approvals")
+struct QuestionTests {
+    func approval(_ details: JSONValue?) -> Approval {
+        Approval(id: "a", runId: "r", agentName: "Claude", action: "Run a command", target: "~/app", reason: "Run a command",
+                 status: .pending, details: details, createdAt: "1")
+    }
+
+    @Test func questionsDecodeFromDetails() throws {
+        let data = Data(#"{"canApproveOnce":true,"questions":[{"id":"q0","header":"DB","question":"Which database?","options":[{"label":"Postgres","description":"Recommended"},{"label":"SQLite"}],"multiSelect":false,"allowOther":true,"secret":false}]}"#.utf8)
+        let a = approval(try JSONDecoder().decode(JSONValue.self, from: data))
+        #expect(a.isQuestion)
+        #expect(a.headline == "Which database?")
+        #expect(a.questions.first?.options.map(\.label) == ["Postgres", "SQLite"])
+        #expect(a.questions.first?.options.first?.description == "Recommended")
+    }
+
+    @Test func approveOnceFollowsTheAgent() {
+        #expect(approval(nil).canApproveOnce)
+        #expect(!approval(.object(["canApproveOnce": .bool(false)])).canApproveOnce)
+        #expect(!approval(nil).isQuestion)
+    }
+
+    @Test func directThreadsCantAllowForTheThread() throws {
+        let data = Data(#"{"id":"t","projectId":"p","title":"x","openclawSessionKey":"direct:abc","turnMode":"plan","mode":"code","createdAt":"1","updatedAt":"1"}"#.utf8)
+        let thread = try JSONDecoder().decode(ChatThread.self, from: data)
+        #expect(thread.isDirect)
+        #expect(thread.isPlanning)
+    }
+
+    @Test func cardWordsTheRequestOnce() {
+        #expect(ApprovalCard.headline(approval(nil)) == "Claude wants to run a command")
+        #expect(ApprovalCard.reason(approval(nil)) == nil)
+        #expect(ApprovalWording.verbPhrase("NPM install") == "NPM install")
+    }
+
+    @Test func answersFollowTheChoiceRules() {
+        let single = AgentQuestion(id: "a", question: "One?", options: [.init(label: "X"), .init(label: "Y")])
+        let multi = AgentQuestion(id: "b", question: "Many?", options: [.init(label: "X"), .init(label: "Y")], multiSelect: true)
+        let answers = QuestionCard.answers([single, multi], [
+            "a": .init(picked: ["X"], other: "  typed "),
+            "b": .init(picked: ["X", "Y"], other: "Z"),
+        ])
+        #expect(answers["a"] == ["typed"])
+        #expect(answers["b"] == ["X", "Y", "Z"])
+    }
+}
+
+@Suite("Notices")
+struct NoticeTests {
+    func run(_ status: RunStatus, error: String? = nil) -> Run {
+        Run(id: "r", sessionId: "s", status: status, error: error, createdAt: "1", updatedAt: "2")
+    }
+
+    @Test func yourOwnStopIsNotNews() {
+        #expect(Notice.run(run(.cancelled), threadTitle: "Fix login") == nil)
+    }
+
+    @Test func failuresLeadWithTheThreadAndTheFirstLine() throws {
+        let notice = try #require(Notice.run(run(.failed, error: "\nBuild failed: missing module\nstack…"), threadTitle: "Fix login"))
+        #expect(notice.threadTitle == "Fix login")
+        #expect(notice.body == "Failed: Build failed: missing module")
+    }
+
+    @Test func usageLimitsSayWhenTheyLift() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let notice = try #require(Notice.run(run(.failed, error: "Usage limit reached. Try again in 2 hours."), threadTitle: "T", now: now))
+        #expect(notice.kind == .usageLimit)
+        #expect(UsageLimit.detect("Usage limit reached. Try again in 2 hours.", now: now).resetsAt == now.addingTimeInterval(7200))
+        #expect(!UsageLimit.detect("Disk quota exceeded").limited)
+    }
+
+    @Test func questionsAreTheirOwnKind() {
+        let approval = Approval(id: "a", runId: "r", action: "Ask", target: "", reason: "", status: .pending,
+                                details: .object(["questions": .array([.object(["id": .string("q0"), "question": .string("Which one?")])])]),
+                                createdAt: "1")
+        let notice = Notice.approval(approval, threadID: "s", threadTitle: "T")
+        #expect(notice.kind == .question)
+        #expect(notice.body == "Has a question: Which one?")
+    }
+
+    @Test func burstsBecomeOneNotificationOpeningTheMostUrgent() throws {
+        let finished = Notice(kind: .finished, threadID: "a", threadTitle: "A")
+        let failed = Notice(kind: .failed, threadID: "b", threadTitle: "B")
+        let summary = try #require(Notice.coalesce([finished, failed]))
+        #expect(summary.title == "1 thread needs you")
+        #expect(summary.threadID == "b")
+        #expect(Notice.coalesce([finished])?.title == "A")
+        #expect(Notice.coalesce([finished, Notice(kind: .finished, threadID: "c", threadTitle: "C")])?.title == "2 threads finished")
+    }
+}
+
+@Suite("Small rules")
+struct SmallRuleTests {
+    @Test(arguments: [
+        ("src/app.ts", "src/app.ts", nil as Int?), ("Package.swift:12", "Package.swift", 12), ("README.md", "README.md", nil),
+    ])
+    func filesInCodeSpans(_ value: String, _ path: String, _ line: Int?) throws {
+        let ref = try #require(FileRef.read(value))
+        #expect(ref.path == path)
+        #expect(ref.line == line)
+        #expect(FileRef(url: try #require(ref.url)) == ref)
+    }
+
+    @Test(arguments: ["fix/login", "Node.js", "v1.2.3", "github.com/a/b.c", "tmp/", "npm run build", "https://x.dev/a.ts"])
+    func notFiles(_ value: String) {
+        #expect(FileRef.read(value) == nil)
+    }
+
+    @Test func longPromptsFoldOnlyWhenItHidesAsMuchAsItShows() {
+        #expect(!LongPrompt.folds(lines: 9))
+        #expect(!LongPrompt.folds(lines: 15))
+        #expect(LongPrompt.folds(lines: 16))
+    }
+
+    @Test func usageWindowsAreNamedByLength() {
+        #expect(UsageWording.windowLabel(minutes: 300) == "5-hour window")
+        #expect(UsageWording.windowLabel(minutes: 10080) == "Weekly window")
+        #expect(UsageWording.windowLabel(minutes: 90) == "90-minute window")
+        let now = Date.now
+        #expect(UsageWording.isStale(observedAt: now.addingTimeInterval(-600), now: now))
+        #expect(!UsageWording.isStale(observedAt: now.addingTimeInterval(-60), now: now))
+    }
+}
+
+@Suite("Simulator review fixes")
+struct SimulatorReviewTests {
+    @Test func absolutePathsOpenOnlyInsideTheProject() {
+        #expect(FileRef.inProject("src/app.ts", root: "/Users/me/proj") == "src/app.ts")
+        #expect(FileRef.inProject("/Users/me/proj/src/app.ts", root: "/Users/me/proj") == "src/app.ts")
+        #expect(FileRef.inProject("/Users/me/proj/src/app.ts", root: "/Users/me/proj/") == "src/app.ts")
+        #expect(FileRef.inProject("/var/folders/T/review.md", root: "/Users/me/proj") == nil)
+        #expect(FileRef.inProject("/Users/me/project-two/a.ts", root: "/Users/me/proj") == nil)
+        #expect(FileRef.inProject("/Users/me/proj/a.ts", root: nil) == nil)
+    }
+
+    @Test func turnEndShowsTheDayWhenNotToday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let today = now.addingTimeInterval(-3600)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
+        let older = calendar.date(byAdding: .day, value: -30, to: now)!
+        #expect(TurnLabel.stamp(today, now: now, calendar: calendar).contains(":"))
+        #expect(TurnLabel.stamp(yesterday, now: now, calendar: calendar) == "Yesterday")
+        #expect(!TurnLabel.stamp(older, now: now, calendar: calendar).contains(":"))
+    }
+}
+
+@Suite("Tool step names")
+struct ToolStepNameTests {
+    @Test func aStepTitledByItsToolIsNamedByItsCommand() {
+        var step = ToolStep(id: "1", title: "Bash", kind: "execute", state: .done, startedAt: "2026-11-17T00:00:00Z")
+        step.input = "git status --short\ngit log --oneline"
+        #expect(step.command == "git status --short")
+        #expect(step.sentence == "Ran git status --short")
+    }
+
+    @Test func aRealTitleIsKept() {
+        var step = ToolStep(id: "2", title: "npm test", kind: "execute", state: .done, startedAt: "2026-11-17T00:00:00Z")
+        step.input = "something else"
+        #expect(step.command == "npm test")
     }
 }

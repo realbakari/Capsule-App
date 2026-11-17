@@ -20,7 +20,7 @@ struct Harness: Equatable {
     private static let marks: [String: (title: String, hex: String?)] = [
         "claude": ("Claude", "#d97757"),
         "codex": ("Codex", nil),
-        "grok": ("Grok", nil),
+        "grok": ("Grok Build", nil),
         "copilot": ("Copilot", nil),
         "cursor": ("Cursor", nil),
         "gemini": ("Gemini", "#8e75b2"),

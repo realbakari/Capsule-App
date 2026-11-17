@@ -9,9 +9,18 @@ nonisolated struct ToolStep: Identifiable, Equatable {
     var state: State
     /// What the tool was given, when it differs from the title.
     var input: String? = nil
-    /// What it returned (direct mode), or the runtime's summary (Gateway).
+    /// What it returned (direct mode), or the runtime's summary (Gateway). For
+    /// long output, its first lines; `outputTail` holds the last.
     var output: String? = nil
+    /// The last lines of a long output, where errors and summaries print.
+    var outputTail: String? = nil
+    /// Lines the computer dropped between `output` and `outputTail`.
+    var omittedLines: Int? = nil
     var outputTruncated = false
+    /// How a command exited, when the agent said.
+    var exitCode: Int? = nil
+    /// When the call was first seen, for ordering it among the turn's notes and messages.
+    var startedAt = ""
 
     static func fold(_ events: [RunEvent]) -> [ToolStep] {
         var order: [String] = []
@@ -22,7 +31,8 @@ nonisolated struct ToolStep: Identifiable, Equatable {
             let state: State = status == "failed" ? .failed : status == "completed" ? .done : .running
             var step = steps[key] ?? {
                 order.append(key)
-                return ToolStep(id: key, title: event.data?["title"]?.string ?? event.message, kind: event.data?["kind"]?.string, state: state)
+                return ToolStep(id: key, title: event.data?["title"]?.string ?? event.message, kind: event.data?["kind"]?.string, state: state,
+                                startedAt: event.timestamp)
             }()
             step.state = state
             if step.kind == nil { step.kind = event.data?["kind"]?.string }
@@ -30,7 +40,10 @@ nonisolated struct ToolStep: Identifiable, Equatable {
             if let details = event.data?["details"] {
                 if let input = details["input"]?.string, !input.isEmpty { step.input = input }
                 if let output = details["output"]?.string, !output.isEmpty { step.output = output }
+                if let tail = details["outputTail"]?.string { step.outputTail = tail }
+                if case .number(let omitted)? = details["omittedLines"] { step.omittedLines = Int(omitted) }
                 if case .bool(true)? = details["truncated"] { step.outputTruncated = true }
+                if case .number(let code)? = details["exitCode"] { step.exitCode = Int(code) }
             } else if let text = event.data?["data"]?["text"]?.string, !text.isEmpty, state != .running {
                 step.output = Self.stripSummary(text)
             }
@@ -43,8 +56,28 @@ nonisolated struct ToolStep: Identifiable, Equatable {
         }
     }
 
+    /// Whether the middle of the output was dropped, leaving a head and a tail.
+    var isOutputSplit: Bool { outputTail != nil && (omittedLines ?? 0) > 0 }
+
+    /// The output as the computer kept it: the head, a line saying how much
+    /// was dropped, then the tail.
+    static func keptOutput(head: String, tail: String?, omitted: Int?) -> String {
+        guard let tail, let omitted, omitted > 0 else { return head }
+        let gap = omitted == 1 ? String(localized: "… 1 line not kept …")
+            : String(localized: "… \(omitted.formatted()) lines not kept …")
+        return "\(head)\n\(gap)\n\(tail)"
+    }
+
     /// The command without the shell that wraps it: `/bin/zsh -lc "git status"` → `git status`.
-    var command: String { Self.unwrapShell(title) }
+    /// The command itself. A step titled only by its tool ("Bash") is named by the command it ran.
+    var command: String {
+        let named = Self.unwrapShell(title)
+        let toolOnly = ["bash", "shell", "terminal", "execute", "run", "command"].contains(named.lowercased())
+        guard toolOnly, let input, let line = input.split(whereSeparator: \.isNewline).first.map(String.init),
+              !line.trimmingCharacters(in: .whitespaces).isEmpty else { return named }
+        let command = Self.unwrapShell(line)
+        return command.count > 80 ? String(command.prefix(79)) + "…" : command
+    }
 
     static func unwrapShell(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
@@ -117,11 +150,126 @@ nonisolated struct PlanEntry: Identifiable, Equatable {
     }
 }
 
+/// One row in a turn's work, in the order it happened.
+nonisolated enum WorkEntry: Identifiable, Equatable {
+    case step(ToolStep)
+    /// Bookkeeping the computer recorded: an answer given, context compacted.
+    case note(id: String, symbol: String, text: String, at: String)
+    /// What the agent reasoned between steps, consecutive updates joined.
+    case thought(id: String, text: String, at: String)
+    /// A progress note the agent wrote before its final answer.
+    case message(ChatMessage)
+
+    var id: String {
+        switch self {
+        case .step(let step): "s-\(step.id)"
+        case .note(let id, _, _, _): "n-\(id)"
+        case .thought(let id, _, _): "t-\(id)"
+        case .message(let message): "m-\(message.id)"
+        }
+    }
+
+    private var at: String {
+        switch self {
+        case .step(let step): step.startedAt
+        case .note(_, _, _, let at), .thought(_, _, let at): at
+        case .message(let message): message.createdAt
+        }
+    }
+
+    private static let notes: [String: String] = [
+        "approval.resolved": "hand.raised",
+        "question.answered": "questionmark.bubble",
+        "compaction": "arrow.down.right.and.arrow.up.left",
+    ]
+
+    /// Steps, notes, reasoning and interim messages merged by time. Event types the
+    /// phone doesn't know are left out rather than shown raw.
+    static func timeline(events: [RunEvent], interim: [ChatMessage] = []) -> [WorkEntry] {
+        var entries: [WorkEntry] = ToolStep.fold(events).map(WorkEntry.step)
+        var thought: (id: String, text: String, at: String)?
+        func closeThought() {
+            if let open = thought, !open.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                entries.append(.thought(id: open.id, text: open.text, at: open.at))
+            }
+            thought = nil
+        }
+        for event in events {
+            if event.type == "thinking" {
+                let chunk = event.message
+                if var open = thought {
+                    // A segment is a new stretch of reasoning: its own paragraph, not a continuation.
+                    if event.data?["segment"]?.bool == true {
+                        open.text = open.text.isEmpty ? chunk : open.text + "\n\n" + chunk
+                    } else {
+                        open.text = chunk.hasPrefix(open.text) ? chunk : open.text + chunk
+                    }
+                    thought = open
+                } else {
+                    thought = (event.id, chunk, event.timestamp)
+                }
+                continue
+            }
+            // Tool updates arrive between reasoning chunks; only a different kind of row ends a thought.
+            if event.type == "tool" { continue }
+            closeThought()
+            if let symbol = notes[event.type], !event.message.isEmpty {
+                entries.append(.note(id: event.id, symbol: symbol, text: event.message, at: event.timestamp))
+            }
+        }
+        closeThought()
+        entries += interim.map(WorkEntry.message)
+        return entries.enumerated().sorted { ($0.element.at, $0.offset) < ($1.element.at, $1.offset) }.map(\.element)
+    }
+}
+
+/// How a settled turn's fold reads.
+nonisolated enum TurnLabel {
+    /// When a turn ended, short enough for a phone row: the time today, then "Yesterday", then the day.
+    /// The full date and time go to VoiceOver.
+    static func stamp(_ date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return date.formatted(date: .omitted, time: .shortened) }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
+            return String(localized: "Yesterday")
+        }
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        return sameYear ? date.formatted(.dateTime.day().month(.abbreviated)) : date.formatted(.dateTime.day().month(.abbreviated).year())
+    }
+
+    /// "42s", "3m 5s", "1h 2m"; whole units drop their zero.
+    static func duration(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        if total < 60 { return "\(total)s" }
+        let minutes = total / 60, rest = total % 60
+        if minutes < 60 { return rest == 0 ? "\(minutes)m" : "\(minutes)m \(rest)s" }
+        let hours = minutes / 60, restMinutes = minutes % 60
+        return restMinutes == 0 ? "\(hours)h" : "\(hours)h \(restMinutes)m"
+    }
+
+    /// When the turn ended: the run's own time, else its answer's.
+    static func end(_ run: Run, answerAt: String?) -> Date? {
+        (run.completedAt ?? answerAt).flatMap(Timestamp.date)
+    }
+
+    static func fold(_ run: Run, answerAt: String?) -> String {
+        let seconds = Timestamp.date(run.createdAt).flatMap { start in end(run, answerAt: answerAt).map { $0.timeIntervalSince(start) } }
+        let duration = seconds.flatMap { $0 >= 0 ? Self.duration($0) : nil }
+        if run.status == .cancelled {
+            if run.error?.hasPrefix("Interrupted") == true {
+                return duration.map { String(localized: "Interrupted after \($0)") } ?? String(localized: "Interrupted")
+            }
+            return duration.map { String(localized: "You stopped after \($0)") } ?? String(localized: "You stopped this turn")
+        }
+        return duration.map { String(localized: "Worked for \($0)") } ?? String(localized: "Worked")
+    }
+}
+
 /*
- * The work behind a turn, inline in the transcript. Finished turns fold to
- * one line — what happened, how long, how many steps — that opens into the
- * steps and the plan. A live turn keeps its last few steps visible with the
- * current one shimmering, so a glance says what the agent is doing.
+ * The work behind a turn, inline in the transcript. A live turn keeps its
+ * last few steps visible with the current one shimmering, so a glance says
+ * what the agent is doing. Once it settles, everything between the prompt and
+ * the answer folds under one line, "Worked for 3m", with the time it ended:
+ * the steps, its reasoning, and the progress notes it wrote along the way.
  */
 struct WorkLogView: View {
     @Environment(Workspace.self) private var workspace
@@ -129,20 +277,35 @@ struct WorkLogView: View {
     /// This turn's log alone: other turns' tool events don't re-run this view.
     let log: RunLog
     let model: ThreadModel
+    /// Assistant messages before the final answer; they fold with the steps.
+    var interim: [ChatMessage] = []
+    /// When the final answer arrived, for the duration if the run didn't say.
+    var answerAt: String? = nil
+    var highlight: String? = nil
     let showChanges: () -> Void
-    @State private var expanded = false
+    @State private var liveExpanded = false
+
+    private var live: Bool { run.status.isLive }
+    private var expanded: Bool { live ? liveExpanded : model.openFolds.contains(run.id) }
+
+    private func toggle() {
+        if live { liveExpanded.toggle() }
+        else if model.openFolds.contains(run.id) { model.openFolds.remove(run.id) }
+        else { model.openFolds.insert(run.id) }
+    }
 
     var body: some View {
         let events = log.events
+        let entries = WorkEntry.timeline(events: events, interim: live ? [] : interim)
         let steps = ToolStep.fold(events)
         let plan = PlanEntry.latest(in: events)
-        let live = run.status.isLive
         VStack(alignment: .leading, spacing: 2) {
-            summaryRow(steps: steps, live: live)
+            summaryRow(steps: steps)
             if !plan.isEmpty, expanded || live {
                 PlanCard(entries: plan).padding(.vertical, 6)
             }
             if expanded {
+                if log.hasEarlier { earlierRow }
                 if let error = log.error, !log.loaded {
                     HStack(spacing: 8) {
                         Text(error).font(.footnote).foregroundStyle(Color.failure).lineLimit(2)
@@ -150,14 +313,17 @@ struct WorkLogView: View {
                             .font(.footnote.weight(.medium)).buttonStyle(.plain).foregroundStyle(Color.textPrimary)
                     }
                     .padding(.leading, 32)
-                } else if steps.isEmpty {
+                } else if entries.isEmpty {
                     Text(log.loaded ? "No tool steps were recorded." : "Loading steps…")
                         .font(.footnote)
                         .foregroundStyle(Color.textTertiary)
                         .padding(.leading, 32)
                         .padding(.vertical, 4)
                 } else {
-                    ForEach(steps) { StepRow(step: $0) }
+                    ForEach(entries) { entry in
+                        EntryRow(entry: entry)
+                            .background(highlight == entry.id ? Color.attention.opacity(0.12) : .clear, in: .rect(cornerRadius: 10))
+                    }
                 }
             } else if live {
                 ForEach(steps.suffix(3)) { StepRow(step: $0) }
@@ -168,20 +334,36 @@ struct WorkLogView: View {
         .task(id: live) {
             if live, !log.loaded { await workspace.loadEvents(for: run.id, in: model) }
         }
+        .task(id: expanded) {
+            if expanded, !log.loaded { await workspace.loadEvents(for: run.id, in: model) }
+        }
     }
 
-    private func summaryRow(steps: [ToolStep], live: Bool) -> some View {
+    /// The computer sends a turn's newest 200 steps; older ones are a page back.
+    private var earlierRow: some View {
+        HStack(spacing: 8) {
+            Text("Earlier steps are on your computer.").font(.footnote).foregroundStyle(Color.textTertiary)
+            if log.earlier != nil {
+                if log.isLoadingEarlier { ProgressView().controlSize(.mini) } else {
+                    Button("Show earlier") { Task { await workspace.loadEarlierEvents(for: run.id, in: model) } }
+                        .font(.footnote.weight(.medium)).buttonStyle(.plain).foregroundStyle(Color.textPrimary)
+                        .disabled(!workspace.isConnected)
+                }
+            }
+        }
+        .padding(.leading, 32)
+        .padding(.vertical, 4)
+    }
+
+    private func summaryRow(steps: [ToolStep]) -> some View {
         HStack(spacing: 8) {
             Button {
                 Haptics.selection()
-                expanded.toggle()
-                if expanded, !log.loaded {
-                    Task { await workspace.loadEvents(for: run.id, in: model) }
-                }
+                toggle()
             } label: {
                 HStack(spacing: 8) {
                     statusTile
-                    summaryText(steps: steps, live: live)
+                    summaryText(steps: steps)
                         .font(.subheadline)
                         .foregroundStyle(run.status == .failed ? Color.failure : Color.textMuted)
                         .lineLimit(1)
@@ -189,12 +371,18 @@ struct WorkLogView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Color.textTertiary)
                         .rotationEffect(.degrees(expanded ? 180 : 0))
+                    if !live, let end = TurnLabel.end(run, answerAt: answerAt) {
+                        Text(TurnLabel.stamp(end))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Color.textTertiary)
+                            .accessibilityLabel(Text("Ended \(end.formatted(date: .abbreviated, time: .shortened))"))
+                    }
                 }
                 .frame(minHeight: 32)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .accessibilityHint(Text(expanded ? "Hides the steps." : "Shows each step."))
+            .accessibilityHint(Text(expanded ? "Hides the work." : "Shows each step."))
             Spacer(minLength: 0)
             if !live, run.checkpointRef != nil {
                 Button(action: showChanges) {
@@ -211,7 +399,7 @@ struct WorkLogView: View {
         }
     }
 
-    @ViewBuilder private func summaryText(steps: [ToolStep], live: Bool) -> some View {
+    @ViewBuilder private func summaryText(steps: [ToolStep]) -> some View {
         if live {
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 let current = steps.last { $0.state == .running }
@@ -222,31 +410,21 @@ struct WorkLogView: View {
             }
             .shimmering()
         } else {
-            let count = steps.count
-            let duration = elapsed.map { String(localized: " for \($0)") } ?? ""
-            let tail = count == 1 ? String(localized: " · 1 step") : count > 1 ? String(localized: " · \(count) steps") : ""
-            Text("\(stateWord)\(duration)\(tail)")
+            Text(TurnLabel.fold(run, answerAt: answerAt))
         }
     }
 
     private var stateWord: String {
         switch run.status {
         case .queued: String(localized: "Queued")
-        case .running, .waiting: String(localized: "Working")
-        case .approvalRequired: String(localized: "Waiting for your approval")
-        case .completed: String(localized: "Worked")
-        case .failed, .blocked: String(localized: "Failed")
-        case .cancelled: String(localized: "Stopped")
+        case .approvalRequired: String(localized: "Waiting for you")
+        default: String(localized: "Working")
         }
     }
 
     private var elapsed: String? {
         guard let start = Timestamp.date(run.createdAt) else { return nil }
-        let end = run.status.isLive ? Date.now : (run.completedAt.flatMap(Timestamp.date) ?? Timestamp.date(run.updatedAt) ?? .now)
-        let seconds = max(1, Int(end.timeIntervalSince(start)))
-        if seconds < 60 { return "\(seconds)s" }
-        if seconds < 3600 { return "\(seconds / 60)m \(seconds % 60)s" }
-        return "\(seconds / 3600)h \((seconds % 3600) / 60)m"
+        return TurnLabel.duration(max(1, Date.now.timeIntervalSince(start)))
     }
 
     @ViewBuilder private var statusTile: some View {
@@ -265,6 +443,61 @@ struct WorkLogView: View {
     }
 }
 
+private struct EntryRow: View {
+    let entry: WorkEntry
+
+    var body: some View {
+        switch entry {
+        case .step(let step):
+            StepRow(step: step)
+        case .note(_, let symbol, let text, _):
+            HStack(spacing: 8) {
+                IconTile(symbol: symbol, tint: .textTertiary, background: .clear)
+                Text(text).font(.footnote).foregroundStyle(Color.textTertiary).lineLimit(2)
+            }
+            .frame(minHeight: 28)
+        case .thought(_, let text, _):
+            ThoughtRow(text: text)
+        case .message(let message):
+            MessageView(message: message)
+                .padding(.leading, 32)
+                .padding(.vertical, 4)
+        }
+    }
+}
+
+/// The agent's reasoning between steps, folded to one line.
+private struct ThoughtRow: View {
+    let text: String
+    @State private var open = false
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            open.toggle()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                IconTile(symbol: "brain", tint: .textMuted, background: .clear)
+                Text(open ? text : String(localized: "Thought"))
+                    .font(open ? .footnote : .subheadline)
+                    .italic(open)
+                    .foregroundStyle(Color.textMuted)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold)).imageScale(.small)
+                    .foregroundStyle(Color.textTertiary)
+                    .rotationEffect(.degrees(open ? 180 : 0))
+            }
+            .frame(minHeight: 28)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .textSelection(.enabled)
+        .accessibilityHint(Text(open ? "Hides the reasoning." : "Shows what the agent was thinking."))
+    }
+}
+
 private struct StepRow: View {
     let step: ToolStep
     @State private var open = false
@@ -276,16 +509,18 @@ private struct StepRow: View {
                 Haptics.selection()
                 open.toggle()
             } label: {
-                HStack(alignment: open ? .top : .center, spacing: 8) {
+                // Open, the header spells out the command only when no Input block below says it already.
+                let spelled = open && !showsInput
+                HStack(alignment: spelled ? .top : .center, spacing: 8) {
                     IconTile(symbol: Icons.tool(kind: step.kind), tint: step.state == .failed ? .failure : .textMuted,
                              background: .clear)
-                    Text(open ? step.command : step.sentence)
-                        .font(open ? .footnote.monospaced() : .subheadline)
+                    Text(spelled ? step.command : step.sentence)
+                        .font(spelled ? .footnote.monospaced() : .subheadline)
                         .foregroundStyle(step.state == .failed ? Color.failure : Color.textMuted)
-                        .lineLimit(open ? 6 : 1)
+                        .lineLimit(spelled ? 6 : 1)
                         .truncationMode(.middle)
                         .multilineTextAlignment(.leading)
-                        .padding(.top, open ? 4 : 0)
+                        .padding(.top, spelled ? 4 : 0)
                         .shimmering(step.state == .running)
                     Spacer(minLength: 0)
                     if step.state == .failed {
@@ -296,7 +531,7 @@ private struct StepRow: View {
                             .font(.caption2.weight(.semibold)).imageScale(.small)
                             .foregroundStyle(Color.textTertiary)
                             .rotationEffect(.degrees(open ? 180 : 0))
-                            .padding(.top, open ? 8 : 0)
+                            .padding(.top, spelled ? 8 : 0)
                     }
                 }
                 .frame(minHeight: 28)
@@ -308,20 +543,29 @@ private struct StepRow: View {
             .accessibilityHint(hasDetail ? Text(open ? "Hides the output." : "Shows what it ran and returned.") : Text(""))
 
             if open {
-                if let input = step.input, input != step.title, ToolStep.unwrapShell(input) != step.command {
+                if showsInput, let input = step.input {
                     DetailBlock(label: "Input", text: input, limit: 12, showAll: $showAll)
                 }
                 if let output = step.output {
-                    DetailBlock(label: step.state == .failed ? "Error" : "Output", text: output, limit: 16, showAll: $showAll,
-                                truncated: step.outputTruncated)
+                    // A split output is short by construction (12 lines, then 40), and its tail is the point.
+                    DetailBlock(label: outputLabel, text: ToolStep.keptOutput(head: output, tail: step.outputTail, omitted: step.omittedLines),
+                                limit: step.isOutputSplit ? .max : 16, showAll: $showAll, truncated: step.outputTruncated)
                 }
             }
         }
     }
 
-    private var hasDetail: Bool {
-        step.output != nil || (step.input.map { $0 != step.title && ToolStep.unwrapShell($0) != step.command } ?? false)
+    private var outputLabel: LocalizedStringKey {
+        if let code = step.exitCode, code != 0 { return "Output · exit \(code)" }
+        return step.state == .failed && step.exitCode == nil ? "Error" : "Output"
     }
+
+    /// The input differs from what the header already names.
+    private var showsInput: Bool {
+        step.input.map { $0 != step.title && ToolStep.unwrapShell($0) != step.command } ?? false
+    }
+
+    private var hasDetail: Bool { step.output != nil || showsInput }
 }
 
 /// A tool's input or output: monospace, scrolls sideways, long text folds.
@@ -340,15 +584,15 @@ private struct DetailBlock: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.textTertiary)
                 .textCase(.uppercase)
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(shown.joined(separator: "\n"))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(Color.textSecondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(10)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Wrapped like a diff: a sideways scroll with no indicator read as cut-off text.
+            Text(shown.joined(separator: "\n"))
+                .font(.caption.monospaced())
+                .typesettingLanguage(.explicit(Locale.Language(identifier: "zxx")))
+                .foregroundStyle(Color.textSecondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.codeBackground, in: .rect(cornerRadius: 10, style: .continuous))
             if lines.count > limit {
                 Button(showAll ? "Show less" : "Show all \(lines.count) lines") { showAll.toggle() }

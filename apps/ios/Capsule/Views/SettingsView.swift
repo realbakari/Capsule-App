@@ -13,19 +13,28 @@ struct SettingsView: View {
     @AppStorage("display.typeface") private var typeface: String?
     @AppStorage("display.theme") private var theme = AppTheme.system.rawValue
 
+    /// For computers sharing a name: the port when they share an address too, else the address.
+    private func distinguisher(for host: PairedHost) -> String? {
+        let twins = workspace.hosts.filter { $0.name == host.name }
+        guard twins.count > 1 else { return nil }
+        return Set(twins.map(\.host)).count == 1 ? String(localized: "Port \(String(host.port))") : host.host
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
+            CapsuleForm {
                 Section("Computers") {
                     ForEach(workspace.hosts) { host in
                         NavigationLink {
                             ComputerDetail(host: host, onForget: { confirmForget = host }, onEditAddress: { editAddress = host })
                         } label: {
-                            HostRow(host: host, active: host.id == workspace.activeHostID, state: workspace.connectionState)
+                            HostRow(host: host, active: host.id == workspace.activeHostID, state: workspace.connectionState,
+                                    distinguisher: distinguisher(for: host))
                         }
                         .swipeActions {
-                            Button("Forget", role: .destructive) { confirmForget = host }
-                            Button("Address") { editAddress = host }.tint(.gray)
+                            // Named tints: the app's accent otherwise paints Forget near-white in dark mode.
+                            Button("Forget", role: .destructive) { confirmForget = host }.tint(Color.failure)
+                            Button("Address") { editAddress = host }.tint(Color.textMuted)
                         }
                         .contextMenu {
                             Button("Edit address", systemImage: "network") { editAddress = host }
@@ -47,7 +56,7 @@ struct SettingsView: View {
                         ForEach(ReadingTypeface.allCases) { Text($0.title).tag($0) }
                     }
                     Toggle("Backdrop from your computer", isOn: Binding(get: { workspace.showsBackdrop }, set: { workspace.showsBackdrop = $0 }))
-                        .tint(Color.primaryFill)
+                        .tint(Color.success)
                 } header: {
                     Text("Display")
                 } footer: {
@@ -60,14 +69,14 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Notifications", isOn: $notificationsOn)
-                        .tint(Color.primaryFill)
+                        .tint(Color.success)
                         .onChange(of: notificationsOn) { _, on in
                             workspace.notifier.isEnabled = on
                             if on { Task { await workspace.notifier.requestAuthorizationIfNeeded() } }
                         }
                     if notificationsOn {
                         Toggle("Approvals", isOn: $approvalsOn)
-                            .tint(Color.primaryFill)
+                            .tint(Color.success)
                             .onChange(of: approvalsOn) { _, on in workspace.notifier.approvalsEnabled = on }
                         Picker("Finished turns", selection: $turns) {
                             Text("All").tag(Notifier.TurnNotifications.all)
@@ -84,17 +93,20 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Live Activities", isOn: $liveActivitiesOn)
-                        .tint(Color.primaryFill)
+                        .tint(Color.success)
                         .onChange(of: liveActivitiesOn) { _, on in workspace.liveActivitiesEnabled = on }
                 } footer: {
                     Text("A running turn stays on the Lock Screen and in the Dynamic Island, with Allow and Deny when the agent asks. Turns started while Capsule is closed don't get one.")
                 }
 
                 Section {
-                    LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
-                    if let version = workspace.computerVersion {
-                        LabeledContent("Capsule on your computer", value: version)
+                    Group {
+                        LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
+                        if let version = workspace.computerVersion {
+                            LabeledContent("Capsule on your computer", value: version)
+                        }
                     }
+                    .labeledContentStyle(.capsule)
                     if workspace.computerNeedsUpdate {
                         Label("Update Capsule on your computer for everything in this app to work.", systemImage: "arrow.down.circle")
                             .font(.footnote)
@@ -148,6 +160,20 @@ private struct HostRow: View {
     let host: PairedHost
     let active: Bool
     let state: ConnectionState
+    /// Set when another paired computer has the same name: what tells them apart.
+    var distinguisher: String?
+
+    /// One line: what this device may do, and only what else matters now.
+    private var subtitle: String {
+        if host.isExpired { return String(localized: "Pairing ended. Pair again to reconnect.") }
+        // What tells two same-named computers apart leads, so a status beside it never cuts it off.
+        var parts = distinguisher.map { [$0] } ?? []
+        parts.append(host.canControl ? String(localized: "Can send and approve") : String(localized: "Read only"))
+        if host.expiresAt.timeIntervalSinceNow < 7 * 86_400 {
+            parts.append(String(localized: "ends \(host.expiresAt.formatted(.relative(presentation: .named)))"))
+        }
+        return parts.joined(separator: " · ")
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -156,21 +182,13 @@ private struct HostRow: View {
                 .foregroundStyle(Color.textMuted)
                 .frame(width: 28)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(host.name).font(.body.weight(.medium))
-                Text(host.canControl ? "Can send and approve" : "Read only")
-                    .font(.caption).foregroundStyle(Color.textMuted)
-                Text(host.securitySummary).font(.caption).foregroundStyle(Color.textMuted)
-                Text(verbatim: "\(host.host):\(host.port)").font(.caption.monospaced()).foregroundStyle(Color.textTertiary)
-                Text(host.isExpired
-                     ? String(localized: "Pairing expired — pair again")
-                     : String(localized: "Pairing ends \(host.expiresAt.formatted(.relative(presentation: .named)))"))
-                    .font(.caption)
-                    .foregroundStyle(host.isExpired ? Color.failure : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(host.name).font(.body.weight(.medium)).lineLimit(1)
+                Text(subtitle).font(.subheadline).foregroundStyle(host.isExpired ? Color.failure : Color.textMuted).lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 8)
             if active {
-                Text(statusText).font(.caption.weight(.medium)).foregroundStyle(statusColor)
+                Text(statusText).font(.footnote.weight(.medium)).foregroundStyle(statusColor)
             }
         }
         .contentShape(.rect)
@@ -213,7 +231,6 @@ struct NewThreadView: View {
     @State private var error: String?
     @State private var agents: [AgentInfo] = []
     @State private var agentID: String?
-    @State private var mode: ThreadMode = .agent
 
     init(project: Project?, message: String = "", images: [Data] = [], onCreated: @escaping (ChatThread) -> Void) {
         _project = State(initialValue: project)
@@ -224,7 +241,7 @@ struct NewThreadView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            CapsuleForm {
                 if project == nil || !images.isEmpty || workspace.projects.count > 1 {
                     Section {
                         Picker("Project", selection: $project) {
@@ -233,14 +250,6 @@ struct NewThreadView: View {
                         }
                         .pickerStyle(.navigationLink)
                     }
-                }
-                Section {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(ThreadMode.allCases) { item in
-                            Label(String(localized: item.title), systemImage: item.symbol).tag(item)
-                        }
-                    }
-                    .pickerStyle(.menu)
                 }
                 if !agents.isEmpty {
                     Section {
@@ -312,7 +321,7 @@ struct NewThreadView: View {
                 for (index, data) in images.enumerated() where workspace.canAttach {
                     attachments.append(try await workspace.upload(data, name: "Shared photo \(index + 1).jpg", mimeType: "image/jpeg", threadID: thread.id))
                 }
-                try await workspace.send(message.trimmingCharacters(in: .whitespacesAndNewlines), to: model, mode: mode, attachments: attachments)
+                try await workspace.send(message.trimmingCharacters(in: .whitespacesAndNewlines), to: model, attachments: attachments)
             } catch {
                 // The thread exists; open it with the message still to send.
                 UserDefaults.standard.set(message, forKey: "draft.\(thread.id)")
@@ -344,7 +353,7 @@ struct AddressEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            CapsuleForm {
                 Section {
                     TextField("Address", text: $address)
                         .textInputAutocapitalization(.never)
@@ -387,20 +396,26 @@ struct ComputerDetail: View {
     private var current: PairedHost { workspace.hosts.first { $0.id == host.id } ?? host }
 
     var body: some View {
-        Form {
+        CapsuleForm {
             Section {
-                LabeledContent("Address") { Text(verbatim: "\(current.host):\(current.port)").font(.body.monospaced()) }
-                LabeledContent("Connection") { Text(current.securitySummary) }
-                LabeledContent("This device can") { Text(current.canControl ? "Send, stop and approve" : "Read only") }
-                if isActive, let version = workspace.computerVersion {
-                    LabeledContent("Capsule version", value: version)
+                LabeledContent("Status") {
+                    Text(isActive ? (workspace.isConnected ? String(localized: "Connected") : String(localized: "Not connected")) : String(localized: "Not in use"))
+                        .foregroundStyle(isActive && workspace.isConnected ? Color.success : Color.textMuted)
                 }
+                LabeledContent("Can") { Text(current.canControl ? "Send, stop and approve" : "Read only") }
+                LabeledContent("Connection") { Text(current.securityShort) }
+                LabeledContent("Address") { Text(verbatim: "\(current.host):\(current.port)").font(.callout.monospaced()) }
+                if isActive, let version = workspace.computerVersion {
+                    LabeledContent("Capsule", value: version)
+                }
+            } footer: {
+                Text(current.securityDetail)
             }
             Section("Pairing") {
                 LabeledContent("Paired", value: current.pairedAt.formatted(date: .abbreviated, time: .shortened))
                 LabeledContent("Ends") {
                     Text(current.isExpired ? String(localized: "Expired") : current.expiresAt.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(current.isExpired ? Color.failure : Color.textSecondary)
+                        .foregroundStyle(current.isExpired ? Color.failure : Color.textMuted)
                 }
                 if isActive, let last = workspace.lastConnected {
                     LabeledContent("Last connected", value: last.formatted(.relative(presentation: .named)))
@@ -421,12 +436,14 @@ struct ComputerDetail: View {
             }
             Section {
                 if !isActive {
-                    Button("Use this computer", systemImage: "checkmark.circle") { Task { await workspace.activate(current.id) } }
+                    Button("Use this computer") { Task { await workspace.activate(current.id) } }
                 }
-                Button("Edit address", systemImage: "network", action: onEditAddress)
-                Button("Forget this computer", systemImage: "trash", role: .destructive, action: onForget)
+                Button("Edit address", action: onEditAddress)
+                Button("Forget this computer", role: .destructive, action: onForget)
             }
         }
+        // Every row here is a label and a value: one warm grey for every value.
+        .labeledContentStyle(.capsule)
         .navigationTitle(current.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { savedBytes = workspace.savedCopySize(of: current) }
@@ -443,12 +460,9 @@ private struct UsageSection: View {
             if let reports = snapshot?.reports, !reports.isEmpty {
                 Section {
                     ForEach(reports) { source in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(source.report.tier.capitalized).font(.subheadline.weight(.medium))
-                            UsageMeter(label: "This session", window: source.report.window)
-                            UsageMeter(label: "This week", window: source.report.weekly)
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            UsageReport(source: source, now: context.date)
                         }
-                        .padding(.vertical, 4)
                     }
                 } header: {
                     Text("Usage limits")
@@ -461,8 +475,64 @@ private struct UsageSection: View {
     }
 }
 
+/// How a usage report reads: which window, who reported it, and how old it is.
+nonisolated enum UsageWording {
+    /// A report older than this may be out of date.
+    static let staleAfter: TimeInterval = 5 * 60
+
+    static func windowLabel(minutes: Double?) -> String {
+        guard let minutes, minutes > 0 else { return String(localized: "Session window") }
+        let whole = Int(minutes.rounded())
+        if whole == 7 * 24 * 60 { return String(localized: "Weekly window") }
+        return whole % 60 == 0 ? String(localized: "\(whole / 60)-hour window") : String(localized: "\(whole)-minute window")
+    }
+
+    static func isStale(observedAt: Date, now: Date) -> Bool {
+        abs(now.timeIntervalSince(observedAt)) > staleAfter
+    }
+
+    /// "As of 14:05 · 3 min ago"
+    static func asOf(_ observedAt: Date, now: Date) -> String {
+        let time = observedAt.formatted(date: Calendar.current.isDate(observedAt, inSameDayAs: now) ? .omitted : .abbreviated, time: .shortened)
+        guard observedAt <= now else { return String(localized: "As of \(time)") }
+        let minutes = Int(now.timeIntervalSince(observedAt) / 60)
+        let age = minutes == 0 ? String(localized: "less than a minute ago") : String(localized: "\(minutes) min ago")
+        return String(localized: "As of \(time) · \(age)")
+    }
+}
+
+private struct UsageReport: View {
+    let source: ProviderUsageSnapshot.Source
+    let now: Date
+
+    var body: some View {
+        let report = source.report
+        let observed = Date(timeIntervalSince1970: report.observedAtMs / 1000)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(report.tier.capitalized).font(.subheadline.weight(.medium))
+                Spacer()
+                if UsageWording.isStale(observedAt: observed, now: now) {
+                    Label("May be out of date", systemImage: "clock.badge.exclamationmark")
+                        .font(.caption)
+                        .foregroundStyle(Color.attention)
+                }
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text("From \(source.title.isEmpty ? String(localized: "an untitled thread") : source.title)")
+                Text(UsageWording.asOf(observed, now: now))
+            }
+            .font(.caption)
+            .foregroundStyle(Color.textTertiary)
+            UsageMeter(label: UsageWording.windowLabel(minutes: report.window.windowDurationMins), window: report.window)
+            UsageMeter(label: String(localized: "Weekly window"), window: report.weekly)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 private struct UsageMeter: View {
-    let label: LocalizedStringKey
+    let label: String
     let window: ProviderUsageSnapshot.Window
 
     var body: some View {

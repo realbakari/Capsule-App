@@ -59,7 +59,7 @@ The app does nothing without a Capsule desktop to pair with. Give reviewers a
 short note like this:
 
 > Capsule for iPhone pairs with the Capsule desktop app on the same network.
-> To review it, install Capsule on a Mac, open Settings → Gateway → Browser
+> To review it, install Capsule on a Mac, open Settings → General → Browser
 > access, set the reach to "This network", choose "Pair a phone", and scan the
 > code with this app. A demo video is attached.
 

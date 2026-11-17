@@ -21,11 +21,11 @@ struct PairingView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            CapsuleForm {
                 Section {
                     VStack(alignment: .leading, spacing: 10) {
-                        step(1, "On your computer, open Capsule → Settings → Gateway → Browser access.")
-                        step(2, "Set the reach to This network, then choose Pair a phone.")
+                        step(1, "On your computer, open Capsule → Settings → Devices & access.")
+                        step(2, "Under Remote access, set Who can reach it to This network, then choose Pair a phone.")
                         step(3, canScan ? "Scan the code it shows, or paste its link below." : "Copy its link and paste it below.")
                     }
                     .padding(.vertical, 4)

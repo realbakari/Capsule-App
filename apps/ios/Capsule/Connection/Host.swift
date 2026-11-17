@@ -46,6 +46,24 @@ nonisolated struct PairedHost: Codable, Identifiable, Hashable, Sendable {
         return usesTLS ? .systemTLS : .plaintext
     }
 
+    /// The connection in a word or two, for a row's value.
+    var securityShort: LocalizedStringResource {
+        switch security {
+        case .pinned: "Encrypted"
+        case .systemTLS: "Encrypted (HTTPS)"
+        case .plaintext: "Not encrypted"
+        }
+    }
+
+    /// What that means, for the section's footer.
+    var securityDetail: LocalizedStringResource {
+        switch security {
+        case .pinned: "Only this computer can read what this device sends; the pairing code proved it was yours."
+        case .systemTLS: "Encrypted with the computer's HTTPS certificate."
+        case .plaintext: "Anyone on the network could read this connection, so this device can only read."
+        }
+    }
+
     var securitySummary: LocalizedStringResource {
         switch security {
         case .pinned: "Encrypted, verified by pairing code"
@@ -58,7 +76,7 @@ nonisolated struct PairedHost: Codable, Identifiable, Hashable, Sendable {
 /// Trades a one-time pairing token for a session on the computer.
 nonisolated enum Pairing {
     enum Failure: LocalizedError {
-        case rejected(String), unreachable(String), untrusted, malformed
+        case rejected(String), unreachable(String), untrusted, malformed, loopback(String)
 
         var errorDescription: String? {
             switch self {
@@ -74,6 +92,8 @@ nonisolated enum Pairing {
                 String(localized: "The computer's security certificate doesn't match the pairing code. Nothing was sent. Create a new code on your computer.")
             case .malformed:
                 String(localized: "Your computer sent a reply this app doesn't understand. Update Capsule on your computer.")
+            case .loopback(let host):
+                String(localized: "This code points to \(host), the address a device uses for itself, so this device can't reach your computer with it. On your computer, under Remote access, set Who can reach it to This network, then create a new code.")
             }
         }
     }
@@ -87,6 +107,10 @@ nonisolated enum Pairing {
     }
 
     static func exchange(_ link: PairingLink, label: String) async throws -> (PairedHost, String) {
+        #if !targetEnvironment(simulator)
+        // Say why up front: trying would only time out with "could not connect".
+        if link.isLoopback { throw Failure.loopback(link.host) }
+        #endif
         let fingerprint: String? = if case .pinned(let fp) = link.security { fp } else { nil }
         let trust = PinnedTrust(fingerprint: fingerprint)
         let session = trust.makeSession()
