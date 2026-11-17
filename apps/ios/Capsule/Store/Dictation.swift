@@ -77,13 +77,14 @@ final class Dictation {
             let engine = AVAudioEngine()
             let node = engine.inputNode
             let micFormat = node.outputFormat(forBus: 0)
-            guard let converter = AVAudioConverter(from: micFormat, to: format) else { throw DictationError.noFormat }
-            node.installTap(onBus: 0, bufferSize: 4096, format: micFormat) { [weak self] buffer, _ in
-                let level = Self.rms(buffer)
-                guard let converted = Self.convert(buffer, with: converter, to: format) else { return }
-                continuation.yield(AnalyzerInput(buffer: converted))
+            // No input (another app holds the mic, a call): a zero-rate tap would abort.
+            guard micFormat.sampleRate > 0, micFormat.channelCount > 0,
+                  let converter = AVAudioConverter(from: micFormat, to: format) else { throw DictationError.noFormat }
+            let meter: @Sendable (Float) -> Void = { [weak self] level in
                 Task { @MainActor in self?.level = level }
             }
+            node.installTap(onBus: 0, bufferSize: 4096, format: micFormat,
+                            block: Self.tap(converter: converter, format: format, into: continuation, meter: meter))
             engine.prepare()
             try engine.start()
             self.engine = engine
@@ -125,6 +126,19 @@ final class Dictation {
     }
 
     enum DictationError: Error { case noFormat }
+
+    /// The microphone tap, built outside the main actor. Audio calls it on its own
+    /// thread; a closure written inside `start()` would be main-actor isolated and
+    /// stop the app on the first buffer.
+    nonisolated private static func tap(converter: AVAudioConverter, format: AVAudioFormat,
+                                        into continuation: AsyncStream<AnalyzerInput>.Continuation,
+                                        meter: @escaping @Sendable (Float) -> Void) -> AVAudioNodeTapBlock {
+        return { buffer, _ in
+            meter(rms(buffer))
+            guard let converted = convert(buffer, with: converter, to: format) else { return }
+            continuation.yield(AnalyzerInput(buffer: converted))
+        }
+    }
 
     nonisolated private static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
         let ratio = format.sampleRate / buffer.format.sampleRate
