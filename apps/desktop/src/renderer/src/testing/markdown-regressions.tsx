@@ -35,7 +35,14 @@ function effectiveBackground(element: Element): string {
     if (alpha > 0) layers.push([parts[0]!, parts[1]!, parts[2]!, alpha]);
     if (alpha >= 1) break;
   }
-  let color = layers.at(-1)?.[3] === 1 ? layers.pop()!.slice(0, 3) : [255, 255, 255];
+  // With no opaque layer in the stack (a transparent window), the page itself shows the theme's canvas.
+  const canvas = () => {
+    const probe = document.body.appendChild(Object.assign(document.createElement("div"), { style: "background: var(--bg)" }));
+    const parts = getComputedStyle(probe).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [255, 255, 255];
+    probe.remove();
+    return parts.slice(0, 3);
+  };
+  let color = layers.at(-1)?.[3] === 1 ? layers.pop()!.slice(0, 3) : canvas();
   for (const [r, g, b, a] of layers.reverse()) color = [r! * a! + color[0]! * (1 - a!), g! * a! + color[1]! * (1 - a!), b! * a! + color[2]! * (1 - a!)];
   return `rgb(${color.map((value) => Math.round(value)).join(", ")})`;
 }

@@ -100,9 +100,9 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     root.render(<CopyButton text="Saved reply" />);
     await until(() => document.querySelector('[aria-label="Copy message"]'));
     document.querySelector<HTMLButtonElement>('[aria-label="Copy message"]')!.click();
-    await until(() => document.querySelector('[role="status"]')?.textContent === "Copy failed · retry");
+    await until(() => document.querySelector('.copy-action [role="status"]')?.textContent === "Copy failed · retry");
     document.querySelector<HTMLButtonElement>('[aria-label="Retry copy message"]')!.click();
-    await until(() => document.querySelector('[role="status"]')?.textContent === "Copied");
+    await until(() => document.querySelector('.copy-action [role="status"]')?.textContent === "Copied");
     assert(writes === 2, "Clipboard retry was lost");
 
     let resolveOld!: (value: unknown) => void;
