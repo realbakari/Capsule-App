@@ -4,7 +4,7 @@ import { object } from "./transport.js";
 /** Keep displayable operation facts; never stringify binary or opaque provider output. */
 export function nativeToolDetails(item: Record<string, unknown>): ToolActivityDetails {
   if (item.type === "commandExecution") return readToolActivityDetails({
-    rawInput: item.command, rawOutput: item.aggregatedOutput,
+    rawInput: item.command, rawOutput: item.aggregatedOutput, exitCode: item.exitCode,
   });
   if (item.type === "fileChange" && Array.isArray(item.changes)) {
     const changes = item.changes.slice(0, 8).map(object);

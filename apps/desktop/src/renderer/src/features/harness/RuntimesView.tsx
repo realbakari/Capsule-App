@@ -1,25 +1,25 @@
 import { harnessReadinessLabel, isFeaturedHarness } from "../../lib/harness";
-import { harnessCapabilities } from "@capsule/shared";
 import { CapabilityDetails } from "./CapabilityDetails";
 import { HarnessCatalogRow } from "./HarnessCatalogRow";
 import { AgentStoreControls, useCanInstall } from "./AgentStoreControls";
 import { useAgentStore } from "./agent-store";
 import { SignInDialog } from "./SignInDialog";
+import { AgentLaunchSettings } from "./AgentLaunchSettings";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  APPROVAL_PRESETS,
-  approvalPreset,
-  type AcpMode,
-  type HarnessLiveStatus,
-  type HarnessStatus,
-} from "@capsule/shared";
+import { agentEnabled, type HarnessLiveStatus, type HarnessStatus } from "@capsule/shared";
 import { AgentGlyph } from "../shell/AgentGlyph";
 import { GatewayBanner } from "../shell/GatewayBanner";
 import { Switch } from "../settings/controls";
-import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { HarnessSessionDiagnostics } from "./HarnessSessionDiagnostics";
 import { harnessStatusIdentity } from "../../lib/harness-status-cache";
+
+/** Said per route: direct mode has no Gateway to blame for an empty list. */
+function emptyAgentsCopy(runtimeMode: string | undefined, connected: boolean): string {
+  if (runtimeMode === "direct") return "No agents found on this computer yet.";
+  if (!connected) return "No agents yet. Connect the Gateway, or run agents on this computer from Settings, under Agents.";
+  return "The Gateway reported no agents.";
+}
 
 function canSpawn(readiness: string): boolean {
   return readiness === "ready" || readiness === "dedicated" || readiness === "running";
@@ -30,6 +30,12 @@ function spawnBlockReason(connected: boolean, projectId?: string, folder?: strin
   if (!projectId) return "Select a project first.";
   if (!folder) return "Open a code folder (⌘O). The agent starts in it.";
   return undefined;
+}
+
+/** Readiness in words, naming the default only for the project on screen. */
+function readinessHere(harness: HarnessStatus, isProjectDefault?: boolean): string {
+  const label = harnessReadinessLabel(harness.readiness);
+  return isProjectDefault && label === "Ready" ? "Ready · this project's default" : label;
 }
 
 /** Installed and reachable agents come first; the rest are a longer list. */
@@ -45,7 +51,8 @@ function isInstalled(harness: HarnessStatus): boolean {
 
 export function RuntimesView() {
   const {
-    harnesses: harnessList,
+    harnesses: shownHarnessList,
+    allHarnesses: harnessList = shownHarnessList,
     harnessSessions,
     harnessStatuses,
     doctors,
@@ -56,8 +63,6 @@ export function RuntimesView() {
     dedicateHarness,
     undedicateHarness,
     doctorHarness,
-    pickProjectDirectory,
-    setHarnessOption,
     sessionId,
     setSessionId,
     setView,
@@ -68,7 +73,6 @@ export function RuntimesView() {
     settings,
     api,
   } = useWorkspace();
-  const [spawnMode, setSpawnMode] = useState<AcpMode>("persistent");
   const [showAll, setShowAll] = useState(false);
   const [selectedHarnessId, setSelectedHarnessId] = useState<string>();
   const [configuredSessionId, setConfiguredSessionId] = useState<string>();
@@ -106,6 +110,16 @@ export function RuntimesView() {
     selectedSessions[0];
   const configuredStatus = configuredSession ? harnessStatuses[configuredSession.id] : undefined;
 
+  /* A copy installed or removed outside Capsule changes what the store row should say. */
+  const copies = harnesses.map((item) => `${item.id}:${item.binaryPath ?? ""}`).join("|");
+  const { relist } = store;
+  const listedCopies = useRef(copies);
+  useEffect(() => {
+    if (listedCopies.current === copies) return;
+    listedCopies.current = copies;
+    void relist();
+  }, [copies, relist]);
+
   useEffect(() => {
     const id = configuredSession?.id;
     const identity = configuredSession ? harnessStatusIdentity(configuredSession, project) : "";
@@ -128,31 +142,6 @@ export function RuntimesView() {
         {needsGateway && <GatewayBanner />}
         {blockReason && <p className="notice">{blockReason}</p>}
 
-        <div className="harness-context-bar">
-          <div className="harness-context-folder">
-            <span>Project folder</span>
-            <strong className="mono">
-              {formatProjectRoot(project?.workingDirectory, {
-                home: api.homeDir,
-                fallback: "No folder chosen",
-              })}
-            </strong>
-          </div>
-          <div className="harness-context-actions">
-            <button className="chip" disabled={!projectId} onClick={() => void pickProjectDirectory()}>
-              Change
-            </button>
-            <select
-              aria-label="Session mode"
-              value={spawnMode}
-              onChange={(event) => setSpawnMode(event.target.value as AcpMode)}
-            >
-              <option value="persistent">Persistent session</option>
-              <option value="oneshot">One turn</option>
-            </select>
-          </div>
-        </div>
-
         <div className="harness-workspace">
           <aside className="harness-catalog" aria-label="Available agents">
             <div className="harness-catalog-heading">
@@ -162,7 +151,9 @@ export function RuntimesView() {
             {listed.map((harness) => {
               const storeRow = store.row(harness.id);
               return <HarnessCatalogRow key={harness.id} id={harness.id} name={harness.name}
-                detail={storeRow.kind === "busy" ? `${storeRow.label}…` : isInstalled(harness) ? harnessReadinessLabel(harness.readiness) : "Not installed"}
+                detail={storeRow.kind === "busy" ? `${storeRow.label}…`
+                  : !agentEnabled(settings?.agentOverrides, harness.id) ? "Turned off"
+                    : isInstalled(harness) ? readinessHere(harness, project?.defaultAgentId === harness.id) : "Not installed"}
                 selected={selectedHarness?.id === harness.id}
                 sessionOpen={harnessSessions.some((item) => item.harnessId === harness.id)}
                 onSelect={() => setSelectedHarnessId(harness.id)} />;
@@ -192,7 +183,7 @@ export function RuntimesView() {
               }
               onConnect={() => void api.connectGateway()}
               onSignIn={api.isDesktop === false ? undefined : () => setSignInId(selectedHarness.id)}
-              onSpawn={() => void spawnHarness(selectedHarness.id, undefined, { mode: spawnMode })}
+              onSpawn={() => void spawnHarness(selectedHarness.id)}
               onOpen={(id) => {
                 setSessionId(id);
                 setView("chat");
@@ -203,31 +194,15 @@ export function RuntimesView() {
               }}
               onCancel={(id) => void cancelHarness(id)}
               onClose={(id) => void closeHarness(id)}
-              onOption={(key, value) =>
-                void setHarnessOption(key, value, configuredSession?.id)
-              }
             />
           ) : (
-            <div className="harness-detail harness-empty">No agents were reported by the Gateway.</div>
+            <div className="harness-detail harness-empty">{emptyAgentsCopy(settings?.runtimeMode, connected)}</div>
           )}
         </div>
 
         {signInId && harnesses.some((item) => item.id === signInId) ? (
           <SignInDialog harness={harnesses.find((item) => item.id === signInId)!} onClose={() => setSignInId(undefined)} />
         ) : null}
-
-        <details className="card">
-          <summary>How Capsule starts an agent</summary>
-          <p className="muted">
-            Agents run through the OpenClaw acpx plugin on the Gateway host — not inside Capsule and
-            not inside the OpenClaw sandbox. Capsule sends{" "}
-            <span className="mono">/acp spawn &lt;id&gt; --bind off --mode {spawnMode}</span> with
-            the project folder as <span className="mono">--cwd</span>. Standard and Full access set
-            the Gateway to <span className="mono">approve-all</span>; Supervised refuses a tool
-            rather than asking, because acpx cannot show a prompt. Vendor sign-in stays with the
-            agent's own CLI, and model ids are not portable between agents.
-          </p>
-        </details>
       </div>
     </section>
   );
@@ -251,7 +226,6 @@ function HarnessDetail({
   onStatus,
   onCancel,
   onClose,
-  onOption,
 }: {
   harness: HarnessStatus;
   doctor?: { checks: Array<{ id: string; label: string; ok: boolean; detail: string }>; gatewayOutput?: string };
@@ -271,19 +245,11 @@ function HarnessDetail({
   onStatus: (id: string) => void;
   onCancel: (id: string) => void;
   onClose: (id: string) => void;
-  onOption: (key: "permissions" | "model" | "timeout" | "mode", value: string) => void;
 }) {
   const installed = isInstalled(harness);
   const installable = useCanInstall(harness.id);
   const signedOut = harness.readiness === "needs_login" && harness.loginState !== "config_invalid";
   const activeSession = live.find((item) => item.id === activeSessionId);
-  const capabilities = harnessCapabilities({ harness, session: activeSession, status });
-  const advertisedModels = status?.parsed?.models?.availableModels ?? [];
-  const currentModel =
-    activeSession?.modelOverride ??
-    status?.parsed?.models?.currentModelId ??
-    status?.parsed?.model ??
-    "";
   return (
     <section className="harness-detail">
       <div className="harness-detail-head">
@@ -300,7 +266,7 @@ function HarnessDetail({
           </div>
         </div>
         <span className={`readiness ${harness.readiness}`}>
-          {harnessReadinessLabel(harness.readiness)}
+          {readinessHere(harness, dedicated)}
         </span>
       </div>
       <AgentStoreControls harnessId={harness.id} name={harness.name} />
@@ -320,6 +286,7 @@ function HarnessDetail({
           />
         </div>
       </div>
+      <AgentLaunchSettings harness={harness} />
 
       {doctor && (
         <div className="harness-doctor">
@@ -367,123 +334,38 @@ function HarnessDetail({
         )}
       </div>
 
-      <CapabilityDetails harness={harness} session={activeSession} status={status} />
       {live.length > 0 && (
         <div className="harness-live-sessions">
-          <div className="nav-label">
-            Open sessions
-          </div>
+          <div className="nav-label">Open sessions</div>
           {live.map((item) => (
             <div className="harness-session-row" key={item.id}>
               <button className="list-item" onClick={() => onOpen(item.id)}>
                 {item.title}
                 <span className="meta">{item.harnessState}</span>
               </button>
-              <div className="actions" style={{ marginTop: 0 }}>
-                <button className="ghost" onClick={() => onStatus(item.id)}>
-                  Refresh
-                </button>
-                <button className="ghost" onClick={() => onCancel(item.id)}>
-                  Cancel turn
-                </button>
-                <button className="danger" onClick={() => onClose(item.id)}>
-                  Close
-                </button>
+              <div className="actions">
+                <button className="danger" onClick={() => onClose(item.id)}>Close</button>
               </div>
             </div>
           ))}
-          {activeSession && capabilities.route !== "direct" && (
-            <fieldset className="harness-options" disabled={capabilities.tuning.state === "unavailable"} title={capabilities.tuning.detail}>
-              <label>
-                <span>Approvals</span>
-                <select
-                  className="field-select"
-                  value={approvalPreset(activeSession.permissionProfile).id}
-                  onChange={(event) => {
-                    if (event.target.value) onOption("permissions", event.target.value);
-                  }}
-                >
-                  {APPROVAL_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Model</span>
-                {advertisedModels.length > 0 ? (
-                  <select
-                    className="field-select"
-                    value={currentModel}
-                    onChange={(event) => {
-                      if (event.target.value) onOption("model", event.target.value);
-                    }}
-                  >
-                    {currentModel &&
-                      !advertisedModels.some((model) => model.modelId === currentModel) && (
-                        <option value={currentModel}>{currentModel}</option>
-                      )}
-                    {!currentModel && <option value="">Choose a model</option>}
-                    {advertisedModels.map((model) => (
-                      <option key={model.modelId} value={model.modelId}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    key={currentModel}
-                    type="text"
-                    defaultValue={currentModel}
-                    placeholder="Model id, then press Enter"
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        const value = event.currentTarget.value.trim();
-                        if (value) onOption("model", value);
-                      }
-                    }}
-                  />
-                )}
-                <small className="muted">
-                  {advertisedModels.length > 0
-                    ? `${advertisedModels.length} ${advertisedModels.length === 1 ? "model" : "models"} reported by ${harness.name}.`
-                    : status
-                      ? `${harness.name} did not advertise a model list; enter a supported model id.`
-                      : "Loading models from the live ACP session…"}
-                </small>
-              </label>
-              <label>
-                <span>Turn timeout</span>
-                <input
-                  type="text"
-                  placeholder="Seconds, then Enter"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      const value = event.currentTarget.value.trim();
-                      if (value) onOption("timeout", value);
-                    }
-                  }}
-                />
-              </label>
-              <label>
-                <span>Agent mode</span>
-                <input
-                  type="text"
-                  placeholder="The agent's own mode, then Enter"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      const value = event.currentTarget.value.trim();
-                      if (value) onOption("mode", value);
-                    }
-                  }}
-                />
-              </label>
-            </fieldset>
-          )}
-          <HarnessSessionDiagnostics status={status} />
         </div>
       )}
+
+      {/* Protocol detail is for diagnosing a session, not for choosing an agent. */}
+      <details className="advanced harness-advanced">
+        <summary>Advanced</summary>
+        {live.map((item) => (
+          <div className="harness-session-row" key={item.id}>
+            <span className="harness-session-name">{item.title}</span>
+            <div className="actions">
+              <button className="ghost" onClick={() => onStatus(item.id)}>Refresh status</button>
+              <button className="ghost" onClick={() => onCancel(item.id)}>Cancel turn</button>
+            </div>
+          </div>
+        ))}
+        <CapabilityDetails harness={harness} session={activeSession} status={status} />
+        <HarnessSessionDiagnostics status={status} />
+      </details>
     </section>
   );
 }

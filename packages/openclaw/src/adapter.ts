@@ -37,7 +37,6 @@ import {
   type RunEventHandler,
   type RuntimeStatus,
   type Session,
-  type Skill,
   type Unsubscribe,
 } from "@capsule/shared";
 import {
@@ -329,19 +328,6 @@ export class OpenClawAdapter implements AgentRuntime {
       });
     }
     return this.cachedAgents;
-  }
-
-  async listSkills(): Promise<Skill[]> {
-    try {
-      const payload = await this.request<{ plugins?: unknown[]; skills?: unknown[] }>(
-        "plugins.list",
-        {},
-      );
-      const rows = payload.skills ?? payload.plugins ?? [];
-      return rows.map((row) => this.mapSkill(row));
-    } catch {
-      return [];
-    }
   }
 
   async listChannels(): Promise<ChannelBinding[]> {
@@ -770,6 +756,27 @@ export class OpenClawAdapter implements AgentRuntime {
     }
   }
 
+  /**
+   * Whether each listed session has a turn in flight, for a reconnect to
+   * settle turns whose end frame it missed. A row that does not say maps to
+   * undefined; a session the Gateway no longer lists is absent. Undefined
+   * when the Gateway could not be asked.
+   */
+  async sessionActivity(): Promise<Map<string, boolean | undefined> | undefined> {
+    try {
+      const payload = await this.request<{ sessions?: unknown[] }>("sessions.list", {});
+      const activity = new Map<string, boolean | undefined>();
+      for (const row of payload.sessions ?? []) {
+        const record = asRecord(row);
+        const key = asString(record.key, asString(record.sessionKey, asString(record.id)));
+        if (key) activity.set(key, typeof record.hasActiveRun === "boolean" ? record.hasActiveRun : undefined);
+      }
+      return activity;
+    } catch {
+      return undefined;
+    }
+  }
+
   async waitForReply(sessionKey: string, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
       const chunks = new TextBudget();
@@ -1145,22 +1152,6 @@ export class OpenClawAdapter implements AgentRuntime {
       status: record.hasActiveRun ? "running" : "idle",
       kind: record.kind === "system" ? "system" : "agent",
       recentRunIds: [],
-    };
-  }
-
-  private mapSkill(row: unknown): Skill {
-    const record = asRecord(row);
-    const id = asString(record.id, asString(record.pluginId, createId("skill")));
-    return {
-      id,
-      name: asString(record.name, id),
-      version: asString(record.version, "0.0.0"),
-      description: asString(record.description, ""),
-      source: asString(record.source, "openclaw"),
-      status: record.enabled === false ? "disabled" : "installed",
-      requirements: [],
-      permissions: {},
-      validation: "unvalidated",
     };
   }
 

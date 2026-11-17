@@ -147,6 +147,7 @@ export type AgentStreamKind =
   | "command"
   | "patch"
   | "error"
+  | "compaction"
   | "lifecycle";
 
 const STREAM_KINDS: Record<string, AgentStreamKind> = {
@@ -166,7 +167,9 @@ const STREAM_KINDS: Record<string, AgentStreamKind> = {
   diff: "patch",
   error: "error",
   lifecycle: "lifecycle",
-  compaction: "lifecycle",
+  // The agent summarised its own context. Its own kind, so the transcript can
+  // mark it; as lifecycle it was dropped, and a status on it could end the turn.
+  compaction: "compaction",
   approval: "lifecycle",
   assistant: "message",
   acp: "message",

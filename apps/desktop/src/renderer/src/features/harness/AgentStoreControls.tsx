@@ -1,12 +1,26 @@
 import type { HarnessId } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
+import { CopyButton } from "../conversation/CopyButton";
 import { useAgentStore } from "./agent-store";
+import type { UserCopyUpdate } from "./agent-store-model";
 import "./agent-store.css";
+
+/** Asks before the owning package manager replaces a copy the user installed. */
+export function confirmUserCopyUpdate(name: string, update: UserCopyUpdate, run: () => void) {
+  return {
+    title: `Update ${name} to v${update.version}?`,
+    detail: `Capsule runs ${update.command}, the same tool you installed it with. Conversations already open keep the version they started with until they start again.`,
+    confirmLabel: "Update",
+    onConfirm: run,
+  };
+}
 
 /**
  * Install, update or remove one agent from inside Capsule. Nothing happens
- * until a button is pressed. A copy the user installed is named, never touched.
- * `inline` is the one-line form for the composer notice and first run.
+ * until a button is pressed. A copy the user installed is never removed; when
+ * it is behind, Capsule offers its owner's update command, and runs it only
+ * after asking. `inline` is the one-line form for the composer notice and
+ * first run.
  */
 export function AgentStoreControls({ harnessId, name, inline = false }: { harnessId: HarnessId; name: string; inline?: boolean }) {
   const { setConfirm } = useWorkspace();
@@ -17,8 +31,27 @@ export function AgentStoreControls({ harnessId, name, inline = false }: { harnes
   switch (row.kind) {
     case "none":
       return null;
-    case "user":
-      return inline ? null : <p className="agent-store-note">Installed by you at <code title={row.path}>{row.path}</code></p>;
+    case "user": {
+      if (inline) return null;
+      const { update } = row;
+      return <div className="agent-store agent-store-user">
+        <span className="agent-store-caption" title={row.path}>
+          {/* The agent's detail already prints the path; the tooltip keeps this copy's own. */}
+          Installed by you{row.version ? ` · v${row.version}` : ""}
+        </span>
+        {update && act && update.oneClick
+          ? <button type="button" className="chip" onClick={() => setConfirm(confirmUserCopyUpdate(name, update, () => {
+            setConfirm(undefined);
+            void store.updateUserCopy(harnessId);
+          }))}>Update to v{update.version}</button>
+          : update
+            ? <span className="agent-store-manual">
+              <span>v{update.version} is out. Update with <code>{update.command}</code></span>
+              <CopyButton text={update.command} label="Copy update command" />
+            </span>
+            : null}
+      </div>;
+    }
     case "unavailable":
       return <p className="agent-store-note">{row.reason}</p>;
     case "busy":

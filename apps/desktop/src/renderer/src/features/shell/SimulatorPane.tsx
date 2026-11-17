@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { Simulator, SimulatorAction, SimulatorApp, SimulatorFrame, SimulatorInventory, SimulatorOrientation } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
-import { SimulatorAttach } from "./SimulatorAttach";
+import { SimulatorAttach, simulatorStateLabel } from "./SimulatorAttach";
 import { SimulatorTools } from "./SimulatorTools";
 import { SimulatorAnnotator } from "./SimulatorAnnotator";
 import { InspectorHeadSlot } from "./inspector-slot";
@@ -65,10 +65,6 @@ function remember(key: string, value: string | undefined): void {
   } catch { /* Optional preference. */ }
 }
 
-function stateLabel(state: Simulator["state"]): string {
-  return state === "Shutting Down" ? "Shutting down" : state;
-}
-
 interface PointerTrack {
   pointerId: number;
   startX: number;
@@ -89,6 +85,7 @@ export function SimulatorPane() {
   const [attaching, setAttaching] = useState(false);
   const [attachMenu, setAttachMenu] = useState(false);
   const attachMenuRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState<SimulatorFrame>();
   const [frameError, setFrameError] = useState<string>();
   const [live, setLive] = useState(true);
@@ -146,6 +143,18 @@ export function SimulatorPane() {
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [attachMenu]);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const outside = (event: PointerEvent) => { if (!pickerRef.current?.contains(event.target as Node)) setPickerOpen(false); };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPickerOpen(false);
+      pickerRef.current?.querySelector<HTMLButtonElement>(".simulator-picker-trigger")?.focus();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [pickerOpen]);
   const booted = device?.state === "Booted";
   const touch = device?.touch;
   const canTouch = touch?.state === "ready";
@@ -510,6 +519,7 @@ export function SimulatorPane() {
       { label: "Device tools…", disabled: !showScreen, run: () => openTool("tools") },
       "separator",
       { label: "Open in the Simulator app", disabled: !udid, run: run(() => void act({ type: "reveal" }, "reveal")) },
+      { label: "Detach simulator", disabled: !isAttached, run: run(detach) },
       booted
         ? { label: "Shut down", disabled: busy === "shutdown", run: run(() => void act({ type: "shutdown" }, "shutdown").then(() => refreshInventory.current())) }
         : { label: "Start", disabled: device?.state !== "Shutdown" || busy === "boot", run: run(() => void act({ type: "boot" }, "boot").then(() => refreshInventory.current())) },
@@ -549,7 +559,7 @@ export function SimulatorPane() {
   return (
     <div className="panel-browser-pane simulator-pane" data-family={family}>
       <div className="simulator-head">
-        <div className="simulator-picker">
+        <div className="simulator-picker" ref={pickerRef}>
           <button
             type="button"
             className="simulator-picker-trigger"
@@ -576,7 +586,7 @@ export function SimulatorPane() {
                     onClick={() => { setUdid(item.udid); setPickerOpen(false); }}
                   >
                     <span className="simulator-device-name">{item.name}</span>
-                    <small className="faint">{item.runtime} · {stateLabel(item.state)}{attached === item.udid ? " · Attached" : ""}</small>
+                    <small className="faint">{item.runtime} · {simulatorStateLabel(item.state)}{attached === item.udid ? " · Attached" : ""}</small>
                   </button>
                 </div>
               ))}
@@ -593,7 +603,10 @@ export function SimulatorPane() {
       </div>
 
       {inventoryError && !inventory && (
-        <div className="simulator-banner error">{inventoryError}</div>
+        <div className="simulator-banner error" role="alert">
+          Could not list simulators: {inventoryError}
+          <button type="button" className="chip" onClick={() => refreshInventory.current()}>Retry</button>
+        </div>
       )}
 
       {agentUsing.active && (
@@ -674,14 +687,14 @@ export function SimulatorPane() {
           {showScreen && !annotating && (
             <div className="simulator-dock">
               {frameError ? (
-                <div className="simulator-banner error">{frameError}</div>
+                <div className="simulator-banner error" role="alert">{frameError}</div>
               ) : !canTouch && touch ? (
                 <div className={`simulator-banner${touch.state === "failed" || connectError ? " error" : ""}`}>
                   {connectError
                     ? `Touch input failed: ${connectError}`
                     : touch.state === "building"
                       ? "Preparing touch input. Xcode is building a small helper, which takes a minute or two the first time."
-                      : touch.state === "starting"
+                      : touch.state === "starting" || touch.state === "idle"
                         ? "Connecting touch input to this simulator…"
                         : touch.state === "failed"
                           ? `Touch input failed: ${touch.detail}`
@@ -693,6 +706,13 @@ export function SimulatorPane() {
                   ) : null}
                 </div>
               ) : null}
+
+              {!live && (
+                <div className="simulator-banner paused" role="status">
+                  The live screen is paused.
+                  <button type="button" className="chip" onClick={() => setLive(true)}>Resume</button>
+                </div>
+              )}
 
               {tool === "url" && (
                 <form
@@ -736,7 +756,7 @@ export function SimulatorPane() {
                           <button type="button" className="chip" title="Quit this app" onClick={() => void act({ type: "terminate", bundleId: app.bundleId })}>Quit</button>
                         </div>
                       ))}
-                      {apps.every((app) => app.type !== "User") && <p className="faint">No apps installed by you yet. Build and run from Xcode, or install a .app with simctl.</p>}
+                      {apps.every((app) => app.type !== "User") && <p className="faint">None of your apps are installed on this simulator yet. Build and run one from Xcode and it appears here.</p>}
                     </div>
                   )}
                 </div>

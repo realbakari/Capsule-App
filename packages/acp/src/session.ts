@@ -60,11 +60,21 @@ export interface DirectAcpEvents {
     /** Present when `details.questions` is: answer them instead of allowing. */
     answer?: (answers: import("@capsule/shared").AgentQuestionAnswers) => void;
   }) => void;
+  /**
+   * The agent started a turn nobody sent, such as a report on background work
+   * that finished after the user's turn. Its events follow as a turn's do, and
+   * `finished` settles when it ends.
+   */
+  wake: (payload: { finished: Promise<{ stopReason?: string }>; detail?: string }) => void;
+  /** The agent summarised its own context to keep going. ACP has no such update, so only native transports emit it. */
+  compaction: (payload: { trigger: "auto" | "manual"; tokensBefore?: number }) => void;
   /** The process ended. */
   exit: (payload: { code: number | null; stderr: string }) => void;
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** Loading a saved session replays its whole history first; a long one takes minutes, not seconds. */
+const RESUME_TIMEOUT_MS = 180_000;
 /** `authenticate` may open a browser and wait for the person to finish there. */
 const AUTHENTICATE_TIMEOUT_MS = 5 * 60_000;
 export const MAX_ACP_FRAME_BYTES = 4 * 1024 * 1024;
@@ -286,7 +296,7 @@ export class DirectAcpSession {
       this.restoring = true;
       // Capsule already owns its transcript. Loading must not replay old tools,
       // approvals or messages as activity belonging to the new turn.
-      try { created = await this.request(method, { ...setup, sessionId: resumeSessionId }).catch(authRequired); }
+      try { created = await this.request(method, { ...setup, sessionId: resumeSessionId }, { timeoutMs: RESUME_TIMEOUT_MS }).catch(authRequired); }
       finally { this.restoring = false; }
     } else created = await this.request("session/new", setup).catch(authRequired);
     const sessionId = resumeSessionId ?? (created as { sessionId?: unknown })?.sessionId;
@@ -340,7 +350,8 @@ export class DirectAcpSession {
     );
     this.turn = turn;
     try {
-      const result = await turn;
+      // A sign-in that expires mid-conversation answers the prompt with the same -32000.
+      const result = await turn.catch((error: unknown) => { throw authRequiredOr(error, this.options.name ?? "The agent"); });
       const stopReason = readStopReason(result);
       const usage = readReportedTurnUsage((result as { usage?: unknown })?.usage);
       if (usage) this.emitter.emit("usage", { turn: usage });

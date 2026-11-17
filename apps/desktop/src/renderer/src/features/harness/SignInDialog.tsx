@@ -243,7 +243,7 @@ export function SignInDialog({ harness, onClose }: { harness: HarnessStatus; onC
             ? <button type="button" className="ghost" onClick={back}>{phase.at === "waiting" ? "Cancel" : "Back"}</button>
             : null}
           {failedCommand ? <button type="button" className="chip" title={`Opens the terminal with ${failedCommand} typed in. Press Return to run it.`}
-            onClick={() => { requestTerminalCommand(failedCommand); setTerminalOpen(true); onClose(); }}>Type it in the terminal</button> : null}
+            onClick={() => { requestTerminalCommand({ kind: "type", command: failedCommand }); setTerminalOpen(true); onClose(); }}>Type it in the terminal</button> : null}
           {retry ? <button type="button" className="chip" onClick={retry}>Try again</button> : null}
           {canRecheck ? <button type="button" className={phase.at === "choose" && !methods.length ? "send" : "chip"} disabled={check === "checking"} onClick={() => void recheck()}>I'm signed in</button> : null}
           {phase.at === "review" || phase.at === "starting"

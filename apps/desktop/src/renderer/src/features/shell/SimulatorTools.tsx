@@ -3,7 +3,18 @@ import type { SimulatorAction, SimulatorApp, SimulatorDeviceSettings } from "@ca
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
 
-const PRIVACY_SERVICES = ["location", "location-always", "photos", "photos-add", "contacts", "contacts-limited", "calendar", "reminders", "microphone", "motion", "media-library", "siri", "all"];
+const PRIVACY_SERVICES: Array<[service: string, label: string]> = [
+  ["location", "Location while using"], ["location-always", "Location always"], ["photos", "Photos"], ["photos-add", "Add to Photos"],
+  ["contacts", "Contacts"], ["contacts-limited", "Contacts, limited"], ["calendar", "Calendars"], ["reminders", "Reminders"],
+  ["microphone", "Microphone"], ["motion", "Motion and fitness"], ["media-library", "Media library"], ["siri", "Siri"], ["all", "Every permission"],
+];
+
+const TEXT_SIZES: Record<string, string> = {
+  "extra-small": "Extra small", small: "Small", medium: "Medium", large: "Large (default)", "extra-large": "Extra large",
+  "extra-extra-large": "Extra large 2", "extra-extra-extra-large": "Extra large 3",
+  "accessibility-medium": "Accessibility 1", "accessibility-large": "Accessibility 2", "accessibility-extra-large": "Accessibility 3",
+  "accessibility-extra-extra-large": "Accessibility 4", "accessibility-extra-extra-extra-large": "Accessibility 5",
+};
 
 /**
  * Everything on the device that is a setting rather than a gesture. Each
@@ -43,7 +54,7 @@ export function SimulatorTools({ udid, apps, touchReady, agentAccess, onDetach, 
   const change = (action: SimulatorAction, label?: string) => void act(action, label).then(read);
 
   return (
-    <div className="simulator-tools" role="dialog" aria-label="Simulator tools">
+    <div className="simulator-tools" role="dialog" aria-label="Simulator tools" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <div className="browser-controls-heading"><strong>Tools</strong><button type="button" className="ghost" onClick={onClose}>Close</button></div>
       {error && <p className="error-text">{error}</p>}
 
@@ -59,7 +70,7 @@ export function SimulatorTools({ udid, apps, touchReady, agentAccess, onDetach, 
         <h5>Text size</h5>
         <div className="simulator-tools-row">
           <button type="button" className="chip" aria-label="Smaller text" onClick={() => change({ type: "contentSize", size: "decrement" })}>−</button>
-          <span className="mono simulator-tools-value">{settings?.contentSize ?? "…"}</span>
+          <span className="simulator-tools-value">{settings?.contentSize ? TEXT_SIZES[settings.contentSize] ?? settings.contentSize : "…"}</span>
           <button type="button" className="chip" aria-label="Larger text" onClick={() => change({ type: "contentSize", size: "increment" })}>+</button>
         </div>
         <label className="simulator-tools-check">
@@ -82,8 +93,8 @@ export function SimulatorTools({ udid, apps, touchReady, agentAccess, onDetach, 
       <section>
         <h5>Status bar</h5>
         <div className="simulator-tools-row">
-          <button type="button" className="chip" onClick={() => change({ type: "statusBar", mode: "clean" })}>Clean 9:41</button>
-          <button type="button" className="chip" onClick={() => change({ type: "statusBar", mode: "clear" })}>Clear override</button>
+          <button type="button" className="chip" title="9:41, full signal and a charged battery, for screenshots" onClick={() => change({ type: "statusBar", mode: "clean" })}>Clean for screenshots</button>
+          <button type="button" className="chip" onClick={() => change({ type: "statusBar", mode: "clear" })}>Show the real status bar</button>
         </div>
       </section>
 
@@ -127,7 +138,7 @@ export function SimulatorTools({ udid, apps, touchReady, agentAccess, onDetach, 
               {userApps.map((app) => <option key={app.bundleId} value={app.bundleId}>{app.name}</option>)}
             </select>
             <select className="preview-viewport" aria-label="Permission" value={privacyService} onChange={(event) => setPrivacyService(event.target.value)}>
-              {PRIVACY_SERVICES.map((service) => <option key={service} value={service}>{service}</option>)}
+              {PRIVACY_SERVICES.map(([service, label]) => <option key={service} value={service}>{label}</option>)}
             </select>
             <div className="simulator-tools-row">
               <button type="button" className="chip" onClick={() => change({ type: "privacy", action: "grant", service: privacyService, bundleId: privacyApp })}>Grant</button>

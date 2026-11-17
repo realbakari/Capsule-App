@@ -19,7 +19,8 @@ describe("classifyAgentStream", () => {
     expect(classifyAgentStream("stderr")).toBe("command");
     expect(classifyAgentStream("patch")).toBe("patch");
     expect(classifyAgentStream("error")).toBe("error");
-    expect(classifyAgentStream("compaction")).toBe("lifecycle");
+    expect(classifyAgentStream("compaction")).toBe("compaction");
+    expect(isAssistantProse(classifyAgentStream("compaction"))).toBe(false);
   });
 
   it("handles prefixed variants the gateway may add later", () => {

@@ -28,14 +28,15 @@ attaches a different device. Attaching a shut-down device starts it; the
 screen lights up once it has booted.
 
 Each conversation attaches its own device, and the choice is remembered.
-**Detach simulator** in the Tools drawer ends the agent's access and returns
-to the attach card. Turn **Agent simulator access** off in Settings to keep
+**Detach simulator** (in the **Device** menu and the Tools drawer) ends the
+agent's access and returns to the attach card. Turn **Agent simulator access** off in Settings to keep
 agents away from simulators entirely; you can still watch and tap.
 
 The screen is a stream of still frames captured a few times a second. It is
 not video: animations look stepped, and a frame can lag the device by a
 fraction of a second. **View → Pause the live screen** holds one picture when
-you want it steady.
+you want it steady; a notice above the screen says it is paused, with
+**Resume**.
 
 The device does not need the Simulator app open. **Open in the Simulator
 app** brings the real window forward when you want Apple's own controls.
@@ -70,7 +71,7 @@ Everything else lives in the header's menus:
 - **Device**: Home, Rotate, **Open a URL or deep link…** (a web address or
   something like `myapp://home`), **Installed apps…** (launch or quit what
   you built), **Device tools…** (the drawer below), **Open in the Simulator
-  app**, and shut down or start.
+  app**, **Detach simulator**, and shut down or start.
 - **View**: the zoom steps, pause or resume the live screen, and capture one
   frame while paused.
 
@@ -80,10 +81,11 @@ The drawer groups everything on the device that is a setting rather than a
 gesture. Each value shown is read back from the device after a change.
 
 - **Appearance**: light or dark.
-- **Text size**: step Dynamic Type up or down, and **Increase contrast**.
+- **Text size**: step Dynamic Type up or down, from Extra small through Large
+  (the default) to Accessibility 5, and **Increase contrast**.
 - **Rotation**: portrait or either landscape, once touch input is connected.
-- **Status bar**: the clean 9:41 look with full signal and battery, or clear
-  the override.
+- **Status bar**: **Clean for screenshots** sets 9:41 with full signal and a
+  charged battery; **Show the real status bar** undoes it.
 - **Location**: set a latitude and longitude, or clear the simulated location.
 - **Push notification**: send a test notification with a title and body to one
   of your apps.

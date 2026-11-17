@@ -88,11 +88,11 @@ function post(port: number, token: string, command: BridgeCommand, timeoutMs: nu
           let parsed: Record<string, unknown> = {};
           try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>; } catch { /* Not JSON. */ }
           if (response.statusCode === 200 && parsed.ok === true) resolve(parsed);
-          else reject(new Error(typeof parsed.error === "string" ? parsed.error : `The touch bridge answered ${response.statusCode ?? "nothing"}.`));
+          else reject(new Error(typeof parsed.error === "string" ? parsed.error : `Simulator control answered ${response.statusCode ?? "nothing"}.`));
         });
       },
     );
-    request.on("timeout", () => request.destroy(new Error("The touch bridge did not answer in time.")));
+    request.on("timeout", () => request.destroy(new Error("Simulator control did not answer in time.")));
     request.on("error", reject);
     request.end(body);
   });
@@ -117,8 +117,8 @@ export class SimulatorBridge {
   /** Whether this machine can build and run the bridge. Nothing is started to find out. */
   available(): Promise<{ available: boolean; detail?: string }> {
     this.support ??= (async () => {
-      if (process.platform !== "darwin") return { available: false, detail: "The touch bridge needs macOS with Xcode." };
-      if (!existsSync(path.join(this.options.projectDir, `${SCHEME}.xcodeproj`))) return { available: false, detail: "The touch bridge project is missing from this build of Capsule." };
+      if (process.platform !== "darwin") return { available: false, detail: "Controlling a simulator needs macOS with Xcode." };
+      if (!existsSync(path.join(this.options.projectDir, `${SCHEME}.xcodeproj`))) return { available: false, detail: "This build of Capsule is missing its simulator control." };
       try {
         await run("xcodebuild", ["-version"], 20_000);
         return { available: true };
@@ -274,7 +274,7 @@ export class SimulatorBridge {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
       stopChild(child);
-      throw new Error("The touch bridge did not start in time.");
+      throw new Error("Simulator control did not start in time.");
     })();
     session.ready.catch((error: Error) => { session.failure = error.message; });
     this.sessions.set(udid, session);

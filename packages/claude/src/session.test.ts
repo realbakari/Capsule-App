@@ -149,3 +149,62 @@ it("adds offered MCP servers to a real session, beside the agent's own", async (
     expect(wire).not.toContain("--strict-mcp-config");
   } finally { await session.close(); rmSync(cwd, { recursive: true, force: true }); }
 });
+
+it("reports a failed command's exit code apart from its output, and an automatic compaction", async () => {
+  const f = setup("work");
+  try {
+    await f.session.start();
+    const tool = vi.fn(); const compaction = vi.fn();
+    f.session.on("tool", tool); f.session.on("compaction", compaction);
+    await f.session.prompt("Build it");
+    expect(tool).toHaveBeenLastCalledWith(expect.objectContaining({ toolCallId: "bash", status: "failed", details: { output: "error: build failed", exitCode: 2 } }));
+    expect(compaction).toHaveBeenCalledExactlyOnceWith({ trigger: "auto", tokensBefore: 180000 });
+  } finally { await f.cleanup(); }
+});
+
+it("keeps a background task's result from ending the user's turn, and hands Claude's own report on it over as a turn", async () => {
+  const f = setup("background");
+  try {
+    await f.session.start();
+    const wakes: Array<{ finished: Promise<{ stopReason?: string }>; detail?: string }> = [];
+    const permission = vi.fn();
+    f.session.on("wake", (wake) => wakes.push(wake));
+    f.session.on("permission", permission);
+    await expect(f.session.prompt("Build it")).resolves.toEqual({ stopReason: "end_turn" });
+    expect(f.output[0]).toContain("\"model\"");
+    await vi.waitFor(() => expect(wakes).toHaveLength(1));
+    expect(wakes[0]!.detail).toBe("Build finished");
+    expect(f.session.busy).toBe(true);
+    await vi.waitFor(() => expect(permission).toHaveBeenCalledOnce());
+    permission.mock.calls[0]![0].allow();
+    await expect(wakes[0]!.finished).resolves.toEqual({ stopReason: "end_turn" });
+    expect(f.output).toContain("The build finished; checking its log.");
+    expect(f.wire()).toContain("\"wakeAnswer\":{\"behavior\":\"allow\"");
+    expect(f.session.busy).toBe(false);
+  } finally { await f.cleanup(); }
+});
+
+it("resets the context reading on /clear and /compact, and drops it when the compacted size is unknown", async () => {
+  const f = setup();
+  try {
+    await f.session.start();
+    const usage = vi.fn(); f.session.on("usage", usage);
+    await f.session.prompt("First");
+    expect(f.session.reportedContext).toEqual({ source: "agent", used: 1235, size: 200000 });
+    await f.session.prompt("/compact");
+    expect(f.session.reportedContext).toEqual({ source: "agent", used: 300, size: 200000 });
+    expect(usage).toHaveBeenCalledWith({ context: { source: "agent", used: 300, size: 200000 } });
+    await f.session.prompt("/clear");
+    expect(f.session.reportedContext).toEqual({ source: "agent", used: 0, size: 200000 });
+    await f.session.prompt("/compact quietly");
+    expect(f.session.reportedContext).toBeUndefined();
+  } finally { await f.cleanup(); }
+});
+
+it("fails a turn whose sign-in expired as a sign-in, not as Claude's raw text", async () => {
+  const f = setup("signed-out");
+  try {
+    await f.session.start();
+    await expect(f.session.prompt("Hello")).rejects.toMatchObject({ name: "AgentAuthRequiredError" });
+  } finally { await f.cleanup(); }
+});

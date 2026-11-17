@@ -3,11 +3,10 @@ import type { HarnessStatus, SessionRef } from "@capsule/shared";
 
 import { agentPickerDetail, agentSwitchNotice, canSteerTurn, gatewayConnectionLabel, harnessReadinessLabel } from "./harness";
 
-it("does not describe local agents as offline when the optional Gateway is disconnected", () => {
-  expect(gatewayConnectionLabel("direct", false, "disconnected")).toBe("Local agents · not connected to the Gateway");
-  expect(gatewayConnectionLabel("auto", false, "disconnected")).toBe("Not connected to the Gateway");
-  expect(gatewayConnectionLabel("direct", false, "connecting")).toBe("Connecting to the Gateway…");
-  expect(gatewayConnectionLabel("direct", true, "connected")).toBe("Connected to the Gateway");
+it("names the Gateway connection's state", () => {
+  expect(gatewayConnectionLabel(false, "disconnected")).toBe("Not connected to the Gateway");
+  expect(gatewayConnectionLabel(false, "connecting")).toBe("Connecting to the Gateway…");
+  expect(gatewayConnectionLabel(true, "connected")).toBe("Connected to the Gateway");
 });
 
 function harness(readiness: HarnessStatus["readiness"]): HarnessStatus {
@@ -46,7 +45,7 @@ describe("harnessReadinessLabel", () => {
   it("says the situation rather than the name of the check", () => {
     expect(harnessReadinessLabel("missing_cli")).toBe("Not installed on this computer");
     expect(harnessReadinessLabel("needs_login")).toBe("Signed out");
-    expect(harnessReadinessLabel("dedicated")).toBe("Ready · project default");
+    expect(harnessReadinessLabel("dedicated")).toBe("Ready");
   });
 });
 

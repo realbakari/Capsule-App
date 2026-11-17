@@ -143,3 +143,15 @@ describe("session classification and archive", () => {
     ).toBe(false);
   });
 });
+
+describe("code and terminal sizes", () => {
+  it("keeps a size from the list and replaces anything else with the default", () => {
+    const normalize = normalizeCapsuleSettings;
+    expect(normalize({}).terminalFontSize).toBe(12);
+    expect(normalize({}).codeTextSize).toBe("m");
+    expect(normalize({ terminalFontSize: 16, codeTextSize: "l" })).toMatchObject({ terminalFontSize: 16, codeTextSize: "l" });
+    expect(normalize({ terminalFontSize: 13.5 }).terminalFontSize).toBe(12);
+    expect(normalize({ terminalFontSize: 400 }).terminalFontSize).toBe(12);
+    expect(normalize({ codeTextSize: "xl" as never }).codeTextSize).toBe("m");
+  });
+});

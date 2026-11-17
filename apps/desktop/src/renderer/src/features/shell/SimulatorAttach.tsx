@@ -1,6 +1,19 @@
 import type { Simulator } from "@capsule/shared";
 import { CheckIcon, ChevronDownIcon, XIcon } from "./icons";
 
+const STATE_LABELS: Record<Simulator["state"], string> = {
+  Booted: "Running",
+  Booting: "Starting",
+  Shutdown: "Shut down",
+  "Shutting Down": "Shutting down",
+  Unknown: "In an unknown state",
+};
+
+/** A device's state as people say it, not as the device list spells it. */
+export function simulatorStateLabel(state: Simulator["state"]): string {
+  return STATE_LABELS[state] ?? state;
+}
+
 /**
  * The screen a device shows before it is attached. Attaching is the consent
  * step: it starts the device if needed, connects touch input, and lets this
@@ -24,7 +37,7 @@ export function SimulatorAttach({ device, devices, supported, agentAccess, busy,
   const stateNote =
     device.state === "Shutdown" ? "This simulator is shut down. Attaching starts it."
       : device.state === "Booted" ? "This simulator is running."
-        : `This simulator is ${device.state.toLowerCase()}.`;
+        : `This simulator is ${simulatorStateLabel(device.state).toLowerCase()}.`;
 
   return (
     <div className="simulator-attach">
@@ -46,7 +59,6 @@ export function SimulatorAttach({ device, devices, supported, agentAccess, busy,
         </li>
       </ul>
       <div className="simulator-attach-foot">
-        <small>Xcode is a trademark of Apple Inc., registered in the U.S. and other countries.</small>
         <div className="simulator-attach-actions">
           <button type="button" className="simulator-attach-button" disabled={busy || !supported || device.state === "Shutting Down"} onClick={() => onAttach(device.udid)}>
             {busy ? "Attaching…" : "Attach simulator"}

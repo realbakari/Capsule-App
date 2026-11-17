@@ -15,7 +15,7 @@ export function CapabilityDetails(props: { harness?: HarnessStatus; session?: Se
     return () => window.removeEventListener("pointerdown", close);
   }, [props.compact]);
   return <details ref={root} open={props.initiallyOpen} className={`capability-details${props.compact ? " capability-details--compact" : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { root.current?.removeAttribute("open"); root.current?.querySelector("summary")?.focus(); } }}>
-    <summary aria-label={label} title={label}>{props.compact ? <span aria-hidden>ⓘ</span> : label}</summary>
+    <summary aria-label={label} title={label}>{props.compact ? <span aria-hidden>ⓘ</span> : "What Capsule can change on this session"}</summary>
     <div className="capability-details-body">
     <p className="muted">Your agent manages its tools and connected tool servers. These controls show what Capsule can configure on this session; they do not enable or disable individual tools.</p>
     <dl>{([

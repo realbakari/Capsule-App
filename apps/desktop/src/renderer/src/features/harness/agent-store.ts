@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
-import type { AgentInstallProgress, AgentStoreEntry, HarnessId } from "@capsule/shared";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { agentEnabled, type AgentInstallProgress, type AgentStoreEntry, type HarnessId } from "@capsule/shared";
 import { formatUserError } from "../../lib/errors";
 import { useWorkspace } from "../../lib/workspace";
-import { storeRow, type StoreActivity } from "./agent-store-model";
+import { pendingUpdates, storeRow, type StoreActivity } from "./agent-store-model";
 
 type Api = typeof window.capsule;
 
@@ -75,14 +75,16 @@ export function resetAgentStore(): void {
 /**
  * The agent store as the renderer sees it. `enabled` is false on a paired
  * device: install and removal are write channels, so a viewer only reads.
+ * `autoload: false` leaves the first list to whoever needs it first, for a
+ * caller that should not reach the network as the app opens.
  */
-export function useAgentStore() {
-  const { api, refresh } = useWorkspace();
+export function useAgentStore({ autoload = true }: { autoload?: boolean } = {}) {
+  const { api, refresh, settings } = useWorkspace();
   const state = useSyncExternalStore(subscribe, () => snapshot);
   const enabled = storeAvailable(api);
   useEffect(() => {
-    if (enabled && snapshot.load === "idle") void loadStore(api);
-  }, [api, enabled]);
+    if (autoload && enabled && snapshot.load === "idle") void loadStore(api);
+  }, [api, enabled, autoload]);
 
   /* A new or removed copy changes readiness; the doctor re-probes it and refresh picks it up. */
   const recheck = useCallback(async (harnessId: string) => {
@@ -114,14 +116,40 @@ export function useAgentStore() {
     }
   }, [api, enabled, recheck]);
 
+  /* The owning tool replaces the copy; Capsule only asked first and reports what happened. */
+  const updateUserCopy = useCallback(async (harnessId: HarnessId) => {
+    if (!enabled) return;
+    setActivity(harnessId, { harnessId, phase: "updating", detail: "" });
+    try {
+      setEntry(await api.agentStoreUpdateUserCopy(harnessId));
+      setActivity(harnessId, undefined);
+      await recheck(harnessId);
+    } catch (error) {
+      setActivity(harnessId, { harnessId, phase: "failed", error: formatUserError(error) });
+    }
+  }, [api, enabled, recheck]);
+
+  const ensureLoaded = useCallback(() => (snapshot.load === "idle" ? loadStore(api) : Promise.resolve()), [api]);
+  const relist = useCallback(() => loadStore(api), [api]);
   const row = useCallback((harnessId: string) => storeRow(state.entries[harnessId], state.activity[harnessId]), [state]);
+  const overrides = settings?.agentOverrides;
+  const updates = useMemo(
+    () => pendingUpdates(Object.values(state.entries), (harnessId) => agentEnabled(overrides, harnessId) && !state.activity[harnessId]),
+    [state, overrides],
+  );
 
   return {
     enabled,
     load: state.load,
     row,
+    updates,
     install,
     uninstall,
+    updateUserCopy,
+    /** Lists if nothing has yet. */
+    ensureLoaded,
+    /** Lists again without asking the registries, after an agent appeared or moved on this computer. */
+    relist,
     reload: () => loadStore(api, true),
   };
 }

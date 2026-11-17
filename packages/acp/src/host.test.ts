@@ -89,7 +89,7 @@ describe("spawning an agent that has no ACP mode", () => {
     const host = new DirectAcpHost(native, executable);
     try {
       await host.discover("codex", process.cwd(), undefined, true);
-      expect(executable).toHaveBeenCalledWith("codex-acp");
+      expect(executable).toHaveBeenCalledWith("codex-acp", "codex");
       expect(native).not.toHaveBeenCalled();
       expect(start).toHaveBeenCalledOnce();
       expect(close).toHaveBeenCalledOnce();

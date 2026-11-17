@@ -6,6 +6,8 @@ it("keeps command input and bounded, literal output", () => {
     .toEqual({ input: "printf '<div>'", output: "<div>" });
   expect(nativeToolDetails({ type: "commandExecution", aggregatedOutput: "x".repeat(3000) }))
     .toEqual({ output: "x".repeat(2048), truncated: true });
+  expect(nativeToolDetails({ type: "commandExecution", command: "false", aggregatedOutput: "", exitCode: 1 }))
+    .toEqual({ input: "false", output: "", exitCode: 1 });
 });
 
 it("shows file changes and textual tool results without dumping image payloads", () => {

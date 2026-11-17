@@ -77,23 +77,27 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     },
   };
   const fixture = {
-    ...base, project: undefined, projectId: undefined, session: { id: "thread-sim" }, files: [], steps: [], artifacts: [], harnesses: [], harnessSessions: [],
+    ...base, project: undefined, projectId: undefined, session: { id: "thread-sim" }, files: [{ name: "App.xcodeproj", path: "App.xcodeproj", type: "directory" }], steps: [], artifacts: [], harnesses: [], harnessSessions: [],
     git: undefined, settings: { agentSimulatorAccess: true }, inspectorOpen: true, inspectorTab: "launcher", requestedFile: undefined, clearRequestedFile: () => {},
     setInspectorOpen: () => {}, setInspectorTab: (tab: string) => { tabs.push(tab); window.testWorkspace = { ...window.testWorkspace, inspectorTab: tab }; root.render(<Inspector />); },
     setNotice: (notice: string) => notices.push(notice), openPath: async (target: string) => { opened.push(target); }, api,
   };
   try {
-    // The chooser: no project is needed, but a paired viewer and a non-Mac are told why not.
+    // The chooser offers Simulator for a folder that looks like an app, with no project needed;
+    // where it can never run (a paired viewer, a non-Mac) it is not drawn at all.
     window.testWorkspace = fixture;
     root.render(<Inspector />); await settle();
     const card = () => Array.from(document.querySelectorAll<HTMLButtonElement>(".panel-launcher-card")).find((node) => node.textContent?.includes("Simulator"));
-    assert(card() && !card()!.disabled, "Chooser hid the simulator without a project");
+    assert(card() && !card()!.disabled, "Chooser hid the simulator for an app folder without a project");
+    window.testWorkspace = { ...fixture, files: [{ name: "package.json", path: "package.json", type: "file" }] };
+    root.render(<Inspector />); await settle();
+    assert(!card(), "Chooser offered the simulator for a folder that is not an app");
     window.testWorkspace = { ...fixture, api: { ...api, isDesktop: false } };
     root.render(<Inspector />); await settle();
-    assert(card()?.disabled && card()?.textContent?.includes("Available in the desktop app."), "Paired viewer was offered a simulator");
+    assert(!card(), "Paired viewer was offered a simulator");
     window.testWorkspace = { ...fixture, api: { ...api, platform: "win32" } };
     root.render(<Inspector />); await settle();
-    assert(card()?.disabled && card()?.textContent?.includes("macOS"), "A non-Mac was offered a simulator without saying why");
+    assert(!card(), "A non-Mac was offered a simulator");
 
     // Opening it: the booted device is chosen but nothing streams until the user attaches it.
     window.testWorkspace = fixture;
@@ -127,6 +131,7 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     // Pausing stops the stream; capturing one frame is the way to get a new picture.
     const streamed = frames;
     await choose("View", "Pause the live screen");
+    await until(() => document.querySelector(".simulator-banner.paused")?.textContent?.includes("The live screen is paused."));
     await new Promise((resolve) => setTimeout(resolve, 600));
     const paused = frames;
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -174,10 +179,11 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     // With the bridge ready, a click is a tap in device points and a drag is a swipe.
     inventory = withTouch({ state: "ready", width: 440, height: 956 });
     document.dispatchEvent(new Event("visibilitychange"));
-    await until(() => !document.querySelector(".simulator-banner"));
+    await until(() => !document.querySelector(".simulator-banner:not(.paused)"));
     await until(() => document.querySelector<HTMLButtonElement>('[aria-label="Home"]')?.disabled === false);
     const beforeResume = frames;
     await choose("View", "Resume the live screen");
+    await until(() => !document.querySelector(".simulator-banner.paused"));
     // Points arrive with the next frame; a tap on the stale frame has nothing to map to.
     await until(() => frames > beforeResume + 1);
     await until(() => document.querySelector<HTMLImageElement>(".simulator-screen img")?.getBoundingClientRect().width);
@@ -206,17 +212,23 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     // The Tools drawer reads the device back, changes one setting per action, and can detach.
     await choose("Device", "Device tools…");
     await until(() => document.querySelector(".simulator-tools"));
-    await until(() => host.textContent?.includes("medium"));
+    await until(() => host.textContent?.includes("Medium"));
     click("Dark");
     await until(() => actions.some((entry) => entry.action.type === "appearance" && entry.action.style === "dark"));
     click("Landscape left");
     await until(() => actions.some((entry) => entry.action.type === "rotate" && entry.action.orientation === "landscapeLeft"));
-    click("Clean 9:41");
+    click("Clean for screenshots");
     await until(() => actions.some((entry) => entry.action.type === "statusBar" && entry.action.mode === "clean"));
     assert(host.textContent?.includes("agent can see and drive"), "Tools drawer did not state the agent's access");
     click("Detach simulator");
     await until(() => attachments.at(-1) === undefined);
     await until(() => document.querySelector(".simulator-attach"));
+
+    // The device picker closes on Escape, and lists states in plain words.
+    document.querySelector<HTMLButtonElement>(".simulator-picker-trigger")!.click(); await settle();
+    assert(document.querySelector('[role="listbox"]')?.textContent?.includes("Shut down"), "Device picker spelled a state the way the device list does");
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await settle();
+    assert(!document.querySelector('[role="listbox"]'), "Escape left the device picker open");
 
     // A shut-down device shows the attach card with its state, and attaching boots it.
     document.querySelector<HTMLButtonElement>(".simulator-picker-trigger")!.click(); await settle();
@@ -225,6 +237,12 @@ export async function runSimulatorRegressions(host: HTMLElement, base: Record<st
     assert(document.querySelector(".simulator-bezel"), "Phone frame disappeared for a shut-down device");
     click("Attach simulator");
     await until(() => actions.some((entry) => entry.action.type === "boot" && entry.udid === asleep.udid));
+    await until(() => attachments.at(-1) === asleep.udid);
+
+    // Detach is reachable from the Device menu too, not only from the Tools drawer.
+    await choose("Device", "Detach simulator");
+    await until(() => attachments.at(-1) === undefined);
+    click("Attach simulator");
     await until(() => attachments.at(-1) === asleep.udid);
 
     // With agent access off in Settings, the card says so instead of promising control.

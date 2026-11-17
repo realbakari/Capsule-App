@@ -1,10 +1,11 @@
 import { spawnCommand as spawn, spawnCommandSync as spawnSync, stopChild } from "@capsule/process";
 import { firstExecutablePath } from "./binary-path.js";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
   PRESET_HARNESSES,
+  type AgentOverrides,
   type HarnessLoginState,
   type HarnessDoctorCheck,
   type HarnessDoctorReport,
@@ -134,35 +135,151 @@ function locateBinary(binary: string): string | undefined {
   return whichViaLoginShell(binary);
 }
 
+function isExecutableFile(candidate: string): boolean {
+  try {
+    if (!statSync(candidate).isFile()) return false;
+    if (process.platform !== "win32") accessSync(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The same search as `locateBinary` without spawning anything: PATH, the
+ * store's shims, then the usual install folders, as file checks only. Cheap
+ * enough to repeat for every missing agent each time the window is focused.
+ */
+function locateBinaryOnDisk(binary: string): string | undefined {
+  const names = process.platform === "win32"
+    ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").map((ext) => `${binary}${ext.toLowerCase()}`).concat(binary)
+    : [binary];
+  const pathDirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  const dirs = [...pathDirs, ...(managedBinDir ? [managedBinDir] : []), ...extraBinDirs()];
+  for (const dir of dirs) {
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (isExecutableFile(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
 /*
  * Locating a binary costs a synchronous `which`, and on a miss a login shell
  * with a 2.5s timeout — all blocking the Electron main process, and with it
  * every IPC call. probeHarnesses runs it per preset on every refresh, and
  * refresh fires on every connection/run/approval event. Resolve each binary
  * once per process instead; the Doctor action clears the cache.
+ *
+ * A miss is different: an agent installed in a terminal after launch has to
+ * show up without anyone pressing Check again. A miss older than
+ * BINARY_MISS_TTL_MS is looked for again, on disk only, so the expensive
+ * login shell still runs once per binary.
  */
-const binaryPathCache = new Map<string, string | undefined>();
+export const BINARY_MISS_TTL_MS = 15_000;
+const binaryPathCache = new Map<string, { path?: string; at: number }>();
 
 export function clearBinaryCache(): void {
   binaryPathCache.clear();
 }
 
+function resolveCached(binary: string, now: number): string | undefined {
+  const cached = binaryPathCache.get(binary);
+  let resolved: string | undefined;
+  if (!cached) resolved = locateBinary(binary);
+  else if (cached.path) resolved = existsSync(cached.path) ? cached.path : locateBinary(binary);
+  else if (now - cached.at < BINARY_MISS_TTL_MS) return undefined;
+  else resolved = locateBinaryOnDisk(binary);
+  if (!cached || cached.path !== resolved || !resolved) binaryPathCache.set(binary, { path: resolved, at: now });
+  return resolved;
+}
+
 export function whichBinary(binaries: string[]): string | undefined {
+  const now = Date.now();
   for (const binary of binaries) {
-    let resolved: string | undefined;
-    if (binaryPathCache.has(binary)) {
-      resolved = binaryPathCache.get(binary);
-      if (resolved && !existsSync(resolved)) {
-        resolved = locateBinary(binary);
-        binaryPathCache.set(binary, resolved);
-      }
-    } else {
-      resolved = locateBinary(binary);
-      binaryPathCache.set(binary, resolved);
-    }
+    const resolved = resolveCached(binary, now);
     if (resolved) return resolved;
   }
   return undefined;
+}
+
+/**
+ * Looks again, on disk, for every binary last seen missing. When one turned
+ * up, readiness is redrawn: this is how an agent installed outside Capsule
+ * appears without anyone pressing Check again.
+ */
+export function recheckMissingBinaries(): boolean {
+  let found = false;
+  const now = Date.now();
+  for (const [binary, cached] of binaryPathCache) {
+    if (cached.path) continue;
+    const resolved = locateBinaryOnDisk(binary);
+    binaryPathCache.set(binary, { path: resolved, at: now });
+    if (resolved) found = true;
+  }
+  if (found) onLoginStateSettled?.();
+  return found;
+}
+
+/*
+ * Per-agent launch overrides from settings. The binary path replaces lookup
+ * for the preset's launch command, and for its login probe when that is the
+ * same program; arguments and environment are added at spawn.
+ */
+let agentOverrides: AgentOverrides = {};
+
+export function setAgentOverrides(overrides: AgentOverrides | undefined): void {
+  agentOverrides = overrides ?? {};
+}
+
+export function expandHome(value: string): string {
+  return value === "~" ? os.homedir() : value.startsWith("~/") ? path.join(os.homedir(), value.slice(2)) : value;
+}
+
+/** The launch command a preset runs in direct mode, as the store and spawn both name it. */
+function presetLaunchCommand(preset: HarnessPreset): string | undefined {
+  return (preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand)?.command;
+}
+
+/** The binary path the user set for this preset, expanded, or undefined. */
+export function binaryOverride(harnessId: string): string | undefined {
+  const raw = isHarnessId(harnessId) ? agentOverrides[harnessId]?.binaryPath : undefined;
+  return raw ? expandHome(raw) : undefined;
+}
+
+/** How a caller finds a program on this computer; `whichBinary` unless the caller supplies its own. */
+export type BinaryLookup = (binaries: string[]) => string | undefined;
+
+/**
+ * Where a preset's programs are: `launch` is what direct mode spawns, `login`
+ * is what the sign-in probe runs. An override wins for the launch command, and
+ * for login too when the preset signs in with that same program. Without an
+ * override the answer is `lookup`'s, so a caller's own lookup stays the one
+ * source of truth.
+ */
+export function harnessBinaries(preset: HarnessPreset, direct: boolean, lookup: BinaryLookup = whichBinary): { login?: string; launch?: string; overrideMissing?: string } {
+  const override = binaryOverride(preset.id);
+  const launchCommand = presetLaunchCommand(preset);
+  const overridden = override && existsSync(override) ? override : undefined;
+  const loginFound = lookup(preset.binaries);
+  const login = overridden && launchCommand && preset.binaries.includes(launchCommand) ? overridden : loginFound;
+  const launch = direct && launchCommand ? overridden ?? (override ? undefined : lookup([launchCommand])) : login;
+  return { login, launch, ...(override && !overridden ? { overrideMissing: override } : {}) };
+}
+
+/** The program direct mode runs for `command`: the user's binary path when it is this preset's launch command. */
+export function launchExecutable(command: string, harnessId?: string, lookup: BinaryLookup = whichBinary): string {
+  const preset = harnessId ? presetFor(harnessId) : undefined;
+  const override = preset && presetLaunchCommand(preset) === command ? binaryOverride(preset.id) : undefined;
+  return override ?? lookup([command]) ?? command;
+}
+
+/** Extra arguments and environment for a direct spawn of this preset. */
+export function launchExtras(harnessId: string): { args: string[]; env?: Record<string, string> } {
+  const override = isHarnessId(harnessId) ? agentOverrides[harnessId] : undefined;
+  const env = override?.env ? Object.fromEntries(Object.entries(override.env).map(([key, value]) => [key, expandHome(value)])) : undefined;
+  return { args: override?.args ?? [], ...(env ? { env } : {}) };
 }
 
 /*
@@ -232,6 +349,12 @@ function readStructuredLoginFlag(stdout: string): boolean | undefined {
 const LOGIN_PROBE_TIMEOUT_MS = 5_000;
 const LOGIN_CACHE_TTL_MS = 60_000;
 
+/* A second account lives in its own config folder, so its sign-in is checked with the same environment the agent gets. */
+function probeEnv(harnessId: string): NodeJS.ProcessEnv {
+  const extra = launchExtras(harnessId).env;
+  return extra ? { ...process.env, ...extra } : process.env;
+}
+
 const loginStateCache = new Map<string, { state: HarnessLoginState; at: number }>();
 
 export function clearLoginCache(): void {
@@ -275,6 +398,7 @@ export function probeLoginStateNow(
       encoding: "utf8",
       timeout: LOGIN_PROBE_TIMEOUT_MS,
       windowsHide: true,
+      env: probeEnv(preset.id),
     });
     state = classifyLoginProbe({
       ok: result.status === 0,
@@ -301,7 +425,7 @@ function refreshLoginStateInBackground(preset: HarnessPreset, binaryPath: string
   if (inFlightProbes.has(key)) return;
   inFlightProbes.add(key);
   const previous = loginStateCache.get(key)?.state;
-  const child = spawn(binaryPath, preset.loginProbeArgs ?? [], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+  const child = spawn(binaryPath, preset.loginProbeArgs ?? [], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: probeEnv(preset.id) });
   let stdout = "";
   let stderr = "";
   let settled = false;
@@ -423,10 +547,8 @@ export function probeHarnesses(input: {
   directHarnessIds?: string[];
 }): HarnessStatus[] {
   return PRESET_HARNESSES.map((preset) => {
-    const direct = input.directHarnessIds?.includes(preset.id);
-    const loginBinaryPath = whichBinary(preset.binaries);
-    const directCommand = preset.nativeCommand ?? preset.directCommand ?? preset.acpxCommand;
-    const binaryPath = direct && directCommand ? whichBinary([directCommand.command]) : loginBinaryPath;
+    const direct = input.directHarnessIds?.includes(preset.id) ?? false;
+    const { login: loginBinaryPath, launch: binaryPath, overrideMissing } = harnessBinaries(preset, direct);
     const dedicatedProjectIds = input.dedicatedByHarness[preset.id] ?? [];
     const liveSessionIds = input.liveByHarness?.[preset.id] ?? [];
     // A live session already proves auth, so do not pay for a probe.
@@ -440,7 +562,7 @@ export function probeHarnesses(input: {
       dedicated: dedicatedProjectIds.length > 0,
       live: liveSessionIds.length > 0,
       loginState,
-      direct: input.directHarnessIds?.includes(preset.id),
+      direct,
     });
     return {
       ...preset,
@@ -450,7 +572,7 @@ export function probeHarnesses(input: {
       acpxEnabled: input.acpxEnabled,
       dedicatedProjectIds,
       liveSessionIds,
-      detail,
+      detail: overrideMissing && !binaryPath ? `Nothing runs at ${overrideMissing}, the binary path set for ${preset.name}. Change it in Agents.` : detail,
       ...(loginState ? { loginState } : {}),
     };
   });

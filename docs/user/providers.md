@@ -22,13 +22,12 @@ time to confirm. A cancellation timeout does not mean its work has stopped.
 
 Some direct agents report context occupancy and per-turn token counts. The
 context meter uses the latest occupancy snapshot, not a sum of repeated reports.
-Expand **Agent-reported usage** in the run log for reported turn tokens and any
-reported cumulative session cost. These are separate measures and are not added
-to the Usage page's transcript totals. Missing values remain **not reported**.
+Missing values remain **not reported**.
 Gateway sessions continue to use the information that route actually carries.
 
-The run log and verification sit at the foot of a turn's **Worked for…** fold.
-A turn that failed keeps them in its own **Turn details** row. A completed reply
+Verification sits at the foot of a turn's **Worked for…** fold when the project
+has a saved check or the turn has a result. A turn that failed keeps **What the
+agent reported** in its own **Turn details** row. A completed reply
 does not mean checks passed: expand **Verification** to see the evidence. Long
 event pages scroll without expanding the entire chat.
 
@@ -80,10 +79,11 @@ Sign in with each tool's own flow, or from Capsule as described below.
 **Install** shows the version and where it comes from: the Agent Client
 Protocol registry, or the agent's own npm package for Claude Code and Codex.
 Nothing is installed until you press it. Capsule keeps these copies in its own
-folder and never changes a copy you installed yourself: an agent you already
-have is shown as **Installed by you**, and that copy is the one Capsule runs.
-For a copy Capsule installed, **Update** appears when a newer version is
-published, and **Remove** deletes it. Downloads are checked against the
+folder and never removes a copy you installed yourself: an agent you already
+have is shown as **Installed by you** with its version, and that copy is the
+one Capsule runs. For a copy Capsule installed, **Update** appears when a newer
+version is published, and **Remove** deletes it. For your own copy, see
+[Keeping agents up to date](#keeping-agents-up-to-date). Downloads are checked against the
 registry's checksum when it gives one, and an install that fails leaves the
 previous copy in place. Agents published as npm packages need Node.js on this
 computer; the row says so when it is missing.
@@ -99,9 +99,56 @@ The sign-in window lists the ways that agent supports:
   checks again yourself, for a login that does not exit on its own.
 
 **Sign out** appears for agents that support signing out from Capsule. An agent
-that reports it needs a sign-in when a conversation starts is marked
-**Needs sign-in** until you sign in, so the next message does not fail the same
-way.
+that reports it needs a sign-in, when a conversation starts or because its
+sign-in expired partway through one, is marked **Needs sign-in** until you sign
+in, so the next message does not fail the same way. The turn that hit the
+expired sign-in says the agent is not signed in and offers **Sign in**.
+
+An agent you install in a terminal while Capsule is open shows up on its own:
+Capsule looks again when you come back to its window, and every so often while
+it is in front, so there is no need to press **Check again**.
+
+## Keeping agents up to date
+
+Capsule looks up the newest release of each agent you installed yourself, a
+few times a day and only for agents it recognises. When yours is behind, the
+agent's row in **Agents** says which version is out, and an agent icon with a
+count appears in the sidebar's footer. Its tooltip names each update.
+
+When Capsule can tell which tool installed the copy (npm, pnpm or bun for a
+global package, Homebrew, or an agent that updates itself, such as
+`claude update`), **Update to vX** runs that tool's own update. Capsule shows
+the exact command and asks before it runs, then shows progress and checks the
+agent again. Conversations already open keep the version they started with
+until they start again. When Capsule cannot tell, it names the command with a
+button to copy it, and runs nothing.
+
+Looking up releases needs the network; offline, Capsule keeps the last answer
+and offers nothing new. Updating runs only on the computer running Capsule, so
+a paired device sees versions but no update buttons.
+
+## Launch options for one agent
+
+Select an agent in **Agents** to change how Capsule uses it:
+
+- **Show this agent.** Off hides it from the message box's agent picker, the
+  command palette and new conversations. It stays in **Agents**, marked
+  **Turned off**, so you can turn it back on.
+- **Launch options** (folded until you set one):
+  - **Binary path** runs another copy instead of the one found on your PATH.
+    If nothing is at that path, the agent says so instead of quietly using a
+    different copy.
+  - **Extra arguments** are added after the ones Capsule passes.
+  - **Environment** takes one `NAME=value` per line, such as a config folder for
+    a second account. `~/` means your home folder. The sign-in check and the
+    sign-in window use the same environment, so a second account signs in to
+    its own folder.
+
+Launch options apply when Capsule runs the agent on this computer. An agent
+running through the Gateway is started by the Gateway host from its own setup,
+and the panel says so. **Settings → Agents → Agent launch options** points here,
+and the options are saved in your user settings file as `agentOverrides`. A
+project's settings file cannot set them.
 
 ### Local Codex
 
@@ -197,19 +244,18 @@ empty reply.
 
 Open **Agents** from the agent picker or the command palette. The catalog puts
 installed agents first. Select one to see its readiness, run **Check this
-agent**, make it the default for the current project, or start a persistent or
-one-turn session.
+agent**, make it the default for the current project, or start a session in the
+current project's folder.
 
 A check and outlined row mark the selected harness. The readiness text and
 project-default label describe its setup separately; hovering another row does
 not select it or change the project default.
 
-The project folder and session lifetime are set once in the bar above the
-catalog. An open session appears in the selected agent's detail panel, where
-you can refresh status, cancel the current turn, or close it. Gateway sessions
-can request supported model, permission, timeout and mode changes. Direct
-sessions expose **Agent settings** inside Capabilities in Agents, and the
-composer's model panel offers the agent's effort levels and permission modes. Selectors and switches use the exact IDs and choices reported by the
+An open session appears in the selected agent's detail panel, where you can
+open or close it. Choose its model, permissions and effort in the message box,
+which works for both routes. **Advanced** holds the rest: refreshing a session's
+status, cancelling its turn, what Capsule can change on it (with **Agent
+settings** for direct sessions), and its raw diagnostics. Selectors and switches use the exact IDs and choices reported by the
 agent, and wait for its acknowledgement. Model choices require a reported model
 selector. Capsule's permission profiles are not automatically mapped to the
 agent's own policy controls; read the setting description before changing it.
@@ -218,11 +264,19 @@ folder cannot change: close the agent and start a thread in the desired folder.
 
 After a restart or an ended process, sending another message restores a direct
 session through the agent's advertised resume or load operation. Capsule keeps
-the native session ID, harness and working folder together. It does not quietly
-start a fresh agent conversation if restoration fails. Keep the existing
-transcript and start a new conversation if the saved session has expired or the
-agent cannot restore it. Threads created before native session identity was
-recorded retain their Capsule history but cannot restore that missing identity.
+the native session ID, harness and working folder together. If the agent can no
+longer open the saved session (it expired, was deleted, or belongs to another
+folder), Capsule starts a new agent session and passes the conversation so far
+along with your message. The turn's activity says so: "Started a new agent
+session; the earlier conversation was passed along." Threads created before
+native session identity was recorded retain their Capsule history but cannot
+restore that missing identity.
+
+Claude Code sometimes continues on its own, for example to report on a
+background task that finished after your turn ended. Capsule records that as a
+turn of its own: its reply appears in the conversation, any approval it asks
+for can be answered, and Stop ends it. While it runs, the conversation shows as
+working and a new message waits in the queue.
 
 When the live agent publishes its available models through ACP, **Model** is a
 dropdown containing those exact choices. If the agent does not publish a list,

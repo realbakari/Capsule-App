@@ -2,8 +2,9 @@
 
 An available control describes what Capsule can request through the selected
 agent and runtime route. It is not a promise that every agent supports it or
-that an operation succeeded. Check **Capabilities** in Agents and inspect
-the result before relying on it.
+that an operation succeeded. In Agents, expand **Advanced**, then **What
+Capsule can change on this session**, and inspect the result before relying
+on it.
 
 ## Agent connections
 
@@ -18,7 +19,7 @@ install that adapter or guarantee compatibility with Capsule.
 | Direct route | The default for new installations. Start an installed native ACP agent or local adapter on this computer; send supported attachments, receive activity and handle reported approvals. | ACP v1 only. Claude Code needs `claude-agent-acp`; Codex needs `codex-acp`. No automatic adapter installation, sign-in, or provider subscription. Existing conversations retain their route. |
 | Gateway route | Use a configured OpenClaw Gateway and its ACP bridge. | The Gateway host owns execution; a remote Gateway does not use this Mac's files automatically. |
 | Native Muse connection | Start an installed Muse CLI locally, with text/images, activity, one-time approvals, Stop, reported models, reasoning effort and durable idle-session resume. Show subscription observations when reported. | Requires a CLI build with session SDK support and its own sign-in. Missing settings or quotas stay unknown. No Gateway route, questionnaire forms, live steering or browser-tool injection. Tested with protocol fixtures, not every signed-in account. |
-| Session history | Keep recorded conversations and runs; resume native direct sessions when the agent supports resume or load. | A new process must acknowledge the saved identity. Expired or unsupported sessions require a new conversation; older threads without a saved native identity cannot restore agent history. |
+| Session history | Keep recorded conversations and runs; resume native direct sessions when the agent supports resume or load. | A new process must acknowledge the saved identity. When the agent cannot reopen it, Capsule starts a new agent session and passes the recorded conversation along with the next message; older threads without a saved native identity get the same. Gateway conversations get a new agent session after Capsule restarts, with the recorded conversation passed along. |
 | Live settings | Request supported Gateway changes or change exact agent-reported direct settings. | Direct model/mode choices require a reported selector. Capsule permission profiles are not mapped to agent policies. Direct Steer and live folder changes remain unavailable. |
 | Attachments | Direct prompts send native images and embedded text/binary resources, including PDFs, when supported. | At most eight files, 2 MiB each and about 3 MiB combined with prompt text before encoding; the wire limit is 4 MiB. Unsupported or oversized content fails visibly. Gateway delivery depends on its host and bridge. |
 | Agent tools | Show the activity and approval details the runtime reports. | Capsule does not expose ACP client filesystem/terminal APIs; workspace file and terminal controls are separate. |

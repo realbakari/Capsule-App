@@ -1,5 +1,6 @@
 import { IPC_CHANNELS, isHarnessId, type AgentLoginTerminal, type AgentSignInOptions, type HarnessId } from "@capsule/shared";
 import type { CapsuleEngine } from "@capsule/core";
+import { launchExtras } from "@capsule/harness";
 
 /*
  * Signing an agent in: lists its methods, runs ACP authenticate/logout
@@ -63,7 +64,8 @@ export function registerAgentSignIn(host: AgentSignInHost): void {
     const method = options.methods.find((item) => item.id === methodId);
     if (!method) throw new Error("That sign-in method is no longer offered. Open sign-in again.");
     if (method.kind === "agent") throw new Error("This sign-in method runs inside the agent, not in a terminal.");
-    const env = method.kind === "terminal" ? method.env ?? {} : {};
+    /* A second account's config folder applies to its sign-in too, or the login lands on the default account. */
+    const env = { ...launchExtras(harnessId).env, ...(method.kind === "terminal" ? method.env : undefined) };
     return host.startLoginTerminal(method.argv, env, readSize(size), (code) => {
       if (code === 0) host.engine().agentSignInChanged();
     });

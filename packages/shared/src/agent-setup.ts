@@ -60,6 +60,29 @@ export interface AgentManagedInstall {
   installedAt: string;
 }
 
+/** The tool that owns a copy the user installed, and so the one that updates it. */
+export type AgentUpdateVia = "npm" | "pnpm" | "bun" | "homebrew" | "self";
+
+/** How a copy the user installed gets to the newest release. */
+export interface AgentUserUpdate {
+  via: AgentUpdateVia;
+  /** What to run in a terminal. */
+  command: string;
+  /** Capsule can run it after asking: it knows for certain which tool owns this copy. */
+  oneClick: boolean;
+}
+
+/** A copy of an agent the user installed themselves, as Capsule reads it. Capsule never removes it. */
+export interface AgentUserCopy {
+  path: string;
+  /** From its package or `--version`; absent when neither answered. */
+  version?: string;
+  /** The newest release, when Capsule could look it up. */
+  latest?: string;
+  /** Present only when `latest` is newer than `version`. */
+  update?: AgentUserUpdate;
+}
+
 /** One agent as the store sees it. */
 export interface AgentStoreEntry {
   harnessId: HarnessId;
@@ -67,8 +90,8 @@ export interface AgentStoreEntry {
   /** Why Install is unavailable here: no build for this platform, Node.js missing, registry unreachable. */
   unavailable?: string;
   installed?: AgentManagedInstall;
-  /** A copy the user installed themselves. Capsule never updates or removes it. */
-  userPath?: string;
+  /** A copy the user installed themselves, which wins over Capsule's own. */
+  user?: AgentUserCopy;
   updateAvailable?: boolean;
 }
 
@@ -77,6 +100,8 @@ export type AgentInstallPhase = "resolving" | "downloading" | "verifying" | "ext
 /** Streamed on the `agentInstallProgress` event while an install or update runs. */
 export type AgentInstallProgress =
   | { harnessId: HarnessId; phase: AgentInstallPhase; detail?: string; received?: number; total?: number }
+  /** A copy the user installed is being updated by the tool that owns it; `detail` is the command. */
+  | { harnessId: HarnessId; phase: "updating"; detail: string }
   | { harnessId: HarnessId; phase: "done"; version: string }
   | { harnessId: HarnessId; phase: "failed"; error: string };
 

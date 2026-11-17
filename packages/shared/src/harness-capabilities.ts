@@ -36,7 +36,7 @@ export function harnessCapabilities(input: { harness?: HarnessStatus; session?: 
     steer: !live ? noSession : route === "direct"
       ? unavailable("Direct mode cannot steer an active turn. Stop it or wait, then send a follow-up.")
       : limited("Steering is sent through the Gateway; support depends on the agent."),
-    browser: !harness || !route ? unavailable("Select a harness and runtime route first.") : route === "direct"
+    browser: !harness || !route ? unavailable("Choose an agent first.") : route === "direct"
       ? directBrowser
       : unavailable("Capsule does not inject its browser tools into Gateway agents. Browse manually here, or configure browser tools on the Gateway."),
     permissions: route === "direct"

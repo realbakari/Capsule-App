@@ -33,7 +33,9 @@ export type DirectActivity =
   | { type: "usage"; sessionKey: string; usage: Parameters<DirectAcpEvents["usage"]>[0] }
   | { type: "tool"; sessionKey: string; tool: Parameters<DirectAcpEvents["tool"]>[0] }
   | { type: "plan"; sessionKey: string; plan: Parameters<DirectAcpEvents["plan"]>[0] }
-  | { type: "permission"; sessionKey: string; request: Parameters<DirectAcpEvents["permission"]>[0] };
+  | { type: "permission"; sessionKey: string; request: Parameters<DirectAcpEvents["permission"]>[0] }
+  | { type: "wake"; sessionKey: string; wake: Parameters<DirectAcpEvents["wake"]>[0] }
+  | { type: "compaction"; sessionKey: string; compaction: Parameters<DirectAcpEvents["compaction"]>[0] };
 
 /*
  * Direct mode.
@@ -103,7 +105,17 @@ export function directCapableHarnesses(): HarnessId[] {
 }
 
 export class DirectAcpHost {
-  constructor(private readonly nativeSession?: NativeSessionFactory, private readonly executable: (command: string) => string = (command) => command) {}
+  constructor(
+    private readonly nativeSession?: NativeSessionFactory,
+    private readonly executable: (command: string, harnessId?: HarnessId) => string = (command) => command,
+    /** The user's extra arguments and environment for this agent, added to every process Capsule starts for it. */
+    private readonly extras: (harnessId: HarnessId) => { args: string[]; env?: Record<string, string> } = () => ({ args: [] }),
+  ) {}
+
+  private launchEnv(harnessId: HarnessId): NodeJS.ProcessEnv | undefined {
+    const env = this.extras(harnessId).env;
+    return env ? { ...process.env, ...env } : undefined;
+  }
   /*
    * MCP servers offered to every agent this host spawns. Set by the
    * application once its servers are listening, because the URL has to exist
@@ -135,7 +147,8 @@ export class DirectAcpHost {
     const command = native ?? preset?.directCommand ?? preset?.acpxCommand;
     if (!command) throw new Error("This harness does not support local model discovery.");
     if (native && !this.nativeSession) throw new Error("The native session transport is unavailable.");
-    const options = { command: this.executable(command.command), ...(preset ? { name: preset.name } : {}), args: [...(command.args ?? [])], cwd, timeoutMs: 15_000 };
+    const env = this.launchEnv(harnessId);
+    const options = { command: this.executable(command.command, harnessId), ...(preset ? { name: preset.name } : {}), args: [...(command.args ?? []), ...this.extras(harnessId).args], cwd, timeoutMs: 15_000, ...(env ? { env } : {}) };
     const session: DirectAgentSession = native && this.nativeSession
       ? this.nativeSession({ ...options, protocol: native.protocol, model })
       : new DirectAcpSession(options);
@@ -182,10 +195,11 @@ export class DirectAcpHost {
     await this.withSignInSession(this.requireSignInLaunch(harnessId), (session) => session.logout());
   }
 
-  private signInLaunch(harnessId: HarnessId): { command: string; args: string[]; name: string } | undefined {
+  private signInLaunch(harnessId: HarnessId): { command: string; args: string[]; name: string; env?: NodeJS.ProcessEnv } | undefined {
     const preset = PRESET_HARNESSES.find((item) => item.id === harnessId);
     const command = preset && !preset.nativeCommand ? preset.directCommand ?? preset.acpxCommand : undefined;
-    return command && preset ? { command: this.executable(command.command), args: [...(command.args ?? [])], name: preset.name } : undefined;
+    const env = this.launchEnv(harnessId);
+    return command && preset ? { command: this.executable(command.command, harnessId), args: [...(command.args ?? []), ...this.extras(harnessId).args], name: preset.name, ...(env ? { env } : {}) } : undefined;
   }
 
   private requireSignInLaunch(harnessId: HarnessId) {
@@ -194,7 +208,7 @@ export class DirectAcpHost {
     return launch;
   }
 
-  private async withSignInSession<T>(launch: { command: string; args: string[]; name: string }, use: (session: DirectAcpSession) => T | Promise<T>): Promise<T> {
+  private async withSignInSession<T>(launch: { command: string; args: string[]; name: string; env?: NodeJS.ProcessEnv }, use: (session: DirectAcpSession) => T | Promise<T>): Promise<T> {
     if (this.closing) throw new Error("The agent host is shutting down.");
     if (this.discoveries.size >= 4) throw new Error("Another agent check is running. Try again shortly.");
     const session = new DirectAcpSession({ ...launch, cwd: homedir(), timeoutMs: 15_000 });
@@ -263,7 +277,8 @@ export class DirectAcpHost {
     }
 
     if (native && !this.nativeSession) throw new Error("The native session transport is unavailable.");
-    const args = [...(command.args ?? [])];
+    const args = [...(command.args ?? []), ...this.extras(input.harnessId).args];
+    const env = this.launchEnv(input.harnessId);
     const cwd = path.resolve(input.cwd ?? process.cwd());
     const launchSignature = JSON.stringify(command);
     if (input.resume && (typeof input.resume.sessionId !== "string" || !input.resume.sessionId.trim() || input.resume.sessionId.length > 4096)) {
@@ -286,10 +301,11 @@ export class DirectAcpHost {
      */
     const offer = typeof this.mcpServers === "function" ? this.mcpServers(input) : { servers: this.mcpServers, dispose: () => {} };
     const options = {
-      command: this.executable(command.command),
+      command: this.executable(command.command, input.harnessId),
       ...(preset ? { name: preset.name } : {}),
       args,
       cwd,
+      ...(env ? { env } : {}),
       ...(offer.servers.length > 0 ? { mcpServers: offer.servers } : {}),
     };
     const session = native
@@ -472,6 +488,11 @@ export class DirectAcpHost {
     session.on("usage", (usage) => this.emitter.emit("activity", { type: "usage", sessionKey: key, usage }));
     session.on("tool", (tool) => this.emitter.emit("activity", { type: "tool", sessionKey: key, tool }));
     session.on("plan", (plan) => this.emitter.emit("activity", { type: "plan", sessionKey: key, plan }));
+    session.on("compaction", (compaction) => this.emitter.emit("activity", { type: "compaction", sessionKey: key, compaction }));
+    session.on("wake", (wake) => {
+      // Nobody listening still lets the agent finish; its turn is simply not recorded.
+      if (!this.emitter.emit("activity", { type: "wake", sessionKey: key, wake })) wake.finished.catch(() => undefined);
+    });
     session.on("permission", (request) => {
       if (!this.emitter.emit("activity", { type: "permission", sessionKey: key, request })) request.cancel();
     });

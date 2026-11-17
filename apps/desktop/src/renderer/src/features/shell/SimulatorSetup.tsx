@@ -12,7 +12,7 @@ export function SimulatorSetup({ inventory, onCopy }: { inventory: SimulatorInve
   const xcode = inventory.supported;
   const devices = inventory.devices.length > 0;
   const steps = [
-    { done: xcode, title: "Install Xcode", detail: inventory.reason ?? "From the Mac App Store. Open it once so it can finish installing its tools." },
+    { done: xcode, title: "Install Xcode", detail: "From the Mac App Store. Open it once so it can finish installing its tools." },
     { done: devices, title: "Download the iOS platform", detail: "In Xcode, Settings → Components, or run this in a terminal:", command: DOWNLOAD_COMMAND },
     { done: devices, title: "Create a simulator", detail: "In Xcode, Window → Devices and Simulators. It appears here as soon as it exists." },
   ];

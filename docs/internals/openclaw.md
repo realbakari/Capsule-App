@@ -51,6 +51,21 @@ The adapter announces each close and each hello through `onConnectionChange`,
 and the engine forwards the fresh status as its `connection` event, so the
 window's Gateway banner follows a dropped socket and its return without a
 manual reconnect.
+
+Neither is the lifecycle frame of a turn that ended while the socket was down,
+so on each hello the engine reconciles (`reconcileGatewayRuns`) every open run
+that reached the Gateway against `sessions.list` (`sessionActivity`). A session
+with `hasActiveRun: true` keeps its run running. One with `hasActiveRun: false`,
+or no longer listed, settles its run: completed when a reply was recorded,
+otherwise cancelled with "its result didn't arrive". When the Gateway cannot be
+asked, or its row does not report `hasActiveRun`, the run is aborted there
+(`sessions.abort`) and settled as cancelled with a message saying Capsule could
+not confirm how it ended, rather than left running and blocking the thread.
+
+Answering a Gateway approval puts the run back to `running` once no other
+request on it is pending, as the direct route does. Deleting a thread force
+stops its running turn first (`sessions.abort`, then `/acp close` for a harness
+thread), and runtime frames that arrive for a run whose row is gone are dropped.
 `session.message` carries a persisted whole message, not a text delta or a
 turn-end event. Only assistant rows supply prose. User and tool rows are ignored.
 The message timestamp associates a delayed snapshot with its originating run;
@@ -149,7 +164,18 @@ invalidation; old cleanup cannot remove a newer in-flight request.
 
 ## Tool display facts
 
-The adapter extracts bounded command text, text output and reported file paths
-from ACP tool frames before event compaction. The transcript merges updates by
+The adapter extracts bounded command text, text output (a head and a tail when
+long, see harness.md), an exit code where the frame's `rawOutput` carries one,
+and reported file paths from ACP tool frames before event compaction. The transcript merges updates by
 tool-call identity and shows these details only on expansion. They remain tool
 observations, never assistant messages, execution requests or authorization.
+
+## Compaction frames
+
+An agent frame on the `compaction` stream maps to its own `compaction` kind and
+becomes a `compaction` run event, which the transcript draws as a divider. It
+used to map to `lifecycle`, where the renderer dropped it and a terminal status
+on it could have ended the turn. The frame's payload shape is not in the
+published protocol schema: Capsule reads only `data.phase === "start"` (shown as
+running until a later compaction frame) and treats anything else as finished.
+Consecutive frames merge into one divider.

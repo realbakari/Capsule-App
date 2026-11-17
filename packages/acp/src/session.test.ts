@@ -776,4 +776,20 @@ describe("signing an agent in", () => {
       } finally { await session.close(); }
     }
   });
+
+  it("turns -32000 from a prompt, when a sign-in expires mid-conversation, into the same sign-in error", async () => {
+    const session = new DirectAcpSession({ command: "node", name: "Fake Agent", args: [fakeAgent(`
+      function handle(message) {
+        if (message.method === "initialize") send({ id: message.id, result: { protocolVersion: 1 } });
+        if (message.method === "session/new") send({ id: message.id, result: { sessionId: "live" } });
+        if (message.method === "session/prompt") send({ id: message.id, error: { code: -32000, message: "Authentication required" } });
+      }
+    `)] });
+    try {
+      await session.start();
+      const turn = session.prompt("Hello");
+      await expect(turn).rejects.toBeInstanceOf(AgentAuthRequiredError);
+      await expect(turn).rejects.toThrow(/^Fake Agent is not signed in\./);
+    } finally { await session.close(); }
+  });
 });

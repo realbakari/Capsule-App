@@ -5,6 +5,7 @@ import {
   type AppearancePalette,
   type AppearanceTheme,
 } from "./appearance.js";
+import { normalizeAgentOverrides, type AgentOverrides } from "./agent-overrides.js";
 import type { HarnessPermissionProfile } from "./harness.js";
 import { normalizeFavoriteModels, normalizeModeModels, type ModeModels } from "./plan-mode.js";
 import { normalizePromptTemplates, type PromptTemplate } from "./prompt-templates.js";
@@ -19,7 +20,6 @@ import type {
   RunEvent,
   RuntimeStatus,
   Session,
-  Skill,
   Unsubscribe,
 } from "./types.js";
 
@@ -35,7 +35,6 @@ export interface AgentRuntime {
   disconnect(): Promise<void>;
   getStatus(): Promise<RuntimeStatus>;
   listAgents(): Promise<Agent[]>;
-  listSkills(): Promise<Skill[]>;
   listChannels(): Promise<ChannelBinding[]>;
   createSession(input: CreateSessionInputRuntime): Promise<Session>;
   sendMessage(input: AgentMessage): Promise<Run>;
@@ -57,6 +56,8 @@ export type SandboxMode = "off" | "ask" | "strict";
 export type OutputDetail = "concise" | "standard" | "verbose";
 export type ReasoningSummary = "hidden" | "collapsed" | "visible";
 export type TranscriptSize = "s" | "m" | "l";
+/** Code blocks, diffs and file previews, relative to the size each is drawn at. */
+export type CodeTextSize = "s" | "m" | "l";
 export type TranscriptWidth = "narrow" | "standard" | "wide";
 export type ArchiveInactiveAfter = "never" | "1d" | "7d" | "30d";
 /** Clock style for message times: the system's, or forced 12- or 24-hour. */
@@ -79,6 +80,15 @@ export const TRANSCRIPT_SIZE_CSS: Record<TranscriptSize, string> = {
   m: "0.875rem",
   l: "1rem",
 };
+
+export const CODE_TEXT_SCALE: Record<CodeTextSize, string> = {
+  s: "0.9",
+  m: "1",
+  l: "1.15",
+};
+
+/** Pixel sizes the terminal offers; xterm draws to a canvas, so its size is in pixels rather than rem. */
+export const TERMINAL_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20] as const;
 
 export const TRANSCRIPT_WIDTH_CSS: Record<TranscriptWidth, string> = {
   narrow: "40rem",
@@ -119,6 +129,8 @@ export const DEFAULT_CAPSULE_SETTINGS: CapsuleSettings = {
   reasoningSummary: "visible",
   transcriptSize: "m",
   transcriptWidth: "standard",
+  codeTextSize: "m",
+  terminalFontSize: 12,
   notifyRunComplete: true,
   notifyApprovals: true,
   notifyLongCommands: true,
@@ -204,6 +216,8 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "transcriptSize",
     "transcriptWidth",
     "customCodeFont",
+    "codeTextSize",
+    "terminalFontSize",
   ],
   agents: [
     "runtimeMode",
@@ -217,6 +231,7 @@ export const SETTINGS_SECTION_KEYS: Record<string, ReadonlyArray<keyof CapsuleSe
     "reasoningSummary",
     "startInPlanMode",
     "modeModels",
+    "agentOverrides",
   ],
   gateway: ["gatewayUrl"],
   projects: ["projectlessFolder", "openInApps", "openInHidden", "openInFavorite"],
@@ -292,6 +307,9 @@ export interface CapsuleSettings {
   transcriptWidth: TranscriptWidth;
   /** Extra family prepended to the code font stack, e.g. JetBrains Mono. */
   customCodeFont?: string;
+  codeTextSize: CodeTextSize;
+  /** One of TERMINAL_FONT_SIZES. */
+  terminalFontSize: number;
   notifyRunComplete: boolean;
   notifyApprovals: boolean;
   /** Notify when a command the agent ran without asking has been going for longCommandSeconds. */
@@ -370,6 +388,8 @@ export interface CapsuleSettings {
   diffIgnoreWhitespace: boolean;
   /** The first-run setup was finished or put off; existing profiles with projects never see it either way. */
   firstRunDone: boolean;
+  /** Per agent: hidden, or launched with another binary, extra arguments or environment. */
+  agentOverrides?: AgentOverrides;
 }
 
 export const AGENT_MODES: AgentMode[] = [
@@ -536,6 +556,7 @@ export function shouldArchiveInactiveSession(input: {
 export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): CapsuleSettings {
   const gatewayUrl = input.gatewayUrl?.trim() || DEFAULT_CAPSULE_SETTINGS.gatewayUrl;
   const defaultAgentId = input.defaultAgentId?.trim();
+  const agentOverrides = normalizeAgentOverrides(input.agentOverrides);
   return {
     gatewayUrl,
     runtimeMode: pick(input.runtimeMode, RUNTIME_MODES, DEFAULT_CAPSULE_SETTINGS.runtimeMode),
@@ -576,6 +597,10 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
       DEFAULT_CAPSULE_SETTINGS.transcriptWidth,
     ),
     customCodeFont: sanitizeFontName(input.customCodeFont),
+    codeTextSize: pick(input.codeTextSize, TRANSCRIPT_SIZES, DEFAULT_CAPSULE_SETTINGS.codeTextSize),
+    terminalFontSize: TERMINAL_FONT_SIZES.includes(input.terminalFontSize as never)
+      ? input.terminalFontSize!
+      : DEFAULT_CAPSULE_SETTINGS.terminalFontSize,
     notifyRunComplete: flag(input.notifyRunComplete, DEFAULT_CAPSULE_SETTINGS.notifyRunComplete),
     notifyApprovals: flag(input.notifyApprovals, DEFAULT_CAPSULE_SETTINGS.notifyApprovals),
     notifyLongCommands: flag(input.notifyLongCommands, DEFAULT_CAPSULE_SETTINGS.notifyLongCommands),
@@ -647,5 +672,6 @@ export function normalizeCapsuleSettings(input: Partial<CapsuleSettings> = {}): 
     } : {}),
     diffIgnoreWhitespace: flag(input.diffIgnoreWhitespace, DEFAULT_CAPSULE_SETTINGS.diffIgnoreWhitespace),
     firstRunDone: flag(input.firstRunDone, DEFAULT_CAPSULE_SETTINGS.firstRunDone),
+    ...(agentOverrides ? { agentOverrides } : {}),
   };
 }

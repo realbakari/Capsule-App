@@ -149,10 +149,10 @@ describe("storeEntry", () => {
     const installed = { version: "2.2.0", kind: "binary" as const, installedAt: "2026-11-01T00:00:00.000Z" };
     expect(storeEntry(opencode, installed, undefined)).toMatchObject({ installed, updateAvailable: true });
     expect(storeEntry(opencode, { ...installed, version: "2.3.0" }, undefined).updateAvailable).toBe(false);
-    expect(storeEntry(opencode, undefined, "/usr/local/bin/opencode")).toEqual({
+    expect(storeEntry(opencode, undefined, { path: "/usr/local/bin/opencode", version: "2.2.0" })).toEqual({
       harnessId: "opencode",
       offer: opencode.offer,
-      userPath: "/usr/local/bin/opencode",
+      user: { path: "/usr/local/bin/opencode", version: "2.2.0" },
     });
   });
 });

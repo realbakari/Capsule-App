@@ -153,3 +153,17 @@
   overflow: hidden;
 }
 .login-terminal .xterm { height: 100%; }
+.agent-store-user code,
+.agent-store-manual code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+.agent-store-manual {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.agent-store-manual .icon-btn { width: 1.5rem; height: 1.5rem; flex-shrink: 0; }

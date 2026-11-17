@@ -115,13 +115,48 @@ stops waiting and says so in the run log. The pending Stop then returns the
 already-settled run instead of writing a second cancellation. The session's
 harness state becomes `closed`, or `error` when the process will not exit; the
 next message spawns the agent again. Resume requires the exact saved UUID and canonical working
-folder, and replays saved settings before the next prompt. Missing transcripts
-fail explicitly instead of silently starting a different conversation. Text,
+folder, and replays saved settings before the next prompt. A missing transcript
+fails the resume, and the engine then starts a fresh session that is handed the
+conversation (see Direct sessions below). Text,
 images, tool activity and per-turn usage feed the existing run records; cumulative
 session costs are not added as turn totals. The direct MCP offer (Capsule's
 own tools and the settings files' servers) goes in the SDK's `mcpServers`
-option, beside the agent's own servers; discovery still passes none. Tests cover the SDK wire, approvals, setting changes,
-cancellation and database-reopen resume; provider inference is not exercised.
+option, beside the agent's own servers; discovery still passes none.
+
+Claude starts turns of its own, most often to report on a background task
+that finished after the user's turn. Its prompts are stamped `origin: human`,
+and a `result` ends the user's turn only when it is that turn's: one whose
+`user_message_uuids` (or `user_message_uuid`) do not include the turn's uuid,
+or that carries a non-human `origin`, is ignored, and so is a task
+notification's empty bookkeeping result (`num_turns` 0, no text), which can
+land inside any turn. A message that starts a reply (`message_start`, an
+assistant message) or a permission request arriving with no turn open opens a
+wake turn, announced by the session's `wake` event with the latest
+`task_notification` summary. The direct host forwards it as `wake` activity;
+the engine records it as a run with an empty prompt (`recordWake`) unless a
+turn is already open or being admitted, settles that run from the wake's
+outcome, and routes its text, tools and approvals to it as for any turn. While
+the wake runs the session is busy, so a new message waits in the queue.
+
+`conversation_reset` (from `/clear`) reports the context window as empty, and
+`compact_boundary` reports its `post_tokens` and emits a `compaction` session
+event (`trigger`, `tokensBefore`); the host relays it as `compaction` activity
+and the engine records a `compaction` run event the transcript draws as a
+divider. ACP has no compaction update, so a direct ACP agent's own compaction
+is not seen; only native transports that report one (Claude Code today) show
+it. When a compaction does not report
+its size, the saved reading is dropped and no report is sent, so the meter hides
+rather than show the size before compaction. Either way the turn's latest
+request is forgotten, so its result does not report the old size. An assistant
+message with `error: "authentication_failed"` makes the turn's failure an
+`AgentAuthRequiredError`; on the ACP transports a `-32000` answer to
+`session/prompt` does the same, as it already did for `session/new` and
+`session/load`. The engine marks the harness as needing sign-in
+(`noteAuthRequired`) and the run's error offers Sign in.
+
+Tests cover the SDK wire, approvals, setting changes, wake turns, context
+resets, expired sign-in, cancellation and database-reopen resume; provider
+inference is not exercised.
 
 OpenCode, Qwen, Kimi, Kiro, Qoder and Kilo also have direct commands for their
 built-in ACP servers. This is launch metadata, not a replacement agent loop.
@@ -223,6 +258,10 @@ selected. Unsupported direct-session option changes remain explicit errors;
 they do not mutate the saved selection. Project-skill resolution, inspection and
 submission share project/thread context and the thread's actual working folder
 on both routes. A missing selected skill fails before recording a user message.
+An attached skill travels as prompt text on both routes (`[Active Skill: name]`,
+its folder when it has one, then `SKILL.md`), not through the agent's own skill
+mechanism; no mode attaches one implicitly. See desktop.md, "How an attached
+skill reaches the agent".
 
 Both runtime routes compact recorded diagnostic events before database and IPC
 publication. Raw incoming replies still feed authoritative message/result
@@ -383,10 +422,22 @@ Migration 17 stores the native session ID together with harness, resolved cwd an
 preset launch signature in `sessions.direct_session`. Recovery clears stale
 process keys but retains this identity. The next spawn prefers advertised
 `session/resume`, otherwise `session/load` when `loadSession` is true. Both receive
-the current MCP offer and exact saved ID/cwd. History/permission replay is ignored
-while restoring; configuration updates are retained. Unsupported or rejected
-restoration never falls back to `session/new`. A different folder, harness or
-launch command cannot reuse the identity. Legacy threads without native IDs
+the current MCP offer and exact saved ID/cwd, and get 180 seconds rather than the
+usual 30, because loading replays the whole history first. History/permission
+replay is ignored while restoring; configuration updates are retained. A
+different folder, harness or launch command cannot reuse the identity.
+
+When restoration fails for any reason other than a sign-in (`AgentAuthRequiredError`
+keeps the identity for a retry after signing in), `spawnHarness` spawns again
+without `resume`, on every direct protocol (ACP, Claude, Codex, Muse). The new
+identity replaces the old one, the saved configuration is reapplied, and the
+thread gets `carryOver.replayTranscript`, so the next prompt carries
+`<conversation-so-far>`. That turn logs a lifecycle event (`resumeFailed: true`)
+naming the reason and saying a new session started. `replayTranscript` and
+`brief` survive a spawn and are cleared by the turn that carries them, so an
+agent started by hand before the next message still passes them on. The
+transcript is read after the agent is ready, without the current turn's own
+prompt. Legacy threads without native IDs
 cannot restore missing history. No agent session enumeration/delete is added.
 
 Direct select and boolean settings use `session/set_config_option` with exact
@@ -418,6 +469,13 @@ has no agent session and a `carryOver`. Per route and harness:
 | Direct, Claude Code | spawned on the route recorded in `carryOver` | transcript block on the first prompt | resumes the saved native session (`resume`), which holds the hidden turns |
 | Direct, Codex, Grok Build, Muse | same | same | same, through `session/resume` or `session/load` when the agent offers it |
 | Gateway, any harness | new Gateway session and `/acp spawn --bind off` | same | the closed Gateway session is not reopened; the next prompt carries the whole transcript instead |
+
+Startup recovery does the same for a Gateway thread that was live when Capsule
+quit. The Gateway's session may outlive Capsule, but Capsule does not reattach
+to it: the key is cleared and the thread gets `carryOver = { route: "gateway",
+replayTranscript: true }`, so its next agent session starts with the
+transcript instead of no memory. A direct thread keeps its native identity and
+resumes it instead.
 | Mock runtime | mock session key | lifecycle event only (the mock reads scenario tokens from prompts) | same as Gateway |
 
 Native forking was considered and not used. ACP's session fork and the
@@ -726,6 +784,52 @@ terminal limit and events, hold no folder lease, and clear the login cache when
 they exit 0. On the Gateway route `agent` methods are withheld with a reason;
 CLI and terminal sign-in still sign in the CLI on this computer.
 
+**Updating a copy the user installed.** `store/user-copy.ts` is pure:
+`copyOwner` reads the owner from the binary's real path (after symlinks): a
+Homebrew keg (`Cellar|Caskroom/<name>/<version>/`), a self-updating CLI's own
+versions folder (`SELF_UPDATING`: Claude Code's `~/.local/share/claude/versions`
+runs `claude update`, Cursor's runs `cursor-agent update`), a bun or pnpm global,
+or an npm global at `<prefix>/lib/node_modules/<package>` with no other
+`node_modules` above it. Anything else is `unknown` and gets no offer.
+The installed version comes from the layout, the package's `package.json`, or
+`--version` (five-second limit, injected as `UserCopyIo` so tests never run a
+CLI). The newest release comes from the npm registry's dist-tags for the
+package, or the Homebrew formula API, cached six hours (fifteen minutes after a
+failure, keeping the last answer offline). `userUpdatePlan` gives argv only when
+the owning tool is present: the npm beside the prefix (`<prefix>/bin/npm`, never
+another prefix's npm), pnpm, bun, `<prefix>/bin/brew`, or the CLI itself.
+Without argv the renderer shows the command to copy. `updateUserCopy`
+recomputes the plan in main (the renderer only names a harness), emits
+`{ phase: "updating", detail: command }`, runs argv with the tool's folder first
+on PATH and a ten-minute limit, then re-reads the version and redraws
+readiness. `agentStoreUpdateUserCopy` is a write channel. The `AgentStoreEntry`
+field is `user: AgentUserCopy` (path, version, latest, update).
+
+**Launch overrides.** `settings.agentOverrides` (`@capsule/shared/agent-overrides.ts`,
+user scope only, `next-thread`) holds per preset `enabled`, `binaryPath`,
+`args` and `env`. The engine hands it to `setAgentOverrides` on load, save and
+file change, clearing the login cache and model discovery when it changes.
+`harnessBinaries(preset, direct)` is the one lookup readiness, Doctor, sign-in
+options and the start gate use: the override replaces the launch command, and
+the login binary when the preset signs in with the same program; a missing
+override path is `overrideMissing`, reported as such rather than falling back
+to PATH. `DirectAcpHost` takes `launchExecutable` and `launchExtras`, so
+spawn, discovery and ACP sign-in sessions all run the override with the extra
+args after the preset's and the env over `process.env`. The login probe and
+login terminals get the same env. The launch signature stays the preset's
+command, so adding args never breaks resume. The Gateway route carries none of
+this: acpx starts agents from the Gateway host's configuration, and the panel
+says so. `enabled: false` is applied in the renderer (`agentEnabled`): the
+workspace's `harnesses` and `agents` omit the agent, and `allHarnesses` keeps
+it for Agents.
+
+**Finding a new install.** `whichBinary` caches a found path for the process
+but a miss for `BINARY_MISS_TTL_MS` (15 s); an older miss is looked for again
+with `locateBinaryOnDisk`, file checks over PATH, the store's bin and the usual
+folders, never the login shell. `recheckMissingBinaries` does the same for
+every cached miss and redraws readiness when one appears; main runs it on
+`browser-window-focus` and every 20 s while a window is focused.
+
 `session/new`, load or resume answering -32000 raises `AgentAuthRequiredError`;
 the engine records it with `noteAuthRequired`, which makes readiness
 `needs_login` for agents with no login probe until a session starts again.
@@ -781,8 +885,9 @@ runtime prompt, which both routes send unchanged, and sets the profile's
 effort, and a coding agent's mode such as `plan`, through the agent's
 reported `thought_level`, `mode` or `permissions` controls. Those are
 direct-only; on the Gateway the `standing.instructions` run event names what
-was not applied. Capsule does not see compaction on either route, so the
-block is sent once.
+was not applied. The standing block is still sent once: a compaction is now
+recorded where the route reports one, but nothing re-sends the block after it
+(the seam is `firstTurnStanding`).
 
 ## Permission rules and hooks on both routes
 
@@ -834,7 +939,7 @@ openclaw gateway restart
 # Install and authenticate Claude Code, Codex, Grok Build, Gemini, …
 ```
 
-Then in Capsule: **Runtimes → Doctor / Dedicate / Spawn**, or Inspector **Side chat**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists. The composer also blocks a known-unready harness before send and links directly to Doctor.
+Then in Capsule: **Agents → Doctor / Dedicate / Spawn**. Code-mode messages on a dedicated project auto-spawn ACP if no live session exists. The composer also blocks a known-unready harness before send and links directly to Doctor.
 
 Desktop chrome (inspector, folders, shortcuts) is specified in [desktop.md](desktop.md).
 
@@ -911,6 +1016,33 @@ messages, including when no tool ran between them. One exact ID of at most
 boundary rules. An identified message stays contiguous across tool activity.
 For agents without IDs, new `tool_call` notifications separate prose segments.
 Permission requests and transitions to reasoning also flush preceding prose.
+A thought is not prose (`acp-reply` with `control: true` on a direct key): the
+engine buffers it per session (at most 8 KB) and writes one `thinking` run
+event with `segment: true` when the next prose, tool or compaction arrives, so
+reasoning survives the turn in the work log and never becomes a message. A
+thought still buffered when the turn's run has completed is dropped.
+
+Approval decisions are recorded on both routes. `resolveApproval` appends
+`approval.resolved` with `decision`, `action` and a one-line `target` (or
+`question: true` for a question left unanswered) after the decision reached the
+agent, never when the Gateway refused it. `answerAgentQuestion` appends
+`question.answered` with each question and its answer (`(hidden)` for a secret)
+on the direct route and, after the runtime accepted the answers, off it.
+
+Tool output (`readToolActivityDetails`, `splitToolOutput` in
+`@capsule/shared`) keeps output of up to 2,048 characters and 52 lines whole.
+Longer output keeps a head of at most 12 lines / 768 characters in `output`
+and a tail of at most 40 lines / 2,048 characters in `outputTail`, with the
+dropped line count in `omittedLines`. Each part stays within the 2 KB a saved
+event keeps of one string, or `compactRunEvent` would cut the tail back to its
+start. Output with no whole line to drop (one huge line) keeps its first 2,048
+characters. `exitCode` comes from `rawOutput.exitCode`/`exit_code` (ACP agents
+that report it), a top-level `exitCode` (Codex native `commandExecution`), or
+Claude Code's failed `Bash` result, whose leading `Exit code N` line becomes
+`exitCode` and leaves the output. Other routes report none and the row shows
+none. Full output on demand is not kept: it would need the raw output stored
+outside run events (a per-tool blob with its own size cap and retention) and a
+read channel to fetch it.
 The session emits a
 `message-end` signal that the host maps to reply `done`; it does not finish the
 run. Consecutive text chunks remain byte-for-byte contiguous. Background

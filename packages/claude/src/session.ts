@@ -2,9 +2,9 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { realpathSync } from "node:fs";
-import { query, getSessionInfo, type Query, type ModelInfo, type SDKMessage, type SDKUserMessage, type CanUseTool, type PermissionResult, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
+import { query, getSessionInfo, type Query, type ModelInfo, type SDKMessage, type SDKResultMessage, type SDKUserMessage, type CanUseTool, type PermissionResult, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { spawnCommand, stopChild } from "@capsule/process";
-import type { DirectAcpEvents, DirectAcpOptions, DirectAgentSession } from "@capsule/acp";
+import { AgentAuthRequiredError, type DirectAcpEvents, type DirectAcpOptions, type DirectAgentSession } from "@capsule/acp";
 import { readToolQuestions, toolAnswerPayload, type AgentQuestionAnswers, readPlanEntries, readReportedContextUsage, readReportedTurnUsage, readToolActivityDetails, type AcpModelCatalog, type AgentCapabilityReport, type AgentCommand, type AgentPromptBlock, type ReportedContextUsage } from "@capsule/shared";
 import { ClaudeInput } from "./input.js";
 import { isClaudeEffort, isClaudePermission, isClaudeTurnMode, MODE_CHOICES, permissionChoices, type ClaudeTurnMode } from "./configuration.js";
@@ -19,6 +19,10 @@ type Turn = {
   planned?: boolean;
   /** The latest root request: its prompt plus reply is what the context window holds now. */
   request?: { model: string; tokens: number };
+  /** Claude started this turn itself; no prompt of the user's is waiting on it. */
+  wake?: boolean;
+  /** Claude said the account's sign-in failed; the turn's error is a sign-in, not prose. */
+  signedOut?: boolean;
 };
 
 /** The SDK owns the protocol; the installed CLI owns authentication, tools and execution. */
@@ -44,6 +48,8 @@ export class DirectClaudeSession implements DirectAgentSession {
   private commands?: AgentCommand[];
   private context?: ReportedContextUsage;
   private turn?: Turn;
+  /** What the latest background task reported, naming the turn Claude starts about it. */
+  private wakeDetail?: string;
   private setting = false;
   private stderr = "";
   private readonly approvals = new Set<() => void>();
@@ -172,7 +178,7 @@ export class DirectClaudeSession implements DirectAgentSession {
       const finished = new Promise<void>((done) => { settle = done; });
       const uuid = randomUUID();
       this.turn = { uuid, resolve, reject, finished, settle, cancelling: false, hasText: false };
-      try { this.input.push({ type: "user", uuid, session_id: this.nativeId, parent_tool_use_id: null, message: { role: "user", content } }); }
+      try { this.input.push({ type: "user", uuid, session_id: this.nativeId, parent_tool_use_id: null, origin: { kind: "human" }, message: { role: "user", content } }); }
       catch (error) { this.finish(error instanceof Error ? error : new Error(String(error))); }
     });
   }
@@ -245,9 +251,21 @@ export class DirectClaudeSession implements DirectAgentSession {
       this.effort = message.effort ?? undefined;
       this.emitter.emit("configuration"); return;
     }
-    const turn = this.turn;
-    if (!turn || ("session_id" in message && message.session_id !== this.nativeId)) return;
+    if ("session_id" in message && message.session_id !== this.nativeId) return;
+    // /clear empties the window; a compaction shrinks it to what Claude reports, or to an unknown size.
+    if (message.type === "conversation_reset") { this.resetContext(0); return; }
+    if (message.type === "system" && message.subtype === "compact_boundary") {
+      this.resetContext(message.compact_metadata.post_tokens);
+      const before = message.compact_metadata.pre_tokens;
+      this.emitter.emit("compaction", { trigger: message.compact_metadata.trigger, ...(Number.isFinite(before) ? { tokensBefore: before } : {}) });
+      return;
+    }
+    if (message.type === "system" && message.subtype === "task_notification") { this.wakeDetail = message.summary || undefined; return; }
     if ("parent_tool_use_id" in message && message.parent_tool_use_id) return;
+    if (message.type === "result" && this.foreignResult(message)) return;
+    const starts = (message.type === "stream_event" && message.event.type === "message_start") || message.type === "assistant";
+    const turn = this.turn ?? (starts ? this.wake() : undefined);
+    if (!turn) return;
     if (message.type === "stream_event") {
       const event = message.event;
       if (event.type === "message_start") this.streamId = event.message.id;
@@ -259,6 +277,7 @@ export class DirectClaudeSession implements DirectAgentSession {
         this.emitter.emit("text", { text, thought });
       }
     } else if (message.type === "assistant") {
+      if (message.error === "authentication_failed") turn.signedOut = true;
       const usage = message.message.usage;
       if (usage) turn.request = { model: message.message.model, tokens: usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) + usage.output_tokens };
       for (const block of message.message.content) {
@@ -276,11 +295,13 @@ export class DirectClaudeSession implements DirectAgentSession {
       this.emitter.emit("message-end");
     } else if (message.type === "user" && Array.isArray(message.message.content)) {
       for (const block of message.message.content) if (block.type === "tool_result" && this.tools.get(block.tool_use_id) !== EXIT_PLAN) {
-        const output = typeof block.content === "string" ? block.content : block.content?.filter((row) => row.type === "text").map((row) => row.text).join("\n");
-        this.emitter.emit("tool", { toolCallId: block.tool_use_id, title: this.tools.get(block.tool_use_id) ?? "Tool result", status: block.is_error ? "failed" : "completed", details: readToolActivityDetails({ rawOutput: output }) });
+        const text = typeof block.content === "string" ? block.content : block.content?.filter((row) => row.type === "text").map((row) => row.text).join("\n");
+        // A failed shell command's result opens with "Exit code N"; the status belongs on the row, not in the output.
+        const exit = this.tools.get(block.tool_use_id) === "Bash" && block.is_error ? /^Exit code (\d+)\n?/u.exec(text ?? "") : null;
+        const output = exit ? text!.slice(exit[0].length) : text;
+        this.emitter.emit("tool", { toolCallId: block.tool_use_id, title: this.tools.get(block.tool_use_id) ?? "Tool result", status: block.is_error ? "failed" : "completed", details: readToolActivityDetails({ rawOutput: output, ...(exit ? { exitCode: Number(exit[1]) } : {}) }) });
       }
     } else if (message.type === "result") {
-      if (message.user_message_uuid && message.user_message_uuid !== turn.uuid) return;
       const usage = message.usage;
       const reported = readReportedTurnUsage({ inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, cachedReadTokens: usage.cache_read_input_tokens, cachedWriteTokens: usage.cache_creation_input_tokens });
       // result.usage sums every request in the turn, so it overstates what the window holds.
@@ -291,6 +312,7 @@ export class DirectClaudeSession implements DirectAgentSession {
       this.emitter.emit("usage", { turn: reported, ...(changed ? { context } : {}) });
       if (turn.cancelling) this.finish(undefined, "cancelled");
       else if (turn.planned) this.finish();
+      else if (turn.signedOut && (message.subtype !== "success" || message.is_error)) this.finish(new AgentAuthRequiredError(this.options.name ?? "Claude Code"));
       else if (message.subtype !== "success" || message.is_error) this.finish(new Error(message.subtype === "success" ? message.result : message.errors.join("\n")));
       else {
         if (!turn.hasText && message.result) this.emitter.emit("text", { text: message.result, thought: false });
@@ -299,7 +321,49 @@ export class DirectClaudeSession implements DirectAgentSession {
     }
   }
   private cancelApprovals(): void { for (const cancel of this.approvals) cancel(); this.approvals.clear(); }
+
+  /*
+   * Claude starts turns of its own: a background task finishes and Claude
+   * reports on it. Dropping those lost the report and denied its approvals,
+   * so it becomes a turn here, handed to whoever records turns.
+   */
+  private wake(): Turn {
+    let resolve!: Turn["resolve"], reject!: Turn["reject"], settle!: () => void;
+    const outcome = new Promise<{ stopReason?: string }>((done, fail) => { resolve = done; reject = fail; });
+    const finished = new Promise<void>((done) => { settle = done; });
+    this.streamed.clear(); this.tools.clear(); this.streamId = undefined;
+    const turn: Turn = { uuid: randomUUID(), resolve, reject, finished, settle, cancelling: false, hasText: false, wake: true };
+    this.turn = turn;
+    if (!this.emitter.emit("wake", { finished: outcome, ...(this.wakeDetail ? { detail: this.wakeDetail } : {}) })) outcome.catch(() => undefined);
+    this.wakeDetail = undefined;
+    return turn;
+  }
+
+  /**
+   * A result that ends none of the user's turns: one answering another
+   * prompt, a turn Claude started itself, or a background task's empty
+   * bookkeeping result, which precedes the turn that reports on it.
+   */
+  private foreignResult(message: SDKResultMessage): boolean {
+    if (message.origin?.kind === "task-notification" && message.num_turns === 0 && message.subtype === "success" && !message.is_error && !message.result) return true;
+    const turn = this.turn;
+    if (!turn || turn.wake) return false;
+    const echoed = message.user_message_uuids ?? (message.user_message_uuid ? [message.user_message_uuid] : []);
+    if (echoed.length) return !echoed.includes(turn.uuid);
+    return message.origin !== undefined && message.origin.kind !== "human";
+  }
+
+  private resetContext(used: number | undefined): void {
+    if (this.turn) this.turn.request = undefined;
+    const context = used !== undefined && this.context ? readReportedContextUsage({ used, size: this.context.size }) : undefined;
+    if (JSON.stringify(context) === JSON.stringify(this.context)) return;
+    this.context = context;
+    // Unknown leaves no reading at all, so a meter hides rather than show the old number.
+    if (context) this.emitter.emit("usage", { context });
+  }
   private readonly approve: CanUseTool = (name, input, options) => {
+    // Claude asks only while it runs a turn, even one it started itself.
+    if (!this.turn && !this.closed && !options.signal.aborted) this.wake();
     if (!this.turn || this.turn.cancelling || this.closed || options.signal.aborted || this.approvals.size >= 64) return Promise.resolve({ behavior: "deny", message: "No active user turn can approve this action.", interrupt: true });
     if (name === EXIT_PLAN && this.mode === "plan") {
       // Capsule owns the handoff: the plan is the reply, and Act is the user's next turn.

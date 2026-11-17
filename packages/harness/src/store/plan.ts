@@ -7,6 +7,7 @@ import {
   type AgentPackageSource,
   type AgentStoreEntry,
   type AgentStoreOffer,
+  type AgentUserCopy,
   type HarnessId,
   type HarnessPreset,
 } from "@capsule/shared";
@@ -252,13 +253,13 @@ export function planAgentStore(input: PlanInput): AgentPlan[] {
 }
 
 /** One plan, plus what is already on this computer, as the store shows it. */
-export function storeEntry(plan: AgentPlan, installed: AgentManagedInstall | undefined, userPath: string | undefined): AgentStoreEntry {
+export function storeEntry(plan: AgentPlan, installed: AgentManagedInstall | undefined, user: AgentUserCopy | undefined): AgentStoreEntry {
   return {
     harnessId: plan.harnessId,
     ...(plan.offer ? { offer: plan.offer } : {}),
     ...(plan.unavailable ? { unavailable: plan.unavailable } : {}),
     ...(installed ? { installed } : {}),
-    ...(userPath ? { userPath } : {}),
+    ...(user ? { user } : {}),
     ...(installed && plan.offer ? { updateAvailable: plan.offer.version !== installed.version } : {}),
   };
 }

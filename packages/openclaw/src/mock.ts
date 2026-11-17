@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import { DEFAULT_AGENTS } from "@capsule/agents";
-import { DEFAULT_SKILLS } from "@capsule/skills";
 import {
   createId,
   nowIso,
@@ -16,7 +15,6 @@ import {
   type RunEventHandler,
   type RuntimeStatus,
   type Session,
-  type Skill,
   type Unsubscribe,
 } from "@capsule/shared";
 import { FilesystemAdapter } from "@capsule/filesystem";
@@ -37,7 +35,6 @@ export class MockAgentRuntime implements AgentRuntime {
   private connected = false;
   private readonly emitter = new EventEmitter();
   private agents: Agent[] = DEFAULT_AGENTS.map((agent) => ({ ...agent }));
-  private skills: Skill[] = DEFAULT_SKILLS.map((skill) => ({ ...skill }));
   private readonly sessions = new Map<string, Session>();
   private readonly approvals = new Map<string, ApprovalRequest>();
   private workspace?: string;
@@ -79,10 +76,6 @@ export class MockAgentRuntime implements AgentRuntime {
 
   async listAgents(): Promise<Agent[]> {
     return this.agents.map((agent) => ({ ...agent }));
-  }
-
-  async listSkills(): Promise<Skill[]> {
-    return this.skills.map((skill) => ({ ...skill }));
   }
 
   async listChannels(): Promise<ChannelBinding[]> {

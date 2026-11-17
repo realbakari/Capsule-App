@@ -1,4 +1,4 @@
-import { harnessCapabilities, type HarnessLiveStatus, type HarnessStatus, type RuntimeMode, type SessionRef } from "@capsule/shared";
+import { harnessCapabilities, type HarnessLiveStatus, type HarnessStatus, type SessionRef } from "@capsule/shared";
 
 /**
  * Whether a message can go into the running turn now. Direct mode cannot
@@ -8,11 +8,10 @@ export function canSteerTurn(input: { harness?: HarnessStatus; session?: Session
   return input.desktop && harnessCapabilities(input).steer.state !== "unavailable";
 }
 
-/** The optional Gateway's state is not the health of a local agent. */
-export function gatewayConnectionLabel(mode: RuntimeMode | undefined, connected: boolean, state?: string): string {
+export function gatewayConnectionLabel(connected: boolean, state?: string): string {
   if (connected) return "Connected to the Gateway";
   if (state === "connecting") return "Connecting to the Gateway…";
-  return mode === "direct" ? "Local agents · not connected to the Gateway" : "Not connected to the Gateway";
+  return "Not connected to the Gateway";
 }
 
 /*
@@ -68,7 +67,8 @@ export function harnessReadinessLabel(readiness: HarnessStatus["readiness"]): st
     case "ready":
       return "Ready";
     case "dedicated":
-      return "Ready · project default";
+      // Default for some project, which may not be the one on screen; the caller adds that when it is.
+      return "Ready";
     case "running":
       return "Running";
     case "missing_cli":
