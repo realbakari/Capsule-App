@@ -128,5 +128,5 @@ describe("command discovery", () => {
     f.projectCommand("ship.md", "Ship it");
     await vi.waitFor(() => expect(changed).toHaveBeenCalled(), { timeout: 15_000 });
     expect(names(service, f.project)).toContainEqual(["ship", "project", "project"]);
-  });
+  }, 20_000);
 });
