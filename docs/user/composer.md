@@ -2,8 +2,8 @@
 
 Scrolling up through a conversation rests the composer to a single prompt
 line with attach and send on that same row, so the dock does not cover the
-transcript. The workspace strip (folder, terminal, branch) stays under it.
-Agent controls and steer tuck away. Scrolling back to the latest
+transcript. On a new conversation the workspace row (folder, branch) stays
+under it. The model control tucks away. Scrolling back to the latest
 messages restores the full composer. A multiline draft, attachments, an
 open picker, a selected skill, or a file drop keeps it expanded. Focusing the field while
 reading history does not grow it back.
@@ -241,15 +241,18 @@ Expand **Reported by agent** to inspect bounded, negotiated capability and optio
 metadata for the current session. A report does not enable a control that the
 runtime route cannot carry. Missing information stays labelled as not reported.
 
-The workspace strip below the prompt holds the folder, terminal, checkout mode
-and branch. For Git folders, **Current checkout** or **Worktree** also offers
-**Change folder**. An empty worktree conversation also shows **from**, the branch
-its worktree starts from; choose another or search for one before the first
-message. In compact panes the workspace and branch labels become icons;
-their names remain in tooltips and menus. **Conversation tools** holds prompt
-stash and advanced agent settings. Supported agent controls wrap on narrow
-screens; there is no separate conversation-mode selector. Menus support keyboard navigation and Escape; closing one returns
-focus to its trigger.
+Under a new conversation's composer, a quiet row says where it will run: the
+folder or checkout mode on the left, and the branch and permissions mode on the
+right. For Git folders, **Current checkout**
+or **Worktree** also offers **Change folder**. An empty worktree conversation
+also shows **from**, the branch its worktree starts from; choose another or
+search for one before the first message. Once the conversation has started,
+the row goes away; **Conversation details** in the title bar shows its folder,
+branch and changes. Click the branch there to switch to another local branch
+(type to filter a long list). A device paired to read only sees the branch
+name without the menu. In compact panes the workspace and branch labels become
+icons; their names remain in tooltips and menus. Menus support keyboard
+navigation and Escape; closing one returns focus to its trigger.
 
 ## Plan mode
 

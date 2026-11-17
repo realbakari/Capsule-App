@@ -10,7 +10,7 @@ import { runMarkdownRegressions } from "./markdown-regressions";
 import { EmbeddedBrowser } from "../features/shell/EmbeddedBrowser";
 import { Toasts } from "../features/toasts/Toasts";
 import { ToastProvider, useToasts, type Toast } from "../lib/toasts";
-import { PersistentTerminals } from "../features/terminal/TerminalDock";
+import { PersistentTerminals, terminalTheme } from "../features/terminal/TerminalDock";
 import { FileDiff } from "../features/shell/FileDiff";
 import { PagedFileDiffs } from "../features/shell/PagedFileDiffs";
 import { ContentSearch } from "../features/shell/ContentSearch";
@@ -664,8 +664,12 @@ window.runRendererRegressions = async () => {
   assert(!document.body.textContent?.includes("Subframe failed"), "A subframe error replaced the working page");
   guest.dispatchEvent(new Event("did-stop-loading"));
   document.querySelector<HTMLButtonElement>('button[title="More options"]')!.click();
-  await until(() => document.body.textContent?.includes("Local servers home"));
-  button("Local servers home").click(); await until(() => !document.querySelector("webview"));
+  await until(() => document.querySelector('.preview-more-menu[role="menu"]'));
+  const menuItems = Array.from(document.querySelectorAll('.preview-more-menu[role="menu"] .preview-menu-item'), (item) => item.textContent?.replace(/⌘F$/, "").trim());
+  assert(JSON.stringify(menuItems) === JSON.stringify(["Find on page", "Hard reload", "Open DevTools", "Clear cache", "Clear cookies and site data"]), `Browser menu repeats other controls: ${JSON.stringify(menuItems)}`);
+  document.querySelector<HTMLButtonElement>('button[title="More options"]')!.click();
+  // A new tab is the way home: the local-servers page.
+  document.querySelector<HTMLButtonElement>('button[aria-label="New tab"]')!.click(); await until(() => !document.querySelector("webview"));
   fill('.preview-address-input', "https://example.test/first");
   await until(() => document.querySelector<HTMLInputElement>('.preview-address-input')?.value === "https://example.test/first");
   document.querySelector('.preview-address-input')!.closest('form')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -855,8 +859,15 @@ window.runRendererRegressions = async () => {
   const shells: string[] = [];
   const shellIds: string[] = [];
   const stopped: string[] = [];
+  const terminalListeners: Array<[string, (payload: unknown) => void]> = [];
+  const emitTerminal = (event: string, payload: unknown) => { for (const [name, listener] of [...terminalListeners]) if (name === event) listener(payload); };
   window.testWorkspace = { api: {
-    on: () => () => {}, terminalStart: async ({ cwd }: { cwd: string }) => { shells.push(cwd); return { id: cwd, cwd, pid: 1 }; },
+    on: (event: string, listener: (payload: unknown) => void) => {
+      const entry: [string, (payload: unknown) => void] = [event, listener];
+      terminalListeners.push(entry);
+      return () => { terminalListeners.splice(terminalListeners.indexOf(entry), 1); };
+    },
+    terminalStart: async ({ cwd }: { cwd: string }) => { shells.push(cwd); const id = `${cwd}#${shells.length}`; shellIds.push(id); return { id, cwd, pid: 1 }; },
     terminalStop: async (id: string) => { stopped.push(id); }, terminalInput: async () => {}, terminalResize: async () => {},
   } };
   root.render(<PersistentTerminals cwd="/fixture/a" visible onClose={() => {}} />);
@@ -869,8 +880,40 @@ window.runRendererRegressions = async () => {
   root.render(<PersistentTerminals cwd="/fixture/a" visible onClose={() => {}} />);
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert(shells.length === 2 && stopped.length === 0, "Changing folders restarted or killed shells");
+  const shownDock = () => Array.from(document.querySelectorAll<HTMLElement>(".terminal-dock")).find((dock) => !dock.closest("[hidden]"))!;
+  const shownTabs = () => Array.from(shownDock().querySelectorAll<HTMLElement>(".terminal-tab"));
+  assert(shownTabs().length === 1 && shownTabs()[0]!.textContent?.includes("Terminal 1"), "A folder's first shell is not named Terminal 1");
+  assert(shownDock().querySelector('[aria-label="Hide terminal"]') && shownDock().querySelector('[role="separator"][aria-label="Resize terminal"]'), "Terminal dock lost its hide control or keyboard resize handle");
+  const newTerminal = () => shownDock().querySelector<HTMLButtonElement>('[aria-label="New terminal"]')!;
+  newTerminal().click(); await until(() => shownTabs().length === 2);
+  newTerminal().click(); await until(() => shownTabs().length === 3);
+  assert(shownTabs().map((tab) => tab.textContent).join().includes("Terminal 3"), "New shells are not numbered");
+  const [failingShell, cleanShell] = shellIds.slice(-2) as [string, string];
+  emitTerminal("terminalExit", { id: failingShell, code: 1 });
+  await until(() => shownTabs()[1]?.textContent?.includes("exited 1"));
+  emitTerminal("terminalExit", { id: cleanShell, code: 0 });
+  await until(() => shownTabs().length === 2);
+  assert(stopped.includes(cleanShell) && !stopped.includes(failingShell), "A clean exit did not close its tab, or a failed shell's output was thrown away");
+  shownTabs()[1]!.querySelector<HTMLButtonElement>(".terminal-tab-close")!.click();
+  await until(() => shownTabs().length === 1);
+  newTerminal().click(); await until(() => shownTabs().length === 2);
+  assert(shownTabs()[1]!.textContent?.includes("Terminal 2"), "A closed terminal's number was not reused");
+  const terminalRail = shownDock().querySelector<HTMLElement>('[role="separator"]')!;
+  const dockHeightBefore = shownDock().getBoundingClientRect().height;
+  terminalRail.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }));
+  await until(() => shownDock().getBoundingClientRect().height > dockHeightBefore);
   root.unmount();
-  assert(stopped.length === 2, "Unmount did not close owned shells");
+  assert(new Set(stopped).size === shells.length, "Unmount did not close owned shells");
+  const terminalStyles = document.getElementById("composer-test-styles") as HTMLStyleElement;
+  const priorTerminalTheme = document.documentElement.dataset.theme;
+  terminalStyles.media = "all";
+  document.documentElement.dataset.theme = "light";
+  const lightTerminal = terminalTheme();
+  const channels = (colour = "") => (colour.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+  assert(ANSI_NAMES_FOR_TEST.every((name) => lightTerminal[name]?.startsWith("rgb")), "A terminal ANSI colour was left to xterm's defaults");
+  assert(Math.max(...channels(lightTerminal.white)) < 140 && Math.max(...channels(lightTerminal.brightWhite)) < 140, "Terminal white is unreadable on the light theme");
+  if (priorTerminalTheme === undefined) delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = priorTerminalTheme;
+  terminalStyles.media = "not all";
 
   localStorage.clear(); root = createRoot(host);
   // A previous install or removed project can leave a stale navigation hint.

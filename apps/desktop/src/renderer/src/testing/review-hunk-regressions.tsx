@@ -43,6 +43,9 @@ export async function runReviewHunkRegressions(host: HTMLElement, base: Record<s
     window.testWorkspace = workspace;
     root.render(<ReviewDiff projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "uncommitted" }} ignoreWhitespace={false} onShowAll={() => {}} />);
     await until(() => heads().length === 2);
+    assert(document.querySelector(".review-diff-stat")?.textContent?.replace(/\s+/g, " ").trim() === "1 file +2 −1", "Review does not total what the scope changed");
+    assert(document.querySelector(".review-diff .file-diff-body.is-unified"), "A 340px panel opened side by side");
+    assert(document.querySelector(".review-diff .file-diff-head .file-type-icon"), "A diff file header lost its type icon");
     const [staged, unstaged] = heads() as [HTMLElement, HTMLElement];
     assert(staged.textContent?.includes("Staged") && staged.textContent.includes("Unstage") && !staged.textContent.includes("Keep"), "A staged hunk offers Keep or hides its state");
     assert(unstaged.textContent?.includes("Keep") && unstaged.textContent.includes("Reject"), "An unstaged hunk lacks Keep or Reject");
@@ -74,6 +77,21 @@ export async function runReviewHunkRegressions(host: HTMLElement, base: Record<s
     assert(heads()[1]!.contains(document.querySelector(".hunk-error")), "The refusal is not shown on the hunk that failed");
     assert(reads === afterKeep && applied.length === 1, "A refused action reloaded or applied anyway");
 
+    const viewButton = (label: string) => Array.from(document.querySelectorAll<HTMLButtonElement>(".review-diff-view button")).find((item) => item.textContent === label)!;
+    viewButton("Split").click();
+    await until(() => document.querySelector(".review-diff .file-diff-body.is-split"));
+    assert(heads().length === 2 && viewButton("Split").getAttribute("aria-pressed") === "true", "Split lost the hunk controls or its pressed state");
+    viewButton("Wrap").click();
+    await until(() => document.querySelector(".review-diff .file-diff-body.is-scrollable"));
+    viewButton("Unified").click();
+    await until(() => document.querySelector(".review-diff .file-diff-body.is-unified"));
+
+    window.testWorkspace = { ...workspace, api: { ...api, gitScopedDiff: async () => { throw new Error("Error invoking remote method 'capsule:gitScopedDiff': Error: `git diff` took longer than 30 seconds and was stopped."); } } };
+    root.render(<ReviewDiff key="failing" projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "uncommitted" }} ignoreWhitespace={false} onShowAll={() => {}} />);
+    await until(() => document.querySelector(".review-diff-error"));
+    assert(document.querySelector(".review-diff-error p")?.textContent === "`git diff` took longer than 30 seconds and was stopped.", "Review's error kept the IPC wrapper");
+    assert(document.querySelector(".review-diff-error button")?.textContent === "Try again", "Review's error offers no way to retry");
+
     window.testWorkspace = { ...workspace, api: { ...api, isDesktop: false } };
     root.render(<ReviewDiff key="viewer" projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "uncommitted" }} ignoreWhitespace={false} onShowAll={() => {}} />);
     await until(() => document.querySelector(".review-diff .file-diff") && !document.querySelector(".hunk-action"));
@@ -82,6 +100,7 @@ export async function runReviewHunkRegressions(host: HTMLElement, base: Record<s
     window.testWorkspace = workspace;
     root.render(<ReviewDiff key="turn" projectId="review-fixture" sessionId="review-thread" thread="review-thread" selection={{ kind: "turn" }} ignoreWhitespace={false} onShowAll={() => {}} />);
     await until(() => document.querySelector(".review-diff")?.textContent?.includes("No turn in this conversation has saved changes yet."));
+    assert(!document.querySelector(".review-diff")?.textContent?.includes("Keep and Reject work on"), "A turn repeats the read-only note its banner already gives");
 
     // The latest turn: Reject only where git says the hunk still reverses cleanly.
     const turnPatch = head + stagedHunk + unstagedHunk;

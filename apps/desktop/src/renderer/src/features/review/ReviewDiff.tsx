@@ -10,6 +10,7 @@ import {
   type HunkAction,
   type ReviewFileDiffs,
 } from "@capsule/shared";
+import { displayPrefs } from "../../lib/display-prefs";
 import { formatUserError } from "../../lib/errors";
 import type { ReviewSelection } from "../../lib/review-scope";
 import { useWorkspace } from "../../lib/workspace";
@@ -36,6 +37,14 @@ const EMPTY: Record<DiffScope, string> = {
 };
 
 const KEYS: Partial<Record<string, HunkAction>> = { k: "keep", x: "reject", u: "unstage" };
+
+/* Side by side needs room for two columns of code; below this the side panel shows one. */
+const SPLIT_MIN_WIDTH = 640;
+
+/** The Settings default applies where it fits; a choice made in Review holds until the panel closes. */
+function reviewSplit(override: boolean | undefined, preferSplit: boolean, width: number): boolean {
+  return override ?? (preferSplit && width >= SPLIT_MIN_WIDTH);
+}
 
 function byPath(text: string): Map<string, DiffFile> {
   return new Map(parseUnifiedDiff(text).map((file) => [file.path, file]));
@@ -95,6 +104,18 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
   const [page, setPage] = useState({ key, page: 0 });
   const root = useRef<HTMLDivElement>(null);
   const refocus = useRef<{ path: string; index: number } | undefined>(undefined);
+  const [layout, setLayout] = useState<boolean>();
+  const [wrap, setWrap] = useState(true);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    setWidth(node.clientWidth);
+    const observer = new ResizeObserver(() => setWidth(node.clientWidth));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const split = reviewSplit(layout, displayPrefs().diffLayout === "split", width);
 
   useEffect(() => {
     let current = true;
@@ -112,6 +133,7 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
 
   const current = reading?.key === key ? reading : undefined;
   const files = current?.value?.files;
+  const totals = useMemo(() => (files ?? []).reduce((sum, file) => ({ additions: sum.additions + file.additions, deletions: sum.deletions + file.deletions }), { additions: 0, deletions: 0 }), [files]);
   const blockKeys = useMemo(() => diffBlockKeys(files ?? []), [files]);
 
   useLayoutEffect(() => {
@@ -194,16 +216,33 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
     <div className="panel-diff-section review-diff" ref={root} onKeyDown={onKeyDown}>
       <div className="review-diff-bar">
         <h4>Diff</h4>
+        {files?.length ? (
+          <span className="review-diff-stat" aria-label={`${files.length} ${files.length === 1 ? "file" : "files"}, ${totals.additions} added lines, ${totals.deletions} removed lines`}>
+            {files.length} {files.length === 1 ? "file" : "files"} <span className="review-diff-add">+{totals.additions}</span> <span className="review-diff-del">−{totals.deletions}</span>
+          </span>
+        ) : null}
         {path ? <button type="button" className="chip" onClick={onShowAll} title={`Showing ${path}`}>All files</button> : null}
+        <span className="review-diff-view">
+          <span className="pr-view-toggle" role="group" aria-label="Diff layout">
+            <button type="button" aria-pressed={!split} onClick={() => setLayout(false)}>Unified</button>
+            <button type="button" aria-pressed={split} onClick={() => setLayout(true)} title={width < SPLIT_MIN_WIDTH ? "Side by side. Widen or maximize the panel to give it room." : "Side by side"}>Split</button>
+          </span>
+          <button type="button" className="pr-wrap-toggle" aria-pressed={wrap} onClick={() => setWrap((value) => !value)} title={wrap ? "Long lines wrap to fit the panel" : "Long lines scroll sideways"}>Wrap</button>
+        </span>
       </div>
       {current?.value?.base ? <p className="faint review-diff-note">Since this branch left {current.value.base}.</p> : null}
-      {scope === "turn" || scope === "branch" ? <p className="faint review-diff-note">Read only. Keep and Reject work on Uncommitted, Staged and Unstaged.</p> : null}
+      {scope === "branch" ? <p className="faint review-diff-note">Read only. Keep and Reject work on Uncommitted, Staged and Unstaged.</p> : null}
       {readOnly && scope !== "turn" && scope !== "branch" ? <p className="faint review-diff-note">Keep and Reject are available on the host.</p> : null}
       {!readOnly && ignoreWhitespace && scope !== "turn" && scope !== "branch" ? <p className="faint review-diff-note">Whitespace is hidden. Turn Ignore whitespace off to keep or reject hunks.</p> : null}
       {!current ? (
-        <p className="faint" role="status">Loading diff…</p>
+        <div className="review-diff-loading" role="status" aria-label="Loading diff">
+          {[52, 38, 64].map((size) => <span key={size} className="review-diff-skeleton" style={{ width: `${size}%` }} />)}
+        </div>
       ) : current.error ? (
-        <p role="alert">{current.error} <button type="button" className="ghost" onClick={() => setReload((value) => value + 1)}>Retry</button></p>
+        <div className="review-diff-error" role="alert">
+          <p>{current.error}</p>
+          <button type="button" className="chip" onClick={() => setReload((value) => value + 1)}>Try again</button>
+        </div>
       ) : !files?.length ? (
         <p className="faint">{current.value?.note ?? (path ? `No ${DIFF_SCOPES.find((item) => item.id === scope)!.label.toLowerCase()} changes in ${path}.` : ignoreWhitespace ? "No changes besides whitespace." : EMPTY[scope])}</p>
       ) : (
@@ -228,7 +267,8 @@ export function ReviewDiff({ projectId, sessionId, thread, selection, ignoreWhit
               <div key={block} data-review-file={file.path}>
                 <FileDiff
                   file={file}
-                  split={false}
+                  split={split}
+                  wrap={wrap}
                   expanded={isOpen(file, block)}
                   onExpandedChange={(open) => fold(block, open)}
                   viewed={viewed.isViewed(file)}

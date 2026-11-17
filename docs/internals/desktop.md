@@ -544,9 +544,18 @@ time; there are no tabs. Left to right: **Conversation details** (a
 `HeaderPopover`: environment, folder and branch, context used, changes with
 Review, and `BackgroundTasks`: the running turn and running project actions,
 each with its elapsed time, a stop button, and, for actions, the last twelve
-lines of output when expanded; it polls action runs only while open), the **terminal** toggle for the bottom dock, then
-**Review**, **Browser**, **Simulator** (only on a Mac desktop) and **Files**,
-and **More** with **Agents**, **Side chat** and Keep computer awake. Clicking
+lines of output when expanded; it polls action runs only while open), the **terminal** toggle for the bottom dock (left off a paired viewer, which has no shell), then
+**Review**, **Browser**, **Simulator** and **Files**, and **More** with
+**Agents**, **Side chat**, any surface the bar left out, and Keep computer
+awake. A control that cannot apply in the current state is not drawn on the
+bar: `Surface.inBar` is either always or a predicate over `SurfaceState`, and
+`onBar` also keeps the surface on show. **Review** leaves the bar for a
+folder known not to be a repository. **Simulator** (a Mac desktop only)
+shows when the folder looks like an app it can run (`looksLikeMobileApp`
+over the top-level names Files already lists: `*.xcodeproj`,
+`*.xcworkspace`, `Package.swift`, `project.yml`, `Podfile`, `ios`,
+`eas.json`) or a simulator is attached to the thread
+(`capsule.simulator.attached:<threadId>`); otherwise it is in More. Clicking
 the surface that is showing closes the panel. `surfaces.ts` is the one table
 of surfaces (label, icon, shortcut, bar or More, and `blockedBy`); a surface
 that cannot open is disabled with its reason as the tooltip. The workspace's
@@ -614,8 +623,17 @@ window) shows the chooser cards.
   button returns to uncommitted changes; the breadcrumb shows "Turn N". The diff
   below is `ReviewDiff`: every file, paged, with per-hunk actions where the
   scope allows them, **Collapse/Expand all**, per-file **Viewed** checkboxes and
-  an "N of M viewed" count. Clicking a changed file narrows it to that file
-  with an **All files** chip. States: loading, error with Retry, "no earlier
+  an "N of M viewed" count. Its bar totals the scope ("N files +A −D") and
+  holds **Unified / Split** and **Wrap**; the layout starts from
+  `settings.diffLayout` only when the pane is at least 640px wide
+  (`reviewSplit`), and a choice in the bar lasts while the pane is mounted.
+  File headers use `FileTypeIcon`, the same glyph as Files. Clicking a changed
+  file narrows it to that file with an **All files** chip; each changed-file
+  row shows `+added −removed` and one status letter from `changeStatus`
+  (`??` reads as U, a conflict as !), with staged or not in its title. The
+  branch shows only in the panel breadcrumb; the action row under it (Push,
+  Pull request / Merge PR) is left off a paired viewer. States: a skeleton
+  while loading, an error sentence with **Try again**, "no earlier
   checkpoint" for a first turn, and empty per scope ("No uncommitted changes",
   "No changes besides whitespace", "This turn changed no files"). Turn scope's
   read-only wording lives in its banner only; Branch keeps its own note.
@@ -735,6 +753,7 @@ window) shows the chooser cards.
   Timeline avatars sit on the event rail beside the author; heading contrast,
   wrapping and type scale are scoped to the PR reader rather than chat.
 - There is no command-runner surface; its `execInProject` channel is gone (the engine method remains, behind strict command policy). **Terminal** means the bottom xterm dock, opened from the conversation header, command palette, or `⌘J`, not a navigation destination or a duplicate composer button. `PersistentTerminals` retains panes by folder; the chat host stays mounted but hidden in other views. Hide and Settings do not kill shells; closing a pane or quitting does. Main checks strict command policy on start and input, not just on the command runner. Existing processes are not retroactively stopped. PTYs hold a folder activity lease until exit, excluding checkpoint restore.
+- Terminal dock details (`features/terminal/TerminalDock.tsx`). Tabs are "Terminal N", numbered as a pane joins the list (`nextTerminalNumber`, lowest free), never by folder name, which every tab in a dock shares; the tab's title is the shell's OSC 7 folder. A `terminalExit` with code 0 and no error closes the tab (the last one hides the dock through `onEmpty`); any other code keeps it, marked "exited N" or "stopped" for -1, so the output stays readable. The hide button is a chevron so it never reads as the tabs' close X. Height: default 280px, at least 140px, at most 75% of the window (`maxTerminalHeight`), clamped again on window resize without forgetting the stored preference; the rail is a focusable `role="separator"` (arrows step 24px, Home/End, double-click resets). xterm gets 10,000 lines of scrollback, `--mono` as its font, and all sixteen ANSI colours from the `--terminal-*` tokens, resolved through a probe element because they are `light-dark()` pairs; a `MutationObserver` on `<html>` and the colour-scheme query restyle open panes when Appearance changes. The context menu is Add Selection to Chat, Attach Selection as Context (desktop), Copy, Paste, Select All, Scroll to Bottom, Clear. Errors pass through `formatUserError`.
 - **Browser** polls `capsule:listLocalServers` while open. The filesystem adapter
   reads loopback listeners with `lsof`, performs bounded HTTP/HTTPS probes, and
   returns only endpoints that answer like web apps. Selecting one opens it in
@@ -1345,8 +1364,8 @@ from a different session key cannot supply controls. Busy and browser-viewer
 controls cannot mutate configuration. The old workflow-mode dropdown, direct
 Agent-managed placeholder, default-mode settings and narrow options menu are
 removed; saved conversation modes remain readable. The agent, attachment and
-send controls stay visible. Folder, terminal, workspace mode and
-branch sit in an inset context strip beneath the prompt. Menus keep sentence
+send controls stay visible. Folder, workspace mode and branch sit in a quiet
+row beneath a new conversation's prompt. Menus keep sentence
 case. Git workspace selection includes the folder chooser, and its label and
 the branch label collapse to named, tooltip-equipped icons below 28rem.
 Menus clamp to the viewport,

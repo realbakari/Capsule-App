@@ -3116,8 +3116,6 @@ select:focus,
   justify-content: space-between;
   margin-bottom: 0.75rem;
 }
-.panel-review-header .kv { flex: 1 1 12rem; min-width: 0; }
-.panel-review-header .kv .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .panel-review-header .git-actions { flex-wrap: wrap; }
 .panel-review-header .chip, .panel-pr-list-head .chip { min-height: 2rem; gap: .4rem; }
 .panel-review-files h4,
@@ -3742,6 +3740,14 @@ select:focus,
   background: transparent;
   text-align: center;
   color: var(--text-muted);
+  cursor: pointer;
+}
+.preview-zoom-value:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.preview-zoom-value:disabled {
+  cursor: default;
 }
 
 /*
@@ -8841,6 +8847,11 @@ details.card > summary {
   cursor: ns-resize;
   z-index: 2;
 }
+.terminal-dock-rail:hover,
+.terminal-dock-rail:focus-visible {
+  outline: none;
+  background: linear-gradient(transparent 3px, var(--border-strong) 3px, var(--border-strong) 4px, transparent 4px);
+}
 .terminal-tabs {
   display: flex;
   align-items: center;
@@ -8897,8 +8908,15 @@ details.card > summary {
   opacity: 0;
 }
 .terminal-tab:hover .terminal-tab-close,
-.terminal-tab.active .terminal-tab-close {
+.terminal-tab.active .terminal-tab-close,
+.terminal-tab-close:focus-visible {
   opacity: 1;
+}
+.terminal-tab > button:focus-visible,
+.terminal-tab-close:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--control-radius);
 }
 .terminal-tab-close:hover {
   color: var(--text);

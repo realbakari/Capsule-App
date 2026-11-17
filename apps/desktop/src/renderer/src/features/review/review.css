@@ -109,6 +109,37 @@
 }
 .review-diff-bar h4 { margin: 0; }
 .review-diff-bar .menu-select { margin-left: auto; }
+.review-diff-stat { color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.review-diff-add { color: var(--green); }
+.review-diff-del { color: var(--red); }
+.review-diff-view { display: inline-flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+.review-diff-view .pr-view-toggle button,
+.review-diff-view .pr-wrap-toggle { font-size: var(--text-xs); }
+
+/* Where the diff will be: a few bars the height of file headers, not a line of text. */
+.review-diff-loading { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0; }
+.review-diff-skeleton {
+  display: block;
+  height: 0.7rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-active);
+  animation: review-diff-pulse 1.2s var(--ease-in-out) infinite alternate;
+}
+@keyframes review-diff-pulse { from { opacity: 0.55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .review-diff-skeleton { animation: none; } }
+
+.review-diff-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--text-ui);
+}
+.review-diff-error p { flex: 1 1 14rem; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .review-diff-note { margin: 0.25rem 0 0.5rem; font-size: var(--text-xs); }
 .review-diff-files { display: flex; flex-direction: column; }
 /* Review: what is compared, and the diff for it. */

@@ -156,3 +156,20 @@ export function chooseReview(projectId: string, thread: string, value: string): 
   rememberScope(thread, UNCOMMITTED);
   setReviewScope(projectId, isDiffScope(value) ? value : "uncommitted");
 }
+
+const CHANGE_WORDS: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed" };
+
+/**
+ * A changed file's porcelain code (`XY`: index, then working tree) as one
+ * letter and the words for it. Git's `??` reads as U for untracked, as in
+ * most editors, and the title says whether the change is staged.
+ */
+export function changeStatus(code: string): { letter: string; title: string } {
+  const [index = " ", tree = " "] = code;
+  if (code.startsWith("??")) return { letter: "U", title: "Untracked: new and not added to Git yet" };
+  if (index === "U" || tree === "U" || code === "AA" || code === "DD") return { letter: "!", title: "Conflicted: resolve the merge before committing" };
+  const kind = index !== " " ? index : tree;
+  const word = CHANGE_WORDS[kind] ?? "Changed";
+  const staging = index !== " " && tree !== " " ? "partly staged" : index !== " " ? "staged" : "not staged";
+  return { letter: kind, title: `${word}, ${staging}` };
+}

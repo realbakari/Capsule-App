@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Run } from "@capsule/shared";
 import {
+  changeStatus,
   ignoreWhitespaceFor,
   parseScopeValue,
   promptExcerpt,
@@ -47,5 +48,17 @@ describe("review turns", () => {
     // Matching the setting again drops the override, so a later setting change applies.
     rememberIgnoreWhitespace("t1", false, false);
     expect(ignoreWhitespaceFor("t1", true)).toBe(true);
+  });
+});
+
+describe("changeStatus", () => {
+  it("names a porcelain code in words a reader can act on", () => {
+    expect(changeStatus("??")).toEqual({ letter: "U", title: "Untracked: new and not added to Git yet" });
+    expect(changeStatus(" M")).toEqual({ letter: "M", title: "Modified, not staged" });
+    expect(changeStatus("M ")).toEqual({ letter: "M", title: "Modified, staged" });
+    expect(changeStatus("MM")).toEqual({ letter: "M", title: "Modified, partly staged" });
+    expect(changeStatus("A ").title).toBe("Added, staged");
+    expect(changeStatus("UU").letter).toBe("!");
+    expect(changeStatus("R ").title).toBe("Renamed, staged");
   });
 });

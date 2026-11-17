@@ -3,11 +3,12 @@ import { memo, useMemo, useState, type ReactNode } from "react";
 import { splitRows, type DiffFile, type DiffHunk, type DiffLine } from "@capsule/shared";
 import { highlight } from "../../lib/highlight";
 import { DIFF_PAGE_ROWS, DiffPager } from "./DiffPager";
+import { FileTypeIcon } from "./FileTypeIcon";
 import "./file-diff-viewed.css";
 
 /*
  * One file of a patch, rendered with split and unified diff support:
- * - Rounded file type badge
+ * - The file's type icon, as in Files
  * - Monospace file path with distinct directory vs name styling
  * - +N -M diff stats
  * - Split diff with diagonal hatched background for empty side
@@ -36,17 +37,6 @@ const STATUS_LABEL: Record<DiffFile["status"], string> = {
   renamed: "Renamed",
   modified: "Modified",
 };
-
-export function FileBadgeIcon() {
-  return (
-    <span className="file-badge-icon" aria-hidden>
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-        <rect x="2" y="2" width="12" height="12" rx="3" stroke="#38bdf8" strokeWidth="1.5" fill="#0284c7" fillOpacity="0.18" />
-        <circle cx="8" cy="8" r="2.2" fill="#38bdf8" />
-      </svg>
-    </span>
-  );
-}
 
 /**
  * Per-hunk controls for a diff that can act on its hunks. The heading row
@@ -292,7 +282,7 @@ export function FileDiff({
             </svg>
           )}
         </span>
-        <FileBadgeIcon />
+        <FileTypeIcon name={file.path} />
         <span className="mono file-diff-path" title={file.path}>
           {/* The marks keep "src/" reading left to right inside the rtl box that ellipsizes its start. */}
           {dirOf(file.path) ? <span className="file-diff-dir">{`‎${dirOf(file.path)}‎`}</span> : null}

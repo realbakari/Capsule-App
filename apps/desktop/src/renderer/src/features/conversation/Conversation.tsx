@@ -6,7 +6,7 @@ import { useMarkThreadViewed } from "../../lib/thread-triage";
 import { QuestionCard } from "../questions/QuestionCard";
 import { QuoteSelection } from "./QuoteSelection";
 import { formatTokens, type ContextUsage } from "../../lib/context-window";
-import { AlertTriangleIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { AlertTriangleIcon, ChevronDownIcon, DiffIcon, FileIcon, HistoryIcon, MessageSquarePlusIcon, SparkIcon, TerminalIcon, XIcon } from "../shell/icons";
 import { RunElapsed } from "./RunElapsed";
 import { ThreadFind } from "./ThreadFind";
 import type { FindMatch } from "./thread-find";

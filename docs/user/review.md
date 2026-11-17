@@ -30,7 +30,19 @@ checkpointed turn of a conversation has nothing earlier to compare against,
 and Review says so instead of guessing.
 
 With no file selected, the diff covers every changed file. Select a file in the
-changed-files list to see just that file; **All files** goes back.
+changed-files list to see just that file; **All files** goes back. Each row in
+that list shows the lines added and removed and a status letter: **M**
+modified, **A** added, **D** deleted, **R** renamed, **U** untracked (new and
+not added to Git yet), **!** conflicted. Point at the letter to see whether the
+change is staged.
+
+Above the diff, Review totals what the scope changed, such as "4 files +120
+−18". **Unified** shows each file in one column and **Split** side by side;
+**Wrap** wraps long lines to the panel instead of scrolling them sideways.
+**Settings › Source control › Diff layout** picks the starting layout. Side by
+side needs room, so a narrow panel starts in one column until you choose
+**Split** or widen the panel. If the diff cannot be read, Review says why in a
+sentence and offers **Try again**.
 
 **Ignore whitespace** hides changes that only touch spaces, tabs or line
 endings. **Settings › Source control** sets whether Review starts with it on;
@@ -99,3 +111,18 @@ or a hunk from an earlier turn, has no button; use Review for those.
 
 A paired viewer can read every scope but cannot Keep, Unstage or Reject. Those
 buttons appear only on the computer running Capsule.
+
+## When Git status cannot be read
+
+Capsule checks the folder's Git status in the background, when you come back
+to the window and after a turn. If that fails, nothing appears in the
+conversation: the list icon in the title bar gets a dot, and **Conversation
+details** shows the reason under **Changes**. The last status Capsule read
+stays on screen until a new one arrives.
+
+A folder in iCloud Drive with **Optimize Mac Storage** turned on can have files
+that are only in iCloud. Capsule lists changes without downloading them, and
+leaves out line counts while changed files are not downloaded. If the
+repository's own Git data is not downloaded either, the reason says so. In
+Finder, Control-click the folder and choose **Download Now**, or keep your
+projects in a folder that is not synced.

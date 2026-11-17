@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { TerminalDataEvent, TerminalExitEvent, TerminalHandle } from "@capsule/shared";
 import { conversationFolderRoots, localTimings } from "@capsule/shared";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
-import { PlusIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { ChevronDownIcon, PlusIcon, TerminalIcon, XIcon } from "../shell/icons";
+import { formatUserError } from "../../lib/errors";
 import { projectFolderName } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
+import { withShortcut } from "../../lib/keybindings";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 import { onTerminalCommand, takeTerminalCommand } from "../../lib/terminal-requests";
@@ -16,16 +18,22 @@ import { registerTerminalLinks } from "./terminalLinks";
 import "./terminal.css";
 
 const MIN_HEIGHT = 140;
-const MAX_HEIGHT = 720;
-const DEFAULT_HEIGHT = 260;
+const MAX_HEIGHT_RATIO = 0.75;
+const DEFAULT_HEIGHT = 280;
+const HEIGHT_STEP = 24;
 const HEIGHT_KEY = "capsule.terminal.height";
+/* Enough for a full build or test log; xterm's own default of 1,000 lines cuts most of them. */
+const SCROLLBACK = 10_000;
 
 interface Pane {
   id: string;
+  /** "Terminal 2": the tab's name, unique among the dock's open tabs. */
+  number: number;
   label: string;
   terminal: Terminal;
   fit: FitAddon;
-  exited: boolean;
+  /** Set when the shell ended with a failure; a clean exit closes the tab instead. */
+  exitCode?: number;
 }
 
 /**
@@ -36,7 +44,7 @@ interface Pane {
  * because tearing down an xterm loses the scrollback and the running command.
  */
 export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: string; onClose: () => void; onEmpty?: () => void; visible?: boolean }) {
-  const { api, attachContext, project, session, setBrowserUrl, openInspector, openFile, setDraft } = useWorkspace();
+  const { api, attachContext, project, session, setBrowserUrl, openInspector, openFile, setDraft, keyBindings } = useWorkspace();
   const mac = (api.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : "")) === "darwin";
   /*
    * xterm keeps one link provider for a pane's life, so it reads the current
@@ -54,10 +62,19 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
   const alive = useRef(true);
   const [panes, setPanes] = useState<Pane[]>([]);
   const [activeId, setActiveId] = useState<string>();
-  const [height, setHeight] = useState(() => {
-    const stored = Number(localStorage.getItem(HEIGHT_KEY));
-    return Number.isFinite(stored) && stored >= MIN_HEIGHT ? Math.min(stored, MAX_HEIGHT) : DEFAULT_HEIGHT;
+  const [preferredHeight, setHeight] = useState(() => {
+    let stored = Number.NaN;
+    try { stored = Number(localStorage.getItem(HEIGHT_KEY)); } catch { /* Unreadable storage keeps the default. */ }
+    return Number.isFinite(stored) && stored >= MIN_HEIGHT ? stored : DEFAULT_HEIGHT;
   });
+  const [viewport, setViewport] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setViewport(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  // A height chosen on a taller window gives way on a shorter one, and comes back with it.
+  const height = Math.min(preferredHeight, maxTerminalHeight(viewport));
   const hosts = useRef(new Map<string, HTMLDivElement>());
   const panesRef = useRef<Pane[]>([]);
   panesRef.current = panes;
@@ -67,7 +84,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     for (const pane of panes) {
       if (readyPanes.current.has(pane.id)) continue;
       readyPanes.current.add(pane.id);
-      void api.terminalAcknowledge?.(pane.id, 0).catch((error) => setError(String(error)));
+      void api.terminalAcknowledge?.(pane.id, 0).catch((error) => setError(formatUserError(error)));
     }
   }, [api, panes]);
 
@@ -76,11 +93,10 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     const terminal = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
-      fontFamily:
-        "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+      fontFamily: terminalFont(),
       fontSize: 12,
       lineHeight: 1.2,
-      scrollback: 1000,
+      scrollback: SCROLLBACK,
       // The panel reads as part of the app, not a pasted-in black rectangle.
       theme: terminalTheme(),
     });
@@ -89,7 +105,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     let handle: TerminalHandle;
     try { handle = await api.terminalStart({ cwd, cols: 80, rows: 24 }) as TerminalHandle; }
     catch (error) { terminal.dispose(); throw error; }
-    terminal.onData((data) => void api.terminalInput(handle.id, data).catch((error) => setError(String(error))));
+    terminal.onData((data) => void api.terminalInput(handle.id, data).catch((error) => setError(formatUserError(error))));
     terminal.onResize(({ cols, rows }) => void api.terminalResize(handle.id, cols, rows));
     terminal.parser.registerOscHandler(7, (data) => {
       const folder = osc7Folder(data);
@@ -111,7 +127,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       addToChatRef.current(handle.id);
       return false;
     });
-    return { id: handle.id, label: projectFolderName(cwd) ?? "Shell", terminal, fit, exited: false };
+    return { id: handle.id, number: 0, label: "", terminal, fit };
     // Everything else it reads is a ref; `mac` follows a platform that never changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, cwd]);
@@ -120,12 +136,21 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
   visibleRef.current = visible;
   /* Typed, never run: the person reads the command and presses Return. */
   const typeInto = useCallback((pane: Pane, command: string) => {
-    void api.terminalInput(pane.id, command).catch((error) => setError(String(error)));
+    void api.terminalInput(pane.id, command).catch((error) => setError(formatUserError(error)));
   }, [api]);
+
+  /* Numbered as it joins the list, which is synchronous, so two shells starting together never share a name. */
+  const admitPane = useCallback((pane: Pane) => {
+    pane.number = nextTerminalNumber(panesRef.current.map((item) => item.number));
+    pane.label = `Terminal ${pane.number}`;
+    panesRef.current = [...panesRef.current, pane];
+    setPanes(panesRef.current);
+    setActiveId(pane.id);
+  }, []);
 
   const openPane = useCallback(async (): Promise<Pane | undefined> => {
     if (panesRef.current.length + openingPanes.current >= 8) {
-      setError("This folder has eight shell tabs. Close a tab before opening another.");
+      setError("This folder has eight terminals. Close one before opening another.");
       return undefined;
     }
     openingPanes.current++;
@@ -133,13 +158,11 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       const pane = await createPane();
       if (!alive.current) { void api.terminalStop(pane.id); pane.terminal.dispose(); return; }
       setError(undefined);
-      panesRef.current = [...panesRef.current, pane];
-      setPanes(panesRef.current);
-      setActiveId(pane.id);
+      admitPane(pane);
       return pane;
-    } catch (error) { if (alive.current) setError(String(error)); return undefined; }
+    } catch (error) { if (alive.current) setError(formatUserError(error)); return undefined; }
     finally { openingPanes.current--; }
-  }, [api, createPane]);
+  }, [admitPane, api, createPane]);
 
   const disposePane = useCallback(
     (pane: Pane) => {
@@ -171,13 +194,11 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
         disposePane(pane);
         return;
       }
-      panesRef.current = [...panesRef.current, pane];
-      setPanes(panesRef.current);
-      setActiveId(pane.id);
+      admitPane(pane);
       // Opened to run something: the first shell takes it.
       const command = visibleRef.current ? takeTerminalCommand() : undefined;
       if (command) typeInto(pane, command);
-    }).catch((error) => { if (!unmounted) setError(String(error)); })
+    }).catch((error) => { if (!unmounted) setError(formatUserError(error)); })
       .finally(() => { openingPanes.current--; });
     return () => {
       alive.current = false;
@@ -187,7 +208,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       setPanes([]);
       setActiveId(undefined);
     };
-  }, [createPane, disposePane, typeInto]);
+  }, [admitPane, createPane, disposePane, typeInto]);
 
   /*
    * A command for a dock already on screen gets a shell of its own, so it
@@ -225,16 +246,21 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       pane.terminal.write(event.data, () => {
         rendered();
         if (alive.current && event.sequence !== undefined) {
-          void api.terminalAcknowledge(pane.id, event.sequence).catch((error) => setError(String(error)));
+          void api.terminalAcknowledge(pane.id, event.sequence).catch((error) => setError(formatUserError(error)));
         }
       });
     });
     const offExit = api.on("terminalExit", (payload) => {
       const event = payload as TerminalExitEvent;
       if (!panesRef.current.some((pane) => pane.id === event.id)) return;
-      if (event.error) setError(event.error);
+      // `exit` or Control-D ends the tab, as in any terminal; a failure stays so its last output can be read.
+      if (event.code === 0 && !event.error) {
+        closePaneRef.current(event.id);
+        return;
+      }
+      if (event.error) setError(formatUserError(event.error));
       setPanes((current) =>
-        current.map((pane) => (pane.id === event.id ? { ...pane, exited: true } : pane)),
+        current.map((pane) => (pane.id === event.id ? { ...pane, exitCode: event.code } : pane)),
       );
     });
     return () => {
@@ -294,6 +320,36 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     },
     [disposePane, onClose, onEmpty],
   );
+  const closePaneRef = useRef(closePane);
+  closePaneRef.current = closePane;
+
+  /* Theme and code font follow Appearance while the shells run, not only when a tab opens. */
+  useEffect(() => {
+    let frame = 0;
+    const restyle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const theme = terminalTheme();
+        const fontFamily = terminalFont();
+        for (const pane of panesRef.current) {
+          pane.terminal.options.theme = theme;
+          if (pane.terminal.options.fontFamily !== fontFamily) {
+            pane.terminal.options.fontFamily = fontFamily;
+            try { pane.fit.fit(); } catch { /* A hidden pane is refit when shown. */ }
+          }
+        }
+      });
+    };
+    const observer = new MutationObserver(restyle);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-surface", "style", "class"] });
+    const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+    scheme.addEventListener("change", restyle);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      scheme.removeEventListener("change", restyle);
+    };
+  }, []);
 
   const openLink = (target: TerminalLinkTarget, outside: boolean) => {
     if (target.kind === "file") {
@@ -344,7 +400,8 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     const index = panesRef.current.findIndex((item) => item.id === paneId);
     const pane = panesRef.current[index];
     if (!pane) return;
-    const label = panesRef.current.length > 1 ? `${pane.label} (tab ${index + 1})` : pane.label;
+    const folder = projectFolderName(cwd) ?? "the project";
+    const label = panesRef.current.length > 1 ? `${folder} (${pane.label})` : folder;
     const snippet = terminalSnippet(pane.terminal.getSelection(), label);
     if (!snippet) return;
     const field = document.querySelector<HTMLTextAreaElement>("textarea.composer-field");
@@ -391,34 +448,52 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
     const selection = pane.terminal.hasSelection();
     const picked = await showNativeContextMenu([
       { id: "add", label: "Add Selection to Chat", enabled: selection },
-      ...(api.isDesktop === true ? [{ id: "send", label: "Send Selection to Thread", enabled: selection }] : []),
+      ...(api.isDesktop === true ? [{ id: "send", label: "Attach Selection as Context", enabled: selection }] : []),
       { id: "copy", label: "Copy", enabled: selection, separatorBefore: true },
       { id: "paste", label: "Paste" },
-      { id: "clear", label: "Clear", separatorBefore: true },
+      { id: "select-all", label: "Select All" },
+      { id: "bottom", label: "Scroll to Bottom", separatorBefore: true },
+      { id: "clear", label: "Clear" },
     ], { x: event.clientX, y: event.clientY });
     if (picked === "add") addToChat(pane.id);
     else if (picked === "send") void attachContext(selectionContext({ origin: "terminal", text: pane.terminal.getSelection() }));
     else if (picked === "copy") void navigator.clipboard.writeText(pane.terminal.getSelection()).catch(() => undefined);
     else if (picked === "paste") void navigator.clipboard.readText().then((text) => pane.terminal.paste(text)).catch(() => undefined);
+    else if (picked === "select-all") pane.terminal.selectAll();
+    else if (picked === "bottom") pane.terminal.scrollToBottom();
     else if (picked === "clear") pane.terminal.clear();
     if (picked && picked !== "add" && picked !== "send" && picked !== "unavailable") pane.terminal.focus();
   };
 
+  const clampHeight = (next: number) => Math.min(maxTerminalHeight(window.innerHeight), Math.max(MIN_HEIGHT, Math.round(next)));
+  const rememberHeight = (next: number) => {
+    try { localStorage.setItem(HEIGHT_KEY, String(next)); } catch { /* The height still applies to this window. */ }
+  };
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
     event.preventDefault();
     const startY = event.clientY;
     const startHeight = height;
-    const onMove = (move: PointerEvent) => {
-      const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, startHeight + (startY - move.clientY)));
-      setHeight(next);
-    };
+    const onMove = (move: PointerEvent) => setHeight(clampHeight(startHeight + (startY - move.clientY)));
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      localStorage.setItem(HEIGHT_KEY, String(Math.round(heightRef.current)));
+      rememberHeight(heightRef.current);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+  };
+  const resizeByKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.key === "ArrowUp" ? HEIGHT_STEP : event.key === "ArrowDown" ? -HEIGHT_STEP : 0;
+    const next = step ? clampHeight(height + step) : event.key === "Home" ? MIN_HEIGHT : event.key === "End" ? maxTerminalHeight(window.innerHeight) : undefined;
+    if (next === undefined) return;
+    event.preventDefault();
+    setHeight(next);
+    rememberHeight(next);
+  };
+  const resetHeight = () => {
+    setHeight(DEFAULT_HEIGHT);
+    rememberHeight(DEFAULT_HEIGHT);
   };
   const activePane = panes.find((pane) => pane.id === activeId);
   useEffect(() => {
@@ -435,17 +510,30 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
   return (
     <section className="terminal-dock" style={{ height }} aria-label="Terminal" data-keymap-context="terminal">
       {error && <div role="alert" className="notice">{error}</div>}
-      <div className="terminal-dock-rail" onPointerDown={startResize} />
+      <div
+        className="terminal-dock-rail"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize terminal"
+        aria-valuenow={height}
+        aria-valuemin={MIN_HEIGHT}
+        aria-valuemax={maxTerminalHeight(viewport)}
+        tabIndex={0}
+        title="Drag to resize. Double-click to reset."
+        onPointerDown={startResize}
+        onDoubleClick={resetHeight}
+        onKeyDown={resizeByKey}
+      />
       <div className="terminal-tabs">
         {panes.map((pane) => (
           <div
             key={pane.id}
-            className={`terminal-tab${pane.id === activeId ? " active" : ""}${pane.exited ? " exited" : ""}`}
+            className={`terminal-tab${pane.id === activeId ? " active" : ""}${pane.exitCode !== undefined ? " exited" : ""}`}
           >
-            <button type="button" onClick={() => setActiveId(pane.id)}>
+            <button type="button" aria-pressed={pane.id === activeId} title={shellFolders.current.get(pane.id) ?? cwd} onClick={() => setActiveId(pane.id)}>
               <TerminalIcon size={12} />
               <span>{pane.label}</span>
-              {pane.exited ? <small>exited</small> : null}
+              {pane.exitCode !== undefined ? <small>{pane.exitCode < 0 ? "stopped" : `exited ${pane.exitCode}`}</small> : null}
             </button>
             <button
               type="button"
@@ -460,8 +548,8 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
         <button
           type="button"
           className="icon-btn"
-          title="New shell"
-          aria-label="New shell"
+          title="New terminal"
+          aria-label="New terminal"
           onClick={() => void openPane()}
         >
           <PlusIcon size={13} />
@@ -470,11 +558,11 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
         <button
           type="button"
           className="icon-btn"
-          title="Hide terminal (⌘J)"
+          title={withShortcut("Hide terminal", "toggle-terminal", keyBindings)}
           aria-label="Hide terminal"
           onClick={onClose}
         >
-          <XIcon size={13} />
+          <ChevronDownIcon size={14} />
         </button>
       </div>
       <div className="terminal-panes" ref={panesBox} onPointerDown={() => touchSelectionSurface("terminal")}>
@@ -514,7 +602,7 @@ export function PersistentTerminals({ cwd, visible, onClose }: { cwd?: string; v
   useEffect(() => {
     if (visible && cwd) setRoots((current) => current.includes(cwd) || current.length >= 16 ? current : [...current, cwd]);
   }, [cwd, visible]);
-  return <>{visible && cwd && !roots.includes(cwd) && roots.length >= 16 && <p role="status">Terminal folder limit reached. Close all shell tabs in another folder before opening this one.</p>}
+  return <>{visible && cwd && !roots.includes(cwd) && roots.length >= 16 && <p role="status">Terminal folder limit reached. Close every terminal in another folder before opening one here.</p>}
   {roots.map((root) => <div key={root} hidden={!visible || root !== cwd}>
     <TerminalDock cwd={root} visible={visible && root === cwd} onClose={onClose} onEmpty={() => {
       setRoots((current) => current.filter((item) => item !== root));
@@ -523,36 +611,71 @@ export function PersistentTerminals({ cwd, visible, onClose }: { cwd?: string; v
   </div>)}</>;
 }
 
-/** xterm cannot read CSS variables, so the theme is sampled from the page. */
-function terminalTheme(): Record<string, string> {
-  const styles = getComputedStyle(document.documentElement);
-  const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+const ANSI = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"] as const;
+const ANSI_NAMES = [...ANSI, ...ANSI.map((name) => `bright${name[0]!.toUpperCase()}${name.slice(1)}`)];
+const ANSI_TOKENS = [...ANSI.map((name) => `--terminal-${name}`), ...ANSI.map((name) => `--terminal-bright-${name}`)];
+
+/**
+ * xterm cannot read CSS variables, and the ANSI tokens are `light-dark()`
+ * pairs that only resolve on an element, so each is resolved through a probe.
+ * All sixteen are set: a colour left to xterm's default is its own white,
+ * which vanishes on a light page.
+ */
+export function terminalTheme(): Record<string, string> {
+  const probe = document.createElement("span");
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+  const resolve = (token: string, fallback: string) => {
+    probe.style.color = "";
+    probe.style.color = `var(${token}, ${fallback})`;
+    return getComputedStyle(probe).color || fallback;
+  };
   /*
-   * The surface tokens are translucent `rgb(0 0 0 / 0.06)`, which xterm cannot
-   * parse; it falls back to a dark selection that hides black text in light
-   * mode. The selection is mixed on a canvas into one opaque colour instead.
+   * The surface tokens are translucent, which xterm cannot parse; it falls
+   * back to a dark selection that hides black text in light mode. The
+   * selection is mixed on a canvas into one opaque colour instead.
    */
-  const solidSelection = () => {
+  const solidSelection = (base: string, text: string) => {
     const canvas = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
-    if (!canvas) return "#5a5a5a";
-    canvas.fillStyle = read("--base", "#1a1a1a");
+    if (!canvas) return text;
+    canvas.fillStyle = base;
     canvas.fillRect(0, 0, 1, 1);
     canvas.globalAlpha = 0.22;
-    canvas.fillStyle = read("--text", "#f2f2f2");
+    canvas.fillStyle = text;
     canvas.fillRect(0, 0, 1, 1);
     const [red, green, blue] = canvas.getImageData(0, 0, 1, 1).data;
     return `rgb(${red}, ${green}, ${blue})`;
   };
-  return {
-    background: "#00000000",
-    foreground: read("--text", "#f2f2f2"),
-    cursor: read("--text", "#f2f2f2"),
-    selectionBackground: solidSelection(),
-    black: read("--bg-active", "#1f1f1f"),
-    red: read("--red", "#d98989"),
-    green: read("--green", "#8fbf88"),
-    yellow: read("--yellow", "#d6c37a"),
-    blue: read("--blue", "#b0b0aa"),
-    brightBlack: read("--overlay-0", "#5f5f5f"),
-  };
+  try {
+    const text = resolve("--text", "CanvasText");
+    const theme: Record<string, string> = {
+      background: "#00000000",
+      foreground: text,
+      cursor: text,
+      cursorAccent: resolve("--base", "Canvas"),
+      selectionBackground: solidSelection(resolve("--base", "Canvas"), text),
+    };
+    ANSI_TOKENS.forEach((token, index) => { theme[ANSI_NAMES[index]!] = resolve(token, text); });
+    return theme;
+  } finally {
+    probe.remove();
+  }
+}
+
+/** The code font, which Appearance's custom code font also sets. */
+function terminalFont(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue("--mono").trim()
+    || "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+}
+
+/** The dock never covers more than this much of the window, so the composer stays in reach. */
+function maxTerminalHeight(viewport: number): number {
+  return Math.max(MIN_HEIGHT, Math.floor(viewport * MAX_HEIGHT_RATIO));
+}
+
+/** The lowest number no open tab uses, so closing Terminal 2 frees "2" for the next one. */
+function nextTerminalNumber(used: readonly number[]): number {
+  let number = 1;
+  while (used.includes(number)) number++;
+  return number;
 }
