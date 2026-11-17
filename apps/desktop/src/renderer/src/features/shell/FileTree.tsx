@@ -1,9 +1,14 @@
 import type { FileEntry, GitChange } from "@capsule/shared";
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { folderBasename } from "@capsule/shared";
+import { copyAnchor, type ActionMenuItem, type MenuAnchor } from "../../lib/action-menu";
+import { showNativeContextMenu } from "../../lib/bridge";
 import type { DirectoryListing } from "../../lib/directory-listings";
 import { FILES_FIND_EVENT } from "../../lib/browser-find";
+import { ActionMenu } from "./ActionMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { isFileRowAction, writeFileRowDrag, type FileRow } from "./file-row-actions";
+import type { FileRowActions } from "./useFileRowActions";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -145,6 +150,7 @@ function TreeEntries({
                 data-tree-row
                 data-kind="directory"
                 data-path={entry.path}
+                draggable
                 onClick={() => onToggleFolder(entry.path)}
               >
                 <span className="panel-tree-chevron" aria-hidden>
@@ -191,6 +197,7 @@ function TreeEntries({
             data-tree-row
             data-kind="file"
             data-path={entry.path}
+            draggable
             onClick={() => onPreviewFile(entry.path)}
           >
             <span className="panel-tree-chevron" aria-hidden />
@@ -228,6 +235,7 @@ export const FileTreePane = memo(function FileTreePane({
   onPreviewFile,
   directoryStates,
   onRefreshDirectory,
+  rowActions,
 }: {
   listing: FileEntry[];
   expanded: Set<string>;
@@ -252,6 +260,8 @@ export const FileTreePane = memo(function FileTreePane({
   onPreviewFile: (path: string) => void;
   directoryStates?: Record<string, DirectoryListing>;
   onRefreshDirectory?: (path: string) => void;
+  /** Absent, rows have no menu. */
+  rowActions?: FileRowActions;
 }) {
   const rootEntries = useMemo(() => sortTreeEntries(listing), [listing]);
   const gitMarks = useMemo(() => indexGitMarks(gitFiles), [gitFiles]);
@@ -276,6 +286,40 @@ export const FileTreePane = memo(function FileTreePane({
     window.addEventListener(FILES_FIND_EVENT, focusSearch);
     return () => window.removeEventListener(FILES_FIND_EVENT, focusSearch);
   }, []);
+
+  const [rowMenu, setRowMenu] = useState<{ row: FileRow; element: HTMLElement; items: ActionMenuItem[]; point: { x: number; y: number }; anchor?: MenuAnchor; keyboard: boolean }>();
+  const rowAt = (target: EventTarget | null): { element: HTMLElement; row: FileRow } | undefined => {
+    const element = target instanceof Element ? target.closest<HTMLElement>(ROW) : null;
+    const path = element?.dataset.path;
+    if (!element || !path || !activeRoot) return undefined;
+    return { element, row: { root: activeRoot, path, kind: element.dataset.kind === "directory" ? "directory" : "file" } };
+  };
+  /* A pointer gets the system menu; the keyboard gets the in-app one, anchored to the row and focused. */
+  const openRowMenu = async (event: { target: EventTarget | null; preventDefault(): void; clientX?: number; clientY?: number }, keyboard: boolean) => {
+    const hit = rowAt(event.target);
+    if (!rowActions || !hit) return;
+    event.preventDefault();
+    const items = rowActions.items(hit.row.kind);
+    const rect = hit.element.getBoundingClientRect();
+    const pointer = !keyboard && (event.clientX || event.clientY);
+    const point = pointer ? { x: event.clientX!, y: event.clientY! } : { x: rect.left, y: rect.bottom };
+    hit.element.dataset.menuOpen = "";
+    if (!keyboard) {
+      const picked = await showNativeContextMenu(items, point);
+      if (picked !== "unavailable") {
+        delete hit.element.dataset.menuOpen;
+        if (picked && isFileRowAction(picked)) rowActions.run(picked, hit.row);
+        return;
+      }
+    }
+    setRowMenu({ ...hit, items, point, anchor: pointer ? undefined : copyAnchor(rect), keyboard: keyboard || !pointer });
+  };
+  const closeRowMenu = () => {
+    if (!rowMenu) return;
+    delete rowMenu.element.dataset.menuOpen;
+    if (rowMenu.element.isConnected) rowMenu.element.focus({ preventScroll: true });
+    setRowMenu(undefined);
+  };
 
   const anyOpen = expanded.size > 0;
   const hasFolders = rootEntries.some((entry) => entry.type === "directory");
@@ -345,7 +389,19 @@ export const FileTreePane = memo(function FileTreePane({
         </div>
       ) : null}
 
-      <div className="panel-tree-list" aria-label="Files" onKeyDown={(event) => walkTree(event, found ? toggleSearchFolder : onToggleFolder)}>
+      <div
+        className="panel-tree-list"
+        aria-label="Files"
+        onKeyDown={(event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) void openRowMenu(event, true);
+          else walkTree(event, found ? toggleSearchFolder : onToggleFolder);
+        }}
+        onContextMenu={(event) => void openRowMenu(event, false)}
+        onDragStart={(event) => {
+          const hit = rowAt(event.target);
+          if (hit) writeFileRowDrag(event.dataTransfer, hit.row);
+        }}
+      >
         {rootState?.error && <div role="status" className="panel-tree-empty">
           Could not refresh files. <button className="ghost" onClick={() => onRefreshDirectory?.("")}>Retry</button>
         </div>}
@@ -387,6 +443,19 @@ export const FileTreePane = memo(function FileTreePane({
             />
           )}
       </div>
+      {rowMenu && (
+        <ActionMenu
+          items={rowMenu.items}
+          point={rowMenu.point}
+          anchor={rowMenu.anchor}
+          keyboard={rowMenu.keyboard}
+          onClose={closeRowMenu}
+          onSelect={(action) => {
+            closeRowMenu();
+            if (isFileRowAction(action)) rowActions?.run(action, rowMenu.row);
+          }}
+        />
+      )}
     </div>
   );
 });

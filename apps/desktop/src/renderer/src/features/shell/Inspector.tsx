@@ -10,7 +10,7 @@ import type {
   LocalServer,
 } from "@capsule/shared";
 import { mergePrompt, rebasePrompt } from "../../lib/pull-request-stack";
-import { folderBasename, conversationFolderRoots, type HarnessReadiness } from "@capsule/shared";
+import { folderBasename, conversationFolderRoots } from "@capsule/shared";
 import { useRememberedScroll } from "../../lib/remembered-scroll";
 import { FileSaveCoordinator, isConflictError } from "../../lib/file-save";
 import { fileDrafts, fileOwnerKey } from "../../lib/file-drafts";
@@ -18,19 +18,21 @@ import { RecoverableFiles } from "./RecoverableFiles";
 import { DirectoryListings } from "../../lib/directory-listings";
 import { formatUserError } from "../../lib/errors";
 import { clampPanelWidth, fitPanelWidth, restorePanelWidth } from "../../lib/panel-size";
-import { formatProjectRoot, toWorkspaceRelative } from "../../lib/paths";
+import { formatProjectRoot, owningRoot, splitPathAndPosition, toWorkspaceRelative } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
 import { shortcutLabel, withShortcut } from "../../lib/keybindings";
 import { DiffView } from "./DiffView";
 import { ReviewDiff } from "../review/ReviewDiff";
 import { EmbeddedBrowser } from "./EmbeddedBrowser";
-import { SimulatorPane } from "./SimulatorPane";
+import { SimulatorPane, simulatorAttachedTo } from "./SimulatorPane";
 import { FilePreviewView } from "./FilePreview";
 import { OpenInControl } from "../open-in/OpenInPicker";
 import { FileTreePane, sortTreeEntries } from "./FileTree";
+import { fileRowMention } from "./file-row-actions";
+import { useFileRowActions } from "./useFileRowActions";
 import { ThreadAgents } from "./ThreadAgents";
 import { ComparePane } from "../best-of-n/ComparePane";
-import { SURFACES, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
+import { SURFACES, applies, tabForTool, toolFromTab, type InspectorTool } from "./surfaces";
 import { InspectorHeadSlot } from "./inspector-slot";
 import { useFollowAgent } from "./use-follow-agent";
 import "./follow-agent.css";
@@ -38,21 +40,23 @@ import { GitPullRequestDetail as PullRequestDetailView } from "./PullRequestDeta
 import { PullRequestList } from "./PullRequestList";
 import { PullRequestCheckoutDialog } from "../worktree-base/PullRequestCheckoutDialog";
 import { ReviewCommitForm } from "./ReviewCommitForm";
+import { ReviewGitActions } from "./ReviewGitActions";
 import { RequestScope } from "../../lib/request-scope";
 import { useScopedState } from "../../lib/scoped-state";
-import { ReviewScopeBar, useReviewTurns } from "../review/ReviewScopeBar";
+import { ReviewScopeBar, useReviewTargets, useReviewTurns } from "../review/ReviewScopeBar";
 import {
   changeStatus,
   chooseReview,
   ignoreWhitespaceFor,
   rememberIgnoreWhitespace,
+  reviewBase,
   reviewSelection,
+  setReviewBase,
   useReviewChoices,
   useReviewScope,
 } from "../../lib/review-scope";
 import {
   ColumnsIcon,
-  CpuIcon,
   DiffIcon,
   FileIcon,
   MaximizeIcon,
@@ -60,9 +64,6 @@ import {
   MousePointerClickIcon,
   PlusIcon,
   UndoIcon,
-  CloudUploadIcon,
-  GitMergeIcon,
-  GitPullRequestIcon,
   XIcon,
 } from "./icons";
 
@@ -92,32 +93,12 @@ function available(): number {
   return app.clientWidth - (sidebar && getComputedStyle(sidebar).position !== "absolute" ? sidebar.getBoundingClientRect().width : 0);
 }
 
-const READINESS_LABEL: Record<HarnessReadiness, string> = {
-  ready: "Ready",
-  dedicated: "Ready",
-  running: "Running",
-  missing_cli: "Not installed",
-  needs_login: "Needs sign-in",
-  missing_acpx: "Bridge missing",
-  gateway_offline: "Not connected to the Gateway",
-};
-
-const SPAWN_BLOCKED: Partial<Record<HarnessReadiness, string>> = {
-  missing_cli: "Install this agent's command-line tool first.",
-  needs_login: "Sign in to this agent in a terminal first.",
-  missing_acpx: "The Gateway's agent bridge is not installed.",
-  gateway_offline: "The Gateway is offline.",
-};
-
 export function Inspector() {
   const {
     project,
     session,
     activeRun,
-    steps,
     artifacts,
-    harnesses: harnessList,
-    harnessSessions,
     git,
     files,
     pickProjectDirectory,
@@ -138,18 +119,11 @@ export function Inspector() {
     gitCommit,
     gitStage,
     gitDiscard,
-    gitPush,
-    gitCreatePullRequest,
-    gitMergePullRequest,
+    notice,
     gitMergePullRequestStack,
     gitRebasePullRequestStack,
     setConfirm,
     settings,
-    spawnHarness,
-    cancelHarness,
-    closeHarness,
-    setSessionId,
-    busy,
     browserUrl,
     setBrowserUrl,
     requestedFile,
@@ -172,7 +146,6 @@ export function Inspector() {
    * read, and restoring it into a different thread is worse than the top.
    */
   const reviewScroll = useRememberedScroll<HTMLDivElement>(`review:${session?.id ?? ""}`);
-  const chatScroll = useRememberedScroll<HTMLDivElement>(`agents:${session?.id ?? ""}`);
   const [isMaximized, setIsMaximized] = useState(false);
   /*
    * Maximising changes the panel's width by a lot, and the width transition
@@ -228,6 +201,8 @@ export function Inspector() {
   const [preview, setPreview] = useState("");
   const [previewDoc, setPreviewDoc] = useState<FilePreview>();
   const [previewEditing, setPreviewEditing] = useState(false);
+  /* The line a transcript reference pointed at; a fresh object each time, so the same line can be shown again. */
+  const [previewLine, setPreviewLine] = useState<{ path: string; line: number }>();
   const [editing, setEditing] = useState<{ projectId: string; root: string; path: string; truncated: boolean; revision: string }>();
   const [saveState, setSaveState] = useState<
     "idle" | "pending" | "saving" | "saved" | "error" | "truncated" | "conflict"
@@ -261,8 +236,6 @@ export function Inspector() {
 
 
 
-  const harnesses = harnessList ?? [];
-  const dedicated = harnesses.find((item) => item.id === project?.defaultAgentId);
 
   const folderRoots = useMemo(() => conversationFolderRoots(project ?? {}, session?.workingDirectory), [project, session?.workingDirectory]);
   const activeRoot =
@@ -283,7 +256,8 @@ export function Inspector() {
   const reviewKind = useReviewScope(projectId);
   useReviewChoices();
   const reviewTurnList = useReviewTurns(session?.id);
-  const diffScope = reviewSelection(reviewKind, reviewThread, reviewTurnList.turns, reviewTurnList.loading);
+  const reviewTargets = useReviewTargets(projectId, session?.id, reviewBase(projectId), Boolean(git?.isRepo));
+  const diffScope = reviewSelection(reviewKind, reviewThread, reviewTurnList.turns, reviewTurnList.loading, projectId, reviewTargets);
   const diffTurn = diffScope.kind === "turn" ? reviewTurnList.turns.find((turn) => turn.runId === diffScope.runId) : undefined;
   const ignoreWhitespace = ignoreWhitespaceFor(reviewThread, settings?.diffIgnoreWhitespace ?? false);
   const directoryCache = useMemo(() => new DirectoryListings(async (path) => {
@@ -572,22 +546,26 @@ export function Inspector() {
       if (event.ctrlKey && (event.key === "`" || event.code === "Backquote")) {
         event.preventDefault();
         setTerminalOpen(true);
-      } else if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === "KeyS") {
-        event.preventDefault();
-        selectTool("chat");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Once per listing, not per render: typing in the editor must not walk the tree.
+  const folderNames = useMemo(() => files.map((entry) => entry.name), [files]);
+  const launcherState = {
+    projectId, git, desktop: api.isDesktop !== false, platform: api.platform, groupId: session?.groupId,
+    folderNames, simulatorAttached: api.isDesktop !== false && simulatorAttachedTo(session?.id),
+  };
+  const launcherSurfaces = SURFACES.filter((surface) => applies(surface, launcherState));
   /* While the chooser shows, a surface's letter opens it, as the hint on each card says; typing in a field stays typing. */
   const launcherKeys = useRef<(event: KeyboardEvent) => void>(() => undefined);
   launcherKeys.current = (event) => {
     if (activeTool !== "launcher" || event.metaKey || event.ctrlKey || event.altKey) return;
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable]")) return;
-    const surface = SURFACES.find((item) => item.key === event.key.toLowerCase());
-    if (!surface || surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform })) return;
+    const surface = launcherSurfaces.find((item) => item.key === event.key.toLowerCase());
+    if (!surface || surface.blockedBy(launcherState)) return;
     event.preventDefault();
     selectTool(surface.tool);
   };
@@ -636,12 +614,21 @@ export function Inspector() {
   useEffect(() => {
     if (!requestedFile || !projectId) return;
     if (requestedFile.projectId !== projectId || requestedFile.sessionId !== session?.id) { clearRequestedFile(); return; }
-    const root = requestedFile.root ?? conversationRoot;
+    // An absolute path names its own folder; one outside them all is not a file Capsule may read.
+    const owner = owningRoot(requestedFile.path, folderRoots);
+    if (owner === null) {
+      setNotice(`${splitPathAndPosition(requestedFile.path).path} is outside this conversation's folders, so it can't be previewed here.`);
+      clearRequestedFile();
+      return;
+    }
+    const root = owner ?? requestedFile.root ?? conversationRoot;
     if (!root || !folderRoots.includes(root)) { clearRequestedFile(); return; }
     // Select the owning folder before starting a read; a relative path alone
     // must never inherit whichever extra folder happens to be open.
     if (activeRoot !== root) { setFileRoot(root); return; }
     const relative = toWorkspaceRelative(requestedFile.path, root);
+    const line = Number(splitPathAndPosition(requestedFile.path).line);
+    setPreviewLine(line > 0 ? { path: relative, line } : undefined);
     clearRequestedFile();
     followAgent.pause();
     void previewFile(relative);
@@ -763,7 +750,8 @@ export function Inspector() {
     void updateSettings({ followAgent: on }).catch((error: unknown) => setNotice(formatUserError(error)));
   };
   const pauseFollow = followAgent.pause;
-  const previewByHand = useCallback((path: string) => { pauseFollow(); void previewFile(path); }, [pauseFollow, previewFile]);
+  const previewByHand = useCallback((path: string) => { pauseFollow(); setPreviewLine(undefined); void previewFile(path); }, [pauseFollow, previewFile]);
+  const fileRowActions = useFileRowActions(previewByHand);
   const toggleFolderByHand = useCallback((path: string) => { pauseFollow(); toggleFolder(path); }, [pauseFollow, toggleFolder]);
   const openRootByHand = useCallback((root: string) => { pauseFollow(); openRoot(root); }, [pauseFollow, openRoot]);
   const searchByHand = useCallback((value: string) => { pauseFollow(); setFileSearch(value); }, [pauseFollow]);
@@ -845,13 +833,8 @@ export function Inspector() {
             <span>Agents</span>
           ) : activeTool === "compare" ? (
             <span>Compare</span>
-          ) : activeTool === "chat" ? (
-            <>
-              <span>Side chat</span>
-              {dedicated?.name ? <><span className="panel-breadcrumb-sep">·</span><span>{dedicated.name}</span></> : null}
-            </>
           ) : (
-            <span>Open a surface</span>
+            <span>Open a panel</span>
           )}
         </span>
         <div className="panel-chrome-actions">
@@ -909,12 +892,12 @@ export function Inspector() {
               * button that does nothing when clicked — a disabled control with
               * no reason is a dead end.
               */}
-            {/* The panel header already says "Open a surface"; the body starts with the choice. */}
+            {/* The panel header already says "Open a panel"; the body starts with the choice. */}
             <p className="panel-launcher-hint">Choose what to show in this panel.</p>
             <div className="panel-launcher-cards">
-              {SURFACES.map((surface) => {
+              {launcherSurfaces.map((surface) => {
                 const Icon = surface.icon;
-                const blocked = surface.blockedBy({ projectId, git, desktop: api.isDesktop, platform: api.platform, groupId: session?.groupId });
+                const blocked = surface.blockedBy(launcherState);
                 return (
                   <button
                     key={surface.tool}
@@ -929,7 +912,7 @@ export function Inspector() {
                         <Icon size={16} />
                       </span>
                       <span className="panel-launcher-label">{surface.label}</span>
-                      <kbd className="panel-launcher-kbd" title={(surface.command ? shortcutLabel(surface.command, keyBindings) : surface.shortcut) ? `Also ${surface.command ? shortcutLabel(surface.command, keyBindings) : surface.shortcut} from anywhere` : undefined}>{surface.key.toUpperCase()}</kbd>
+                      <kbd className="panel-launcher-kbd" title={surface.command && shortcutLabel(surface.command, keyBindings) ? `Also ${shortcutLabel(surface.command, keyBindings)} from anywhere` : undefined}>{surface.key.toUpperCase()}</kbd>
                     </span>
                     <span className="panel-launcher-detail">{blocked ?? surface.detail}</span>
                   </button>
@@ -968,6 +951,7 @@ export function Inspector() {
                 {previewDoc ? (
                   <FilePreviewView
                     doc={previewEditing ? { ...previewDoc, contents: preview } : previewDoc}
+                    line={previewLine?.path === previewDoc.path ? previewLine : undefined}
                     editing={previewEditing}
                     contents={preview}
                     saveState={saveState}
@@ -980,13 +964,7 @@ export function Inspector() {
                       setSaveState("pending");
                       saverRef.current?.change(value);
                     }}
-                    onMention={() => {
-                      const prefix =
-                        activeRoot && activeRoot !== conversationRoot
-                          ? `${folderBasename(activeRoot)}/`
-                          : "";
-                      mentionFile(`${prefix}${previewDoc.path}`);
-                    }}
+                    onMention={() => mentionFile(activeRoot ? fileRowMention({ root: activeRoot, path: previewDoc.path }, conversationRoot) : previewDoc.path)}
                     onOpen={() => {
                       if (!activeRoot) return;
                       void openPath(`${activeRoot.replace(/\/$/, "")}/${previewDoc.path}`);
@@ -1061,6 +1039,7 @@ export function Inspector() {
                   onOpenRoot={openRootByHand}
                   onToggleFolder={toggleFolderByHand}
                   onPreviewFile={previewByHand}
+                  rowActions={fileRowActions}
                 />
               ) : null}
             </div>
@@ -1147,6 +1126,8 @@ export function Inspector() {
               selection={diffScope}
               turns={reviewTurnList.turns}
               loadingTurns={reviewTurnList.loading}
+              targets={git?.isRepo ? reviewTargets : undefined}
+              onBase={(base) => { if (projectId) setReviewBase(projectId, base); }}
               hasThread={Boolean(session)}
               onChoose={(value) => { if (projectId) chooseReview(projectId, reviewThread, value); }}
               ignoreWhitespace={ignoreWhitespace}
@@ -1176,30 +1157,7 @@ export function Inspector() {
             {git && !git.isRepo ? <p className="faint review-git-state">This folder is not a git repository.</p> : <>
             {/* The branch is already in the panel header; this row is only what can be done with it. */}
             {!readOnlyPeer && <div className="panel-review-header">
-              <div className="git-actions">
-                <button className="chip" type="button" onClick={() => void gitPush()}>
-                  <CloudUploadIcon size={13} />Push
-                </button>
-                {git?.pullRequest && git.pullRequest.state === "OPEN" ? (
-                  <button className="chip" type="button" onClick={() => void gitMergePullRequest()}>
-                    <GitMergeIcon size={13} />Merge PR
-                  </button>
-                ) : (
-                  <button
-                    className="chip"
-                    type="button"
-                    disabled={git?.ghAvailable === false}
-                    title={
-                      git?.ghAvailable === false
-                        ? "The GitHub CLI (gh) is not installed or not signed in."
-                        : undefined
-                    }
-                    onClick={() => void gitCreatePullRequest()}
-                  >
-                    <GitPullRequestIcon size={13} />{settings?.prDraft ? "Draft PR" : "Pull request"}
-                  </button>
-                )}
-              </div>
+              <ReviewGitActions />
             </div>}
 
             <PullRequestList
@@ -1247,11 +1205,11 @@ export function Inspector() {
             </>}
 
             {git?.isRepo && !readOnlyPeer && <ReviewCommitForm key={`${projectId}/${session?.id ?? ""}/${session?.workingDirectory ?? project?.workingDirectory ?? ""}`}
-              dirty={Boolean(git.dirty)} onCommit={gitCommit} />}
+              files={git.files ?? []} onCommit={gitCommit} failure={notice} />}
 
             {git?.isRepo && projectId ? (
               <ReviewDiff key={`${projectId}/${session?.id ?? ""}`} projectId={projectId} sessionId={session?.id} thread={reviewThread}
-                selection={diffScope} ignoreWhitespace={ignoreWhitespace} path={reviewPath} onShowAll={() => setReviewPath(undefined)} />
+                selection={diffScope} ignoreWhitespace={ignoreWhitespace} path={reviewPath} onShowAll={() => setReviewPath(undefined)} onShowFile={showFileDiff} />
             ) : (
               <div className="panel-diff-section">
                 <h4>Diff</h4>
@@ -1301,88 +1259,6 @@ export function Inspector() {
 
         {activeTool === "compare" && <div className="panel-tool-pane"><ComparePane /></div>}
 
-        {activeTool === "chat" && (
-          <div className="panel-tool-pane" ref={chatScroll}>
-            <div className="inspector-block">
-              <h4>Agents</h4>
-              {harnesses.map((harness) => {
-                const notReady = SPAWN_BLOCKED[harness.readiness];
-                const reason = !projectId
-                  ? "Open a project first — an agent starts in its folder."
-                  : notReady ?? (busy ? "Waiting for the current request to finish." : undefined);
-                return (
-                <div className="change-row" key={harness.id}>
-                  <div className="list-item" style={{ cursor: "default" }}>
-                    <CpuIcon size={12} />
-                    <span className="truncate">{harness.name}</span>
-                    <span className="meta">{READINESS_LABEL[harness.readiness]}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="chip"
-                    disabled={Boolean(reason)}
-                    title={reason}
-                    onClick={() => void spawnHarness(harness.id)}
-                  >
-                    Start
-                  </button>
-                </div>
-                );
-              })}
-            </div>
-
-            {harnessSessions.length > 0 && (
-              <div className="inspector-block">
-                <h4>Active sessions</h4>
-                {harnessSessions.map((item) => (
-                  <div className="change-row" key={item.id}>
-                    <button
-                      className={`list-item${item.id === session?.id ? " active" : ""}`}
-                      onClick={() => {
-                        setSessionId(item.id);
-                        setView("chat");
-                      }}
-                    >
-                      <span className="truncate">{item.title}</span>
-                      <span className="meta">{item.harnessState}</span>
-                    </button>
-                    <button className="ghost" onClick={() => void cancelHarness(item.id)}>
-                      Cancel
-                    </button>
-                    <button className="danger" onClick={() => void closeHarness(item.id)}>
-                      Close
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {activeRun && (
-              <div className="inspector-block">
-                <h4>Run activity</h4>
-                {steps.map((step) => (
-                  <div className={`step ${step.status}`} key={step.id}>
-                    {/* Error first: the fallback arm rendered a failed step as
-                        a pending circle, so a failure read as "not started". */}
-                    <span className="glyph">
-                      {step.status === "error"
-                        ? "✕"
-                        : step.status === "complete"
-                          ? "✓"
-                          : step.status === "active"
-                            ? "●"
-                            : "○"}
-                    </span>
-                    <span className="truncate">{step.label}</span>
-                    {step.detail && step.status === "error" && (
-                      <span className="step-detail">{step.detail}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </aside>
     </>

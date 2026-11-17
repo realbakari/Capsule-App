@@ -4,7 +4,6 @@ import { Toasts } from "../features/toasts/Toasts";
 import { ToastProvider, useToasts } from "../lib/toasts";
 import { HeaderPopover } from "../features/shell/HeaderPopover";
 import { MenuSelect } from "../features/shell/MenuSelect";
-import { HistoryView } from "../features/library/LibraryViews";
 
 function assert(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -32,9 +31,7 @@ export async function runNavigationRecoveryRegressions(host: HTMLElement) {
   const media = styles.media; styles.media = "all";
   const root = createRoot(host); const restored: string[] = [];
   try {
-    window.testWorkspace = { api: { isDesktop: true, listRunPage: async () => ({ runs: [], hasMore: false }) },
-      restoreSession: async (id: string) => { restored.push(id); },
-      sessions: [{ id: "archived", title: "A saved conversation", state: "archived", projectId: "p" }], projectId: "p" };
+    window.testWorkspace = { api: { isDesktop: true } };
     const restore = () => { restored.push("archived"); };
     root.render(<ToastProvider><textarea aria-label="Draft" /><ArchiveToast restore={restore} /><Toasts /></ToastProvider>); await settle();
     const draft = host.querySelector("textarea")!;
@@ -43,13 +40,6 @@ export async function runNavigationRecoveryRegressions(host: HTMLElement) {
     document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true })); await settle();
     assert(restored.join() === "archived", "Keyboard archive undo did not restore the conversation");
     assert(!host.querySelector(".toast:not(.is-leaving)"), "An undone toast stayed on screen");
-    root.render(<HistoryView />); await settle();
-    const archived = host.querySelector<HTMLDetailsElement>(".archived-conversations")!; archived.open = true;
-    archived.querySelector<HTMLButtonElement>("button")!.click(); await settle();
-    assert(restored.slice().length === 2, "History did not retain a permanent restore action");
-    window.testWorkspace = { ...window.testWorkspace, api: { isDesktop: false, listRunPage: async () => ({ runs: [], hasMore: false }) } };
-    root.render(<HistoryView />); await settle();
-    assert(host.querySelector<HTMLButtonElement>(".archived-conversations button")?.disabled, "Browser offered a host-only restore");
     root.render(<LowPopover />); await settle();
     const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Open recovery menu"]')!; trigger.click(); await settle();
     const panel = document.querySelector<HTMLElement>('[aria-label="Recovery menu"]')!;

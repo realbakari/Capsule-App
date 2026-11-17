@@ -154,8 +154,8 @@ conversation over another to save a new pinned order.
 
 The list icon in the titlebar opens **Conversation details**, which holds the
 workspace controls in one place: the folder with **Reveal in Finder** and
-**Open in Terminal**, the branch, **Add project action** or **Run a project
-action**, **Commit & push** (commit, push and create a pull request), and
+**Open in Terminal**, the branch, **Add project action** or a **Run** button
+for the project's actions, **Commit & push** (commit, push and create a pull request), and
 **Initialize Git in this folder** when the folder has no repository. The
 titlebar itself carries only the conversation's name and the panel icons.
 
@@ -169,22 +169,34 @@ every turn, and long files bury the rules that matter.
 
 ## Saved project actions
 
-Open **Conversation details** (the list icon in the titlebar) and choose **Add project action**; once a project has actions the row reads **Run a project action**. Use it to save a command such as `pnpm dev` or
+Open **Conversation details** (the list icon in the titlebar) and choose **Add project action** to save a command such as `pnpm dev` or
 `npm run storybook`. Actions belong to the project and run in the current
-conversation’s folder. A running action can be stopped from the same menu, and
-recent output remains visible there.
+conversation’s folder.
 
-After **Stop**, the action shows **Stopping** until its process exits. You can
-start it again once it has stopped; repeated clicks cannot create overlapping
-copies. A process that ignores the stop request is force-stopped after a short
-grace period.
+Once a project has actions, the row becomes a split button. **Run dev** (named
+after the action you ran last in this project, or the first one) runs it in one
+click; the arrow beside it lists every action, with **Edit**, **Delete** and
+**New action…**. Capsule remembers the last action per project on this
+computer.
+
+An action runs in the terminal under the conversation, in a tab named after
+it, so you see its output as it happens and can type into it. Press Control-C
+in the tab to stop it, or close the tab. Running the same action again goes
+back to its tab when nothing is running there; while it is still busy, a new
+tab opens beside it (**dev 2**). Actions also appear in the command palette as
+**Run project action: …**, and you can give one a keyboard shortcut.
 
 An action can include a preview URL. Starting it selects that address in the
 Browser panel automatically.
 
-A running action also appears under **Background tasks** in the conversation
-details (the list icon in the titlebar), with how long it has run. Open its row
-to see its latest output, or stop it from there.
+Strict sandbox blocks terminal commands, so actions cannot run while it is on.
+A paired device cannot run actions: they need a terminal on the computer
+running Capsule.
+
+An action marked to run when a conversation gets its own worktree runs on its
+own, without a terminal tab. It appears under **Background tasks** in the
+conversation details, with how long it has run. Open its row to see its latest
+output, or stop it from there.
 
 ## Local previews
 
@@ -208,7 +220,10 @@ the page in your system browser. The header holds inspect mode, the device
 size and screenshot capture to the clipboard; the ⋮ menu holds find on page,
 hard reload, DevTools, zoom (the percentage resets it to 100%), and clearing the
 cache or cookies. The Browser home keeps recently used pages
-above the live-server list. Screenshot capture copies an actual image that can
+above the live-server list; the × on a page forgets it. When no local server is
+running, the home says so and waits for one to start. A page that will not load
+says why in plain words, such as nothing answering at that address or an
+untrusted certificate, with **Reload**. Screenshot capture copies an actual image that can
 be pasted into an image-aware app. If capture fails, it shows an error and leaves
 the clipboard unchanged; it never substitutes image data as text.
 
@@ -325,6 +340,16 @@ Arrow keys move through the tree: up and down move between rows, right opens a
 folder or steps into it, left closes it or steps back to its parent, and Home
 and End jump to the first and last row. Enter opens a file or toggles a folder.
 
+Right-click a file or folder for its menu, or press Shift-F10 or the
+context-menu key on a selected row. A file offers **Open**, which previews it,
+and both offer **Mention in composer**, **Open in** your Open in favourite (the
+default app until you choose one), **Reveal in Finder** (File Explorer on
+Windows), **Copy path** and **Copy relative path**. The relative path starts
+at the folder the tree shows. On another device paired with your computer,
+Open in and Reveal are left out, since they act on the computer itself.
+
+To mention a file or folder without the menu, drag its row onto the composer.
+
 In a narrow Files panel, the file list fills the panel. Select a file to see its
 preview; **Toggle workspace tree** returns to the list. Wider panels show both
 side by side. A slow preview will not pull you back after you switch tools or
@@ -336,6 +361,14 @@ Conflicts require an explicit reload or overwrite decision.
 
 If a branch disappears after you opened the branch picker, checkout fails without
 restoring a same-named file over your local edits.
+
+Text previews number their lines. The numbers stay out of anything you select
+or copy, and a long line wraps under its code rather than under its number. A
+file opened at a line, from a terminal link or a **Search in files** result,
+scrolls to that line and marks it; opening it again at another line moves
+there. If the line is past the end of the file, or past the part of a large
+file the preview shows, the preview says so instead of scrolling somewhere
+else.
 
 Files opened from chat or content-search results use that conversation's folder,
 even if the Files panel was showing an extra folder. File search results disappear
@@ -373,7 +406,8 @@ Previews refuse special files such as pipes, and check file size before reading.
 Images over 6 MB and text over 1 MB are shown as too large to preview.
 
 **Search in files** searches the current conversation's folder, including its
-worktree. Selecting a result opens that file without adding it to your draft.
+worktree. Selecting a result opens that file at the matching line, without
+adding it to your draft.
 Search runs in the background and ignores stale replies when you change the
 query or folder. Git projects use their tracked and non-ignored files. Results
 are limited to 60 matching lines, three per file; binary files and files larger
@@ -413,9 +447,9 @@ Sending a PR question or suggested fix to the composer appends it after your
 existing draft. It does not discard unfinished text or send automatically.
 
 The current-changes diff combines staged, unstaged, and new files, matching the
-scope of **Commit all**. If a combined preview is too large, review individual
-files; Capsule reports the limit instead of presenting an incomplete patch as
-complete. Branch changes invalidate the current-PR reading. Merging rechecks
+scope of **Commit all**. When a change is too large to read at once, Review
+shows what fits and lists the rest under **files not shown**, so nothing looks
+complete when it is not. Branch changes invalidate the current-PR reading. Merging rechecks
 the branch and targets the PR you were shown; a mismatch asks you to refresh.
 
 The Review panel lists open pull requests for the selected repository when the

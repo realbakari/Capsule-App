@@ -92,9 +92,9 @@ function OpenInPicker({ anchor, target, what, state, onClose }: {
             <AppIcon app={app} />
             <span className="open-in-name">{app.name}</span>
             {app.id === favorite?.id ? (
-              <span className="open-in-favorite" title="Favourite. The shortcut opens it.">
+              <span className="open-in-favorite" title={chord ? "Favourite. The shortcut opens it." : "Favourite. The button opens it."}>
                 <StarIcon size={11} />
-                <kbd>{chord}</kbd>
+                {chord ? <kbd>{chord}</kbd> : null}
               </span>
             ) : null}
           </button>
@@ -152,14 +152,14 @@ export function OpenInControl({ target, what, variant, startOpen }: {
       <button
         type="button"
         className="open-in-primary"
-        title={favorite ? `Open this ${what} in ${favorite.name} (${chord})` : `Choose an app to open this ${what} in`}
+        title={favorite ? `Open this ${what} in ${favorite.name}${chord ? ` (${chord})` : ""}` : `Choose an app to open this ${what} in`}
         aria-haspopup={favorite ? undefined : "menu"}
         aria-expanded={favorite ? undefined : open}
         onClick={() => { if (favorite) void openIn(favorite.id, target); else setOpen((value) => !value); }}
       >
         {favorite ? <AppIcon app={favorite} /> : <span className="open-in-icon open-in-icon-glyph" aria-hidden><ExternalLinkIcon size={14} /></span>}
         <span className="open-in-name">{primaryLabel}</span>
-        {favorite && variant === "row" ? <kbd className="open-in-kbd">{chord}</kbd> : null}
+        {favorite && variant === "row" && chord ? <kbd className="open-in-kbd">{chord}</kbd> : null}
       </button>
       {favorite ? (
         <button

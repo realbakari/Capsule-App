@@ -12,6 +12,10 @@ import {
   readSidebarGrouping,
   visibleStatusThreads,
   indexSidebarThreads,
+  readFoldedProjects,
+  readShowMore,
+  restoredPinOrder,
+  threadActivityAt,
 } from "./sidebar.js";
 
 describe("cross-project status groups", () => {
@@ -31,7 +35,7 @@ describe("cross-project status groups", () => {
 
   it("keeps an older selected conversation visible without expanding its entire project", () => {
     const threads = Array.from({ length: 50 }, (_, index) => thread(String(index), { updatedAt: new Date(Date.UTC(2026, 8, 28) - index * 86_400_000).toISOString() }));
-    const result = splitProjectThreads(threads, () => "ready", 3, threads[49]);
+    const result = splitProjectThreads(threads, () => "ready", (item) => item.updatedAt, 3, threads[49]);
     expect(result.rest.map((item) => item.id)).toEqual(["0", "1", "2", "49"]);
     expect(result.hidden).toBe(46);
   });
@@ -48,7 +52,7 @@ describe("cross-project status groups", () => {
     const groups = groupSidebarThreads([...sessions, sessions[0]!], projects, latest);
     expect(groups.map((group) => [group.id, group.threads.map((item) => item.id)])).toEqual([
       ["attention", ["approval", "failed"]], ["working", ["queued"]], ["review", ["ready"]],
-      ["other", ["cancelled", "empty", "idle", "verdict"]],
+      ["other", ["cancelled", "verdict", "empty", "idle"]],
     ]);
     expect(groupSidebarThreads(sessions, projects, latest, " beta ")[0]?.threads.map((item) => item.id)).toEqual(["approval"]);
     expect(groupSidebarThreads(sessions, projects, latest, "ready")[0]?.id).toBe("review");
@@ -65,10 +69,17 @@ describe("cross-project status groups", () => {
   });
 
   it("sorts pinned first, then recency and stable ID without mutating input", () => {
-    const sessions = [thread("z"), thread("b"), thread("new", { updatedAt: "2026-09-02" }), thread("pin", { pinned: true })];
+    const sessions = [thread("z"), thread("b"), thread("new", { createdAt: "2026-09-02" }), thread("pin", { pinned: true })];
     const original = [...sessions];
     expect(groupSidebarThreads(sessions, projects, new Map())[0]?.threads.map((item) => item.id)).toEqual(["pin", "new", "b", "z"]);
     expect(sessions).toEqual(original);
+  });
+
+  it("orders by the latest turn, not by a rename or pin that touched the record", () => {
+    const sessions = [thread("renamed", { updatedAt: "2026-09-09T00:00:00Z" }), thread("asked")];
+    const latest = latestSidebarRuns([run("asked", "completed", { createdAt: "2026-09-05T00:00:00Z", hasResult: true }),
+      run("renamed", "completed", { createdAt: "2026-09-03T00:00:00Z", hasResult: true })]);
+    expect(groupSidebarThreads(sessions, projects, latest)[0]?.threads.map((item) => item.id)).toEqual(["asked", "renamed"]);
   });
 
   it("never hides live work and keeps a selected settled thread visible", () => {
@@ -149,7 +160,7 @@ describe("splitProjectThreads", () => {
       if (thread.id === "w") return "working";
       if (thread.id === "a") return "approval";
       return "ready";
-    });
+    }, (thread) => thread.updatedAt);
     expect(split.pinned.map((item) => item.id)).toEqual(["p"]);
     expect(split.live.map((item) => item.id)).toEqual(["w", "a"]);
     expect(split.rest.map((item) => item.id)).toEqual(["s"]);
@@ -216,7 +227,7 @@ describe("settled and snoozed shelves", () => {
     const latest = latestSidebarRuns([run("asks", "approval_required"), run("busy", "running")]);
     expect(groupSidebarThreads(sessions, projects, latest).map((group) => group.id)).toEqual(["attention", "working"]);
     const kinds: Record<string, "approval" | "working"> = { asks: "approval", busy: "working" };
-    const split = splitProjectThreads(sessions, (item) => kinds[item.id]!);
+    const split = splitProjectThreads(sessions, (item) => kinds[item.id]!, (item) => item.updatedAt);
     expect(split.live.map((item) => item.id)).toEqual(["asks", "busy"]);
     expect(split.shelvedSettled).toEqual([]);
   });
@@ -224,9 +235,37 @@ describe("settled and snoozed shelves", () => {
   it("splits a project's threads into its shelves, soonest wake first", () => {
     const soon = new Date(Date.now() + 60_000).toISOString();
     const threads = [thread("a", { snoozedUntil: later }), thread("b", { snoozedUntil: soon }), thread("c", { settledAt: "x" }), thread("d")];
-    const split = splitProjectThreads(threads, () => "ready");
+    const split = splitProjectThreads(threads, () => "ready", (item) => item.updatedAt);
     expect(split.shelvedSnoozed.map((item) => item.id)).toEqual(["b", "a"]);
     expect(split.shelvedSettled.map((item) => item.id)).toEqual(["c"]);
     expect(split.rest.map((item) => item.id)).toEqual(["d"]);
+  });
+});
+
+describe("thread activity", () => {
+  const session = { createdAt: "2026-09-01T00:00:00Z" };
+  it("is the latest turn's start or finish, or the thread's creation", () => {
+    expect(threadActivityAt(session)).toBe("2026-09-01T00:00:00Z");
+    expect(threadActivityAt(session, { createdAt: "2026-09-02T00:00:00Z" })).toBe("2026-09-02T00:00:00Z");
+    expect(threadActivityAt(session, { createdAt: "2026-09-02T00:00:00Z", completedAt: "2026-09-03T00:00:00Z" })).toBe("2026-09-03T00:00:00Z");
+  });
+});
+
+describe("kept sidebar layout", () => {
+  it("reads folded projects and show-more depths, ignoring anything malformed", () => {
+    expect([...readFoldedProjects(() => '["a", 3, "b"]')]).toEqual(["a", "b"]);
+    expect(readFoldedProjects(() => "{")).toEqual(new Set());
+    expect(readFoldedProjects(() => { throw new Error("denied"); })).toEqual(new Set());
+    expect(readShowMore(() => '{"a": 6, "b": "x", "c": -1, "d": 2.5}')).toEqual({ a: 6 });
+    expect(readShowMore(() => "[1]")).toEqual({});
+    expect(readShowMore(() => null)).toEqual({});
+  });
+});
+
+describe("restoring a pin", () => {
+  it("puts the unpinned thread back where it was, after-the-fact pins last", () => {
+    const before = ["a", "b", "c"];
+    expect(restoredPinOrder(before, [{ id: "a", pinOrder: 0 }, { id: "c", pinOrder: 2 }, { id: "b", pinOrder: 3 }])).toEqual(["a", "b", "c"]);
+    expect(restoredPinOrder(before, [{ id: "new", pinOrder: 3 }, { id: "c", pinOrder: 2 }, { id: "b", pinOrder: 4 }])).toEqual(["b", "c", "new"]);
   });
 });

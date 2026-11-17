@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { spawn as spawnPty } from "node-pty";
 import { spawnCommand, stopChild } from "@capsule/process";
 import { commandShell, interactiveShellArgs, windowsPowerShell } from "./shell.js";
@@ -379,8 +379,9 @@ export function startInDirectory(
  * A shell running on a pseudo-terminal, for the terminal panel inside Capsule.
  *
  * `runInDirectory` and `startInDirectory` above run one command and hand back
- * its output — enough for a project action, useless for a shell session, which
- * needs a TTY to draw a prompt, run an editor, or read a keystroke.
+ * its output — enough for a worktree setup step or a check, useless for a
+ * shell session, which needs a TTY to draw a prompt, run an editor, or read a
+ * keystroke.
  */
 export interface PtySession {
   pid: number;
@@ -389,6 +390,22 @@ export interface PtySession {
   kill: () => void;
   pause: () => void;
   resume: () => void;
+  /** True while the shell waits at its prompt: nothing it started holds the terminal. */
+  idle: () => Promise<boolean>;
+}
+
+/*
+ * A terminal's foreground process group is the shell's own while it waits at
+ * a prompt, and the running program's while a command holds the screen.
+ * Windows has no such group to read, so a shell there always counts as busy.
+ */
+function shellHoldsTerminal(pid: number): Promise<boolean> {
+  if (process.platform === "win32") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    execFile("ps", ["-o", "tpgid=", "-p", String(pid)], { timeout: 2_000 }, (error, stdout) => {
+      resolve(!error && Number(stdout.trim()) === pid);
+    });
+  });
 }
 
 /** The shell to open. The login shell if the OS reports one, else zsh. */
@@ -438,6 +455,7 @@ export function startPty(
         // Already gone: the exit handler has run or the shell was killed.
       }
     },
+    idle: () => shellHoldsTerminal(child.pid),
   };
 }
 

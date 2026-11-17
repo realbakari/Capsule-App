@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { APPROVAL_PRESETS, approvalPreset, BROWSER_DEVICES, DIFF_SCOPES, initPrompt, threadShelf, type AppearanceTheme, type DiffScope, type HarnessPermissionProfile, type SearchResults, type Session } from "@capsule/shared";
+import { useMemo, useState, type ReactNode } from "react";
+import { APPROVAL_PRESETS, approvalPreset, BROWSER_DEVICES, DIFF_SCOPES, initPrompt, threadShelf, type AppearanceTheme, type DiffScope, type HarnessPermissionProfile, type Session } from "@capsule/shared";
 import { requestBrowserCommand } from "../../lib/browser-commands";
 import { chooseReview } from "../../lib/review-scope";
 import { requestPluginIntent } from "../plugins/plugin-intent";
@@ -16,12 +16,17 @@ import { currentSelection, NO_SELECTION, selectionContext } from "../../lib/sele
 import { useThreadTriage } from "../../lib/thread-triage";
 import { useToasts } from "../../lib/toasts";
 import { updateOutcomeToast, useUpdates } from "../../lib/updates";
-import { compactRelativeTime } from "../../lib/sidebar";
+import { compactRelativeTime, latestSidebarRuns, threadActivityAt } from "../../lib/sidebar";
+import { useMessageSearch } from "../../lib/message-search";
+import { SETTINGS_SEARCH_ITEMS, SETTINGS_SECTION_LABELS } from "../settings/settings-search";
+import { revealSetting } from "../settings/reveal";
 import { useSessionActions } from "../triage/session-actions";
 import { REOPEN_PANEL_EVENT } from "../triage/useReopenPanel";
 import { ACTION_ICONS } from "./ActionMenu";
-import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, ColumnsIcon, CompareIcon, CpuIcon, DiffIcon, FileIcon, FolderIcon, GitBranchIcon, GlobeIcon, HistoryIcon, InfoIcon, LaptopIcon, ListIcon, ListTodoIcon, MessageSquareIcon, MessageSquarePlusIcon, MoonIcon, MousePointerClickIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, RedoIcon, RefreshIcon, KeyboardIcon, LinkIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, StarIcon, StopIcon, SunIcon, TerminalIcon } from "./icons";
+import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, ChartIcon, ColumnsIcon, CompareIcon, CpuIcon, DiffIcon, FileIcon, FolderIcon, GitBranchIcon, GitCommitIcon, GitPullRequestIcon, GlobeIcon, HistoryIcon, InfoIcon, LaptopIcon, ListIcon, ListTodoIcon, MessageSquareIcon, MessageSquarePlusIcon, MoonIcon, MousePointerClickIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, RedoIcon, RefreshIcon, KeyboardIcon, LinkIcon, SearchIcon, SettingsIcon, ShieldIcon, SmartphoneIcon, SmilePlusIcon, SparkIcon, StarIcon, StopIcon, SunIcon, TerminalIcon } from "./icons";
 import { SearchDialog, type SearchDialogItem } from "./SearchDialog";
+import { useGitActions } from "./use-git-actions";
+import { gitPaletteRows, OPEN_GIT_MENU_EVENT, type GitMenu, type GitPaletteAction } from "../../lib/git-palette";
 import { requestRename } from "./ThreadTitleMenu";
 import { useBranching } from "../conversation/branching/use-branching";
 import { HANDOFF_LABEL } from "../handoff/Handoff";
@@ -41,7 +46,7 @@ import "./palette.css";
 type Entry = PaletteEntry & { icon: ReactNode; /** A fixed key outside the keymap, such as ⇧Tab in the composer. */ shortcut?: string; meta?: string };
 
 /* The order groups take on an empty query. Each group is listed once, so a builder may emit its rows in any order. */
-const GROUP_ORDER = ["Recent conversations", "Actions", "This conversation", "Go to", "Workspace", "Profiles", "Theme", "Customization", "Commands", "Conversations", "Projects"];
+const GROUP_ORDER = ["Recent conversations", "Actions", "This conversation", "Go to", "Workspace", "Profiles", "Theme", "Settings", "Customization", "Commands", "Conversations", "Projects"];
 const groupRank = (group: string) => { const index = GROUP_ORDER.indexOf(group); return index < 0 ? GROUP_ORDER.length : index; };
 /* Things to open rather than commands to run: they lose ties to commands, and `>` hides them. */
 const CONTENT_GROUPS = ["Recent conversations", "Conversations", "Projects"];
@@ -82,6 +87,7 @@ const REVIEW_SCOPE_LABEL: Record<DiffScope, string> = {
   unstaged: "Review unstaged changes",
   turn: "Review this turn's changes",
   branch: "Review branch changes",
+  commit: "Review the latest commit",
 };
 const CONVERSATION_COMMANDS: Partial<Record<string, string>> = { "mark-unread": "mark-unread" };
 /* Reading and copying work from a paired viewer; everything else changes the desktop. */
@@ -117,47 +123,33 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
     sessions, session, setProjectId, setAboutOpen, openInspector, setAgentCommandsOpen, setFilePicker, setContentSearch,
     project, terminalOpen, setTerminalOpen, sidebarCollapsed, setSidebarCollapsed, inspectorOpen, setInspectorOpen, inspectorTab, refresh,
     setPromptJump, runs, turnMode, setTurnMode, attachContext, setNotice, setPermissionProfile, draftApproval, setDraftApproval,
-    setDraft, commands, config, setSettingsTab, startWithProfile, keyBindings,
+    setDraft, commands, config, setSettingsTab, startWithProfile, keyBindings, projectRuns, findInThread,
   } = workspace;
   const branching = useBranching();
   const lastTurn = useMemo(() => runs
     .filter((run) => run.sessionId === session?.id && !["queued", "running", "waiting", "approval_required"].includes(run.status))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0], [runs, session?.id]);
   const threadActions = useThreadActions();
+  const gitActions = useGitActions();
   const importSessions = useImportSessions();
   const sessionActions = useSessionActions();
   const triage = useThreadTriage();
   const toasts = useToasts();
-  const [page, setPage] = useState<"root" | "new-in">("root");
+  const [page, setPage] = useState<"root" | "new-in" | "archived">("root");
   const typed = paletteQuery.trim();
   /* A leading ">" searches commands only, leaving out conversations, projects and messages. */
   const commandsOnly = page === "root" && typed.startsWith(">");
   const query = (commandsOnly ? typed.slice(1) : typed).trim().toLowerCase();
-  const searchesMessages = page === "root" && !commandsOnly && query.length >= 2;
-  const [retry, setRetry] = useState(0);
-  const [search, setSearch] = useState<{ query: string; hits?: SearchResults; error?: string }>();
-  const currentSearch = search?.query === query ? search : undefined;
-
-  useEffect(() => {
-    if (!searchesMessages) return;
-    let current = true;
-    setSearch(undefined);
-    const timer = setTimeout(() => {
-      void api.search(query).then((hits) => {
-        if (current) setSearch({ query, hits });
-      }).catch((error) => {
-        if (current) setSearch({ query, error: formatUserError(error) });
-      });
-    }, 150);
-    return () => { current = false; clearTimeout(timer); };
-  }, [api, searchesMessages, query, retry]);
+  const messageSearch = useMessageSearch(api, query, page === "root" && !commandsOnly);
+  const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
 
   const desktopOnly = api.isDesktop === false ? "Available in the desktop app." : undefined;
   /* Starting and steering conversations also works from a device paired with control. */
   const readOnly = api.isDesktop === false && api.remoteMode !== "control" ? "Read only on this device." : undefined;
   const folder = session?.workingDirectory ?? project?.workingDirectory;
+  const archived = sessions.filter((item) => item.state === "archived");
 
-  function openPage(next: "root" | "new-in") {
+  function openPage(next: "root" | "new-in" | "archived") {
     setPage(next);
     setPaletteQuery("");
   }
@@ -226,6 +218,27 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
         icon: icon(RefreshIcon), disabledReason: restartReason(target), run: () => void restartAgent(target),
       },
     ];
+  }
+
+  /* Commit, push, pull, pull request and branches for the open project, through the same guards as the commit menu. */
+  function gitEntries(): Entry[] {
+    const openMenu = (menu: GitMenu) => { setView("chat"); window.dispatchEvent(new CustomEvent<GitMenu>(OPEN_GIT_MENU_EVENT, { detail: menu })); };
+    const handlers: Record<GitPaletteAction, () => void> = {
+      "commit-menu": () => openMenu("commit"),
+      "branch-menu": () => openMenu("branch"),
+      push: () => void gitActions.push(),
+      pull: () => void workspace.gitPull("ff-only"),
+      rebase: () => void workspace.gitPull("rebase"),
+      "pull-request": () => void gitActions.createPullRequest(),
+    };
+    const icons: Record<GitPaletteAction, ReactNode> = {
+      "commit-menu": icon(GitCommitIcon), push: icon(ArrowUpIcon), pull: icon(ArrowDownIcon), rebase: icon(ArrowDownIcon),
+      "pull-request": icon(GitPullRequestIcon), "branch-menu": icon(GitBranchIcon),
+    };
+    return gitPaletteRows(workspace.git, { hasProject: Boolean(project), desktop: api.isDesktop !== false }).map((row) => ({
+      id: row.id, label: row.label, detail: row.detail, keywords: row.keywords, group: "Workspace", icon: icons[row.action],
+      disabledReason: row.disabledReason, run: handlers[row.action],
+    }));
   }
 
   /* Board, plan mode, best-of-N, Review scopes, approvals, branching and the other workflow commands. */
@@ -305,18 +318,27 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
     }).map(({ onSelect, icon: glyph, ...item }): Entry => ({ ...item, icon: glyph, searchOnly: true, run: onSelect }));
     return [
       ...files,
-      { id: "settings-plugins", label: "Plugins", detail: "Settings", searchOnly: true, group: "Go to", icon: icon(SettingsIcon), run: goTo("plugins") },
       ...(config?.profiles ?? []).map((profile): Entry => ({
         id: `profile-${profile.id}`, label: `New conversation with ${profile.name}`, detail: profile.description, group: "Profiles",
         icon: icon(MessageSquarePlusIcon), disabledReason: readOnly, run: () => void startWithProfile(profile.id),
       })),
-      { id: "settings-automations", label: "Automations", detail: "Settings", searchOnly: true, group: "Go to", icon: icon(SettingsIcon), run: goTo("automations") },
-      { id: "settings-status-line", label: "Status line", detail: "Settings", searchOnly: true, group: "Go to", icon: icon(SettingsIcon), run: goTo("appearance") },
-      { id: "settings-tools", label: "MCP servers", detail: "Settings", searchOnly: true, group: "Go to", icon: icon(SettingsIcon), run: goTo("tools") },
+      /* Every row of Settings by name, opened at the row itself. */
+      ...SETTINGS_SEARCH_ITEMS.map((item): Entry => ({
+        id: `setting-${item.section}-${item.title}`, label: item.title, detail: `Settings › ${SETTINGS_SECTION_LABELS[item.section]}`, group: "Settings",
+        keywords: `settings ${SETTINGS_SECTION_LABELS[item.section]} ${item.keywords?.join(" ") ?? ""}`, searchOnly: true, icon: icon(SettingsIcon),
+        run: () => { revealSetting(item.title); goTo(item.section)(); },
+      })),
       /* A command takes arguments, so choosing one puts it in the message box rather than sending it. */
       ...(commands?.list?.commands ?? []).map((command): Entry => ({
         id: `command-${command.name}`, label: `Run command: /${command.name}`, detail: commandDetail(command), group: "Commands",
         icon: icon(TerminalIcon), disabledReason: readOnly, searchOnly: true, run: () => { setView("chat"); setDraft(`/${command.name} `); },
+      })),
+      /* The same run as Conversation details: a tab of its own in the terminal dock. */
+      ...(project?.workingDirectory ? project.actions ?? [] : []).map((action): Entry => ({
+        id: `project-action-${action.id}`, label: `Run project action: ${action.name}`, detail: action.command, group: "Actions",
+        icon: icon(TerminalIcon), keywords: "script task terminal", searchOnly: true,
+        disabledReason: desktopOnly ?? (settings?.sandbox === "strict" ? "Strict sandbox blocks terminal commands." : undefined),
+        run: () => workspace.runProjectAction(action),
       })),
     ];
   }
@@ -327,6 +349,13 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
       return projects.map((item) => ({
         id: `new-in-${item.id}`, label: item.name, detail: item.workingDirectory, group: "New conversation in",
         icon: icon(FolderIcon), disabledReason: readOnly, run: () => createTask(item.id),
+      }));
+    }
+    if (page === "archived") {
+      return archived.map((item) => ({
+        id: `archived-${item.id}`, label: item.title, detail: projects.find((entry) => entry.id === item.projectId)?.name, group: "Archived conversations",
+        icon: icon(HistoryIcon), disabledReason: desktopOnly,
+        run: () => void workspace.restoreSession(item.id).then(() => { setProjectId(item.projectId, item.id); setView("chat"); }),
       }));
     }
     const current = settings?.appearanceTheme ?? "system";
@@ -359,7 +388,7 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
         disabledReason: inspectorOpen ? "The panel is open." : undefined, run: () => window.dispatchEvent(new CustomEvent(REOPEN_PANEL_EVENT)) },
       { id: "browser", label: showing("browser") ? "Hide browser" : "Open browser", group: "Workspace", icon: icon(GlobeIcon), command: "open-browser", keywords: "toggle",
         run: () => togglePanel("browser") },
-      { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: icon(SmartphoneIcon), disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), run: () => openInspector("simulator") },
+      { id: "simulator", label: "Open iOS Simulator", group: "Workspace", icon: icon(SmartphoneIcon), searchOnly: true, disabledReason: desktopOnly ?? (api.platform && api.platform !== "darwin" ? "Available on macOS with Xcode." : undefined), run: () => openInspector("simulator") },
       { id: "open-in-favorite", label: "Open folder in favourite app", group: "Workspace", icon: icon(FolderIcon), command: "open-in-favorite", keywords: "editor open in",
         disabledReason: desktopOnly ?? (folder ? undefined : "Open a folder first."), run: () => { setView("chat"); window.dispatchEvent(new CustomEvent(OPEN_IN_EVENT)); } },
       { id: "open-in-settings", label: "Manage Open in apps", group: "Workspace", icon: icon(SettingsIcon), keywords: "editor open in", disabledReason: desktopOnly,
@@ -380,23 +409,26 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
         disabledReason: !session ? "Open a conversation first." : undefined,
         run: () => { setView("chat"); requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("textarea.composer-field")?.focus()); } },
       ...workflowEntries(),
+      ...gitEntries(),
       { id: "board", label: "Board", group: "Go to", icon: icon(ColumnsIcon), keywords: "tasks cards", run: () => setView("board") },
       { id: "chat", label: "Open conversation", group: "Go to", icon: icon(MessageSquareIcon), run: () => setView("chat") },
       { id: "channels", label: "Shared channels", group: "Go to", icon: icon(MessageSquareIcon), disabledReason: desktopOnly, run: () => setView("channels") },
-      { id: "skills", label: "Skills & packs", group: "Go to", icon: icon(SparkIcon), run: () => setView("skills") },
+      { id: "skills", label: "Skills", group: "Go to", icon: icon(SparkIcon), run: () => setView("skills") },
       { id: "harness", label: "Agents", group: "Go to", icon: icon(CpuIcon), keywords: "harness", run: () => setView("runtimes") },
       { id: "shortcuts", label: "Keyboard shortcuts", group: "Go to", icon: icon(KeyboardIcon), command: "show-shortcuts", keywords: "keys", run: () => window.dispatchEvent(new CustomEvent(SHOW_SHORTCUTS_EVENT)) },
-      { id: "runs", label: "Run history", group: "Go to", icon: icon(HistoryIcon), run: () => setView("history") },
+      { id: "archived", label: "Archived conversations…", group: "Go to", icon: icon(HistoryIcon), keywords: "restore unarchive", keepOpen: true,
+        disabledReason: archived.length ? undefined : "Nothing is archived.", run: () => openPage("archived") },
       { id: "thread-agents", label: "Thread agents", group: "Go to", icon: icon(CpuIcon), run: () => openInspector("agents") },
       { id: "agent-commands", label: "Agent commands", group: "Go to", icon: icon(TerminalIcon), disabledReason: !session?.harnessId ? "Start an agent conversation first." : undefined, run: () => { setView("chat"); setAgentCommandsOpen(true); } },
       { id: "approvals", label: "Approvals", group: "Go to", icon: icon(ShieldIcon), run: () => setView("approvals") },
+      { id: "usage", label: "Usage", group: "Go to", icon: icon(ChartIcon), keywords: "tokens limits quota cost models projects", run: () => setView("usage") },
       { id: "settings", label: "Settings", group: "Go to", icon: icon(SettingsIcon), command: "settings", keywords: "preferences", run: () => setView("settings") },
       ...THEMES.map((theme): Entry => ({
         id: `theme-${theme.id}`, label: theme.label, group: "Theme", icon: theme.icon, keywords: "appearance colour color mode",
         detail: theme.id === current ? "Current" : undefined, disabledReason: desktopOnly,
         run: () => updateSettings({ appearanceTheme: theme.id }),
       })),
-      { id: "connect", label: "Connect OpenClaw", group: "Workspace", icon: icon(LinkIcon), keywords: "gateway", disabledReason: desktopOnly, run: () => api.connectGateway() },
+      ...(settings?.runtimeMode === "direct" ? [] : [{ id: "connect", label: "Connect Gateway", group: "Workspace", icon: icon(LinkIcon), disabledReason: desktopOnly, run: () => api.connectGateway() }]),
       ...(api.isDesktop === true ? [
         { id: "pet-show", label: "Show desktop companion", group: "Workspace", icon: icon(SmilePlusIcon), searchOnly: true, run: () => api.togglePet(true) },
         { id: "pet-hide", label: "Hide desktop companion", group: "Workspace", icon: icon(SmilePlusIcon), searchOnly: true, run: () => api.togglePet(false) },
@@ -409,11 +441,13 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
       ...customizationEntries(),
     ];
     const projectNames = new Map(projects.map((item) => [item.id, item.name]));
-    const recency = (item: Session) => Date.parse(item.updatedAt) || 0;
+    /* Activity is the latest turn, so a rename or a pin does not make a thread look new. */
     const threads: Entry[] = sessions.filter((item) => item.state === "active" && item.id !== session?.id)
-      .sort((a, b) => recency(b) - recency(a))
-      .map((item) => ({
-        id: `session-${item.id}`, label: item.title, detail: projectNames.get(item.projectId), meta: compactRelativeTime(item.updatedAt),
+      .map((item) => ({ item, active: threadActivityAt(item, latestRuns.get(item.id)) }))
+      .sort((a, b) => b.active.localeCompare(a.active))
+      .map(({ item, active }) => ({
+        id: `session-${item.id}`, label: item.title, detail: projectNames.get(item.projectId), meta: compactRelativeTime(active),
+        keywords: projectNames.get(item.projectId), recency: Date.parse(active) || undefined,
         group: query ? "Conversations" : "Recent conversations", icon: icon(MessageSquareIcon),
         run: () => { setProjectId(item.projectId, item.id); setView("chat"); },
       }));
@@ -421,7 +455,12 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
       id: `project-${item.id}`, label: item.name, detail: item.workingDirectory, group: "Projects", icon: icon(FolderIcon), searchOnly: true,
       run: () => { setProjectId(item.id); setView("chat"); },
     }));
-    return [...threads, ...(session ? conversationEntries(session) : []), ...actions, ...projectItems]
+    /* "New conversation in <project>" for every project, typed straight from the root; the current one is the Actions row. */
+    const newIn: Entry[] = projects.filter((item) => item.id !== target?.id).map((item) => ({
+      id: `new-in-root-${item.id}`, label: `New conversation in ${item.name}`, group: "Actions", icon: icon(PlusIcon), keywords: "create start thread project",
+      searchOnly: true, disabledReason: readOnly, run: () => createTask(item.id),
+    }));
+    return [...threads, ...(session ? conversationEntries(session) : []), ...actions, ...newIn, ...projectItems]
       .filter((entry) => !commandsOnly || !CONTENT_GROUPS.includes(entry.group))
       .sort((a, b) => groupRank(a.group) - groupRank(b.group));
   }
@@ -433,10 +472,10 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
       shortcut: entry.command ? shortcutLabel(entry.command, keyBindings) : entry.shortcut, disabledReason: entry.disabledReason,
       keepOpen: entry.keepOpen, onSelect: entry.run,
     }));
-    if (!searchesMessages) return rows;
-    const messages: SearchDialogItem[] = (currentSearch?.hits?.messages ?? []).slice(0, 30).map((message) => ({
+    /* A hit opens its thread with find on the words, so it lands on the message rather than the top. */
+    const messages: SearchDialogItem[] = messageSearch.messages.slice(0, 30).map((message) => ({
       id: `message-${message.id}`, label: message.sessionTitle, detail: message.excerpt, group: "Messages", icon: icon(SearchIcon),
-      onSelect: () => { setProjectId(message.projectId, message.sessionId); setView("chat"); },
+      onSelect: () => findInThread(message.projectId, message.sessionId, query),
     }));
     return [...rows, ...messages];
   }
@@ -444,13 +483,18 @@ function PaletteDialog({ updates }: { updates?: ReturnType<typeof useUpdates> })
   const items = buildItems();
 
   const close = () => { setPalette(false); setPaletteQuery(""); };
+  if (page === "archived") {
+    return <SearchDialog className="command-palette" title="Archived conversations" placeholder="Choose a conversation to restore…" query={paletteQuery}
+      onQueryChange={setPaletteQuery} items={items} selectLabel="Restore" onBack={() => openPage("root")}
+      empty={archived.length ? "No matching conversations." : "Nothing is archived."} onClose={close} />;
+  }
   if (page === "new-in") {
     return <SearchDialog className="command-palette" title="New conversation in" placeholder="Choose a project…" query={paletteQuery}
       onQueryChange={setPaletteQuery} items={items} selectLabel="Start" onBack={() => openPage("root")}
       empty={projects.length ? "No matching projects." : "No projects yet."} onClose={close} />;
   }
   return <SearchDialog className="command-palette" title="Search workspace" placeholder="Search commands, projects, conversations…" query={paletteQuery}
-    onQueryChange={setPaletteQuery} items={items} status={searchesMessages && !currentSearch ? "Searching messages…" : undefined}
-    error={currentSearch?.error} onRetry={() => setRetry((value) => value + 1)} empty={commandsOnly ? "No matching commands." : "No matching commands, projects, or conversations."}
+    onQueryChange={setPaletteQuery} items={items} status={messageSearch.pending && messageSearch.messages.length === 0 ? "Searching messages…" : undefined}
+    error={messageSearch.error} onRetry={messageSearch.retry} empty={commandsOnly ? "No matching commands." : "No matching commands, projects, or conversations."}
     onClose={close} />;
 }

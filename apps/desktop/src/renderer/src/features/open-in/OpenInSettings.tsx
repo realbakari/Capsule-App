@@ -41,7 +41,7 @@ export function OpenInSettings() {
       <h3>Open in <SettingSource setting="openInFavorite" /></h3>
       <p className="muted">
         Apps that can open a project folder or file, as {state.catalog?.discovery === "manual" ? "you add them" : "the system reports them, plus any you add"}.
-        Choosing one makes it the favourite, which {chord} opens the conversation’s folder in.
+        Choosing one makes it the favourite{chord ? <>, which {chord} opens the conversation’s folder in</> : ""}.
       </p>
       {state.status === "loading" && apps.length === 0 ? <p className="faint" role="status">Asking the system which apps can open folders…</p> : null}
       {state.status === "error" ? <p className="notice" role="alert">{state.error}</p> : null}

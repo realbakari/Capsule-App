@@ -1,5 +1,5 @@
 import type { InspectorTab } from "../../lib/workspace";
-import { CompareIcon, CpuIcon, DiffSquareIcon, FolderIcon, GlobeIcon, MessageSquarePlusIcon, SmartphoneIcon } from "./icons";
+import { CompareIcon, CpuIcon, DiffSquareIcon, FolderIcon, GlobeIcon, SmartphoneIcon } from "./icons";
 
 /**
  * The panel beside the conversation shows one surface at a time. The icon bar
@@ -7,7 +7,7 @@ import { CompareIcon, CpuIcon, DiffSquareIcon, FolderIcon, GlobeIcon, MessageSqu
  * place that says which surfaces exist, how each is named and drawn, where it
  * sits, and why it cannot open.
  */
-export type InspectorTool = "launcher" | "review" | "browser" | "simulator" | "files" | "chat" | "agents" | "compare";
+export type InspectorTool = "launcher" | "review" | "browser" | "simulator" | "files" | "agents" | "compare";
 
 export interface SurfaceState {
   projectId?: string;
@@ -32,8 +32,6 @@ export interface Surface {
   inBar: boolean | ((state: SurfaceState) => boolean);
   /** A keymap command, so the shown keys follow the platform and any rebinding. */
   command?: string;
-  /** Fixed keys for a surface the keymap does not own. */
-  shortcut?: string;
   /** One key that opens it while the panel's launcher is showing. */
   key: string;
   blockedBy: (state: SurfaceState) => string | undefined;
@@ -80,15 +78,6 @@ export const SURFACES: Surface[] = [
   },
   { tool: "agents", key: "a", label: "Agents", detail: "This thread’s agent and reported delegated tasks.", icon: CpuIcon, inBar: false, blockedBy: () => undefined },
   {
-    tool: "chat", key: "s",
-    label: "Side chat",
-    detail: "Ask without interrupting the thread.",
-    icon: MessageSquarePlusIcon,
-    inBar: false,
-    shortcut: "⌥⌘S",
-    blockedBy: () => undefined,
-  },
-  {
     tool: "compare", key: "c",
     label: "Compare",
     detail: "One prompt's results from several agents, side by side.",
@@ -110,6 +99,18 @@ export function looksLikeMobileApp(names: readonly string[]): boolean {
   return names.some((name) => MOBILE_APP_MARKERS.some((marker) => marker.test(name)));
 }
 
+/** Can exist here at all: a simulator needs the desktop app on a Mac, and Compare a thread from a comparison. */
+export function offered(surface: Surface, state: SurfaceState): boolean {
+  if (surface.tool === "simulator") return !surface.blockedBy({ desktop: state.desktop, platform: state.platform });
+  if (surface.tool === "compare") return Boolean(state.groupId);
+  return true;
+}
+
+/** Worth a card in the panel's launcher: offered, and when the bar draws it only in some states, in one of those. */
+export function applies(surface: Surface, state: SurfaceState): boolean {
+  return offered(surface, state) && (typeof surface.inBar === "function" ? surface.inBar(state) : true);
+}
+
 /** On the bar for this state. The surface on show always is, so closing it never means a trip to More. */
 export function onBar(surface: Surface, state: SurfaceState, active?: InspectorTool): boolean {
   return surface.tool === active || (typeof surface.inBar === "function" ? surface.inBar(state) : surface.inBar);
@@ -122,7 +123,6 @@ export function surfaceFor(tool: InspectorTool): Surface | undefined {
 export function toolFromTab(tab: string): InspectorTool {
   if (tab === "changes" || tab === "diff") return "review";
   if (tab === "agents" || tab === "run") return "agents";
-  if (tab === "chat") return "chat";
   if (tab === "browser") return "browser";
   if (tab === "simulator") return "simulator";
   if (tab === "compare") return "compare";

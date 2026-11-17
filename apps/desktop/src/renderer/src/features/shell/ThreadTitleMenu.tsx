@@ -34,10 +34,12 @@ export function ThreadTitleMenu() {
   }, [session]);
   if (!session) return null;
 
+  /* An empty title goes through too, so the person hears why nothing changed. */
   const commit = () => {
-    const title = editing?.trim();
+    if (editing === undefined) return;
+    const title = editing.trim();
     setEditing(undefined);
-    if (title && title !== session.title) void renameSession(session.id, title);
+    if (title !== session.title) void renameSession(session.id, title);
   };
 
   if (editing !== undefined) {
@@ -50,6 +52,8 @@ export function ThreadTitleMenu() {
         onChange={(event) => setEditing(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
+          // Enter while an input method is composing picks the candidate.
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
           if (event.key === "Enter") { event.preventDefault(); commit(); }
           if (event.key === "Escape") { event.preventDefault(); setEditing(undefined); }
         }}

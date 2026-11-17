@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bufferRange, findTerminalLinks, logicalLine, osc7Folder, resolveTerminalPath, terminalLinkHint, type BufferLineLike } from "./terminal-links.js";
+import { splitPathAndPosition } from "./paths.js";
+import { bufferRange, fileReference, findTerminalLinks, logicalLine, osc7Folder, resolveTerminalPath, terminalLinkHint, type BufferLineLike, type TerminalLinkTarget } from "./terminal-links.js";
 
 const context = { cwd: "/work/app/packages/web", roots: ["/work/app", "/work/docs"] };
 const targets = (line: string) => findTerminalLinks(line, context).map((link) => [link.text, link.target]);
@@ -75,5 +76,15 @@ describe("terminalLinkHint", () => {
   it("says what a click does and what needs the modifier", () => {
     expect(terminalLinkHint({ kind: "external", url: "https://example.com/" }, "⌘")).toBe("⌘-click to open in your default browser.");
     expect(terminalLinkHint({ kind: "file", root: "/r", path: "a.ts", line: 3 }, "⌘")).toBe("Open a.ts:3 in Files.");
+  });
+});
+
+describe("fileReference", () => {
+  it("hands Files the line and column a click points at", () => {
+    const target = findTerminalLinks("src/app.ts:12:3: error TS2322", context)[0]?.target;
+    const reference = fileReference(target as Extract<TerminalLinkTarget, { kind: "file" }>);
+    expect(reference).toBe("packages/web/src/app.ts:12:3");
+    expect(splitPathAndPosition(reference)).toEqual({ path: "packages/web/src/app.ts", line: "12", column: "3" });
+    expect(fileReference({ kind: "file", root: "/work/app", path: "README.md" })).toBe("README.md");
   });
 });

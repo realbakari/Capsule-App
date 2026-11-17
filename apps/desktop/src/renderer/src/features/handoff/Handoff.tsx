@@ -49,7 +49,7 @@ function HandoffDialog({ sessionId, otherAgent, onClose }: { sessionId: string; 
   const source = sessions.find((item) => item.id === sessionId);
   const dialog = useRef<HTMLDivElement>(null);
   const [agent, setAgent] = useState<string>(() => {
-    const ready = harnesses.filter((item) => item.readiness === "ready");
+    const ready = harnesses.filter((item) => item.readiness === "ready" || item.readiness === "dedicated" || item.readiness === "running");
     if (otherAgent) { const other = ready.find((item) => item.id !== source?.harnessId); if (other) return other.id; }
     return source?.harnessId ?? ready[0]?.id ?? "claude";
   });

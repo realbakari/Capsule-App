@@ -1,6 +1,7 @@
 import type { WebviewTag } from "electron";
 import { useWorkspace } from "../../lib/workspace";
 import { useToasts } from "../../lib/toasts";
+import { formatUserError } from "../../lib/errors";
 import { BROWSER_FIND_EVENT } from "../../lib/browser-find";
 import { BrowserFindBar } from "./BrowserFindBar";
 import { useCallback, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -68,6 +69,31 @@ export function mergeBrowserRecent(existing: BrowserRecent[], next: BrowserRecen
   return [next, ...existing.filter((entry) => entry.url !== next.url)].slice(0, MAX_RECENTS);
 }
 
+const LOAD_FAILURES: Array<[RegExp, string]> = [
+  [/^ERR_CONNECTION_REFUSED$/, "nothing is answering there. Check that the server is running."],
+  [/^ERR_NAME_(NOT_RESOLVED|RESOLUTION_FAILED)$/, "that address could not be found."],
+  [/^ERR_INTERNET_DISCONNECTED$/, "this computer is offline."],
+  [/^ERR_(CONNECTION_)?TIMED_OUT$/, "it took too long to answer."],
+  [/^ERR_(CONNECTION_RESET|CONNECTION_CLOSED|EMPTY_RESPONSE)$/, "the connection dropped before the page arrived."],
+  [/^ERR_ADDRESS_UNREACHABLE$/, "that address cannot be reached from this computer."],
+  [/^ERR_CERT_/, "its security certificate is not trusted."],
+  [/^ERR_SSL_PROTOCOL_ERROR$/, "it does not speak HTTPS. Try http:// instead."],
+  [/^ERR_TOO_MANY_REDIRECTS$/, "it keeps redirecting to itself."],
+];
+
+/** A failed page load in plain words; the network code stays at the end for anyone searching it. */
+export function describeLoadFailure(description: string | undefined, url: string): string {
+  const code = description?.trim() ?? "";
+  const reason = LOAD_FAILURES.find(([pattern]) => pattern.test(code))?.[1];
+  const host = hostOf(url) || "the page";
+  if (reason) return `Could not open ${host}: ${reason}`;
+  return code ? `Could not open ${host} (${code}).` : `Could not open ${host}.`;
+}
+
+export function removeBrowserRecent(existing: BrowserRecent[], url: string): BrowserRecent[] {
+  return existing.filter((entry) => entry.url !== url);
+}
+
 function recentAge(isoDate: string): string {
   const minutes = Math.max(1, Math.round((Date.now() - new Date(isoDate).getTime()) / 60_000));
   if (minutes < 60) return `${minutes}m ago`;
@@ -96,7 +122,7 @@ export function normalizedBrowserUrl(raw: string): string {
 interface BrowserTab { id: string; url: string; title: string }
 let tabSequence = 0;
 const newTabId = () => `tab-${Date.now().toString(36)}-${(tabSequence += 1)}`;
-const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+function hostOf(url: string): string { try { return new URL(url).host; } catch { return url; } }
 
 export function EmbeddedBrowser({
   address,
@@ -185,7 +211,7 @@ export function EmbeddedBrowser({
     if (!desktopBrowser) return;
     let disposed = false;
     void api.registerBrowserView?.(undefined, ownerId).catch((error) => {
-      if (!disposed) setError(String(error));
+      if (!disposed) setError(formatUserError(error));
     });
     return () => {
       disposed = true;
@@ -209,7 +235,7 @@ export function EmbeddedBrowser({
     try {
       await api.setBrowserControl(ownerId, !agentControl);
       if (epoch === controlEpoch.current) setAgentControl(!agentControl);
-    } catch (error) { setError(String(error)); }
+    } catch (error) { setError(formatUserError(error)); }
     finally { setControlBusy(false); }
   };
 
@@ -251,7 +277,7 @@ export function EmbeddedBrowser({
     const next = normalizedBrowserUrl(address);
     if (!next || next === currentUrl) return;
     setError(undefined);
-    if (webviewRef.current) void webviewRef.current.loadURL(next).catch((error) => setError(String(error)));
+    if (webviewRef.current) void webviewRef.current.loadURL(next).catch((error) => setError(formatUserError(error)));
     else { setGuestUrl(next); setCurrentUrl(next); }
   }, [address, currentUrl]);
 
@@ -268,6 +294,16 @@ export function EmbeddedBrowser({
     };
     setRecents((current) => {
       const next = mergeBrowserRecent(current, entry);
+      try {
+        localStorage.setItem(BROWSER_RECENTS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const forgetRecent = (url: string) => {
+    setRecents((current) => {
+      const next = removeBrowserRecent(current, url);
       try {
         localStorage.setItem(BROWSER_RECENTS_KEY, JSON.stringify(next));
       } catch {}
@@ -307,7 +343,7 @@ export function EmbeddedBrowser({
       const detail = event as Event & { errorCode?: number; errorDescription?: string; isMainFrame?: boolean };
       if (detail.errorCode === -3 || detail.isMainFrame === false) return;
       setLoading(false);
-      setError(detail.errorDescription || "This page could not be loaded.");
+      setError(describeLoadFailure(detail.errorDescription, (event as Event & { validatedURL?: string }).validatedURL || view.getURL()));
     };
     const crashed = () => { setLoading(false); setReady(false); setError("The page process stopped. Reload to recover it."); };
     view.addEventListener("render-process-gone", crashed);
@@ -321,7 +357,7 @@ export function EmbeddedBrowser({
     const register = (domReady = false) => {
       try {
         if (domReady) { setReady(true); setZoomFactor(view.getZoomFactor()); }
-        void api.registerBrowserView?.(view.getWebContentsId(), ownerId, domReady).catch((error) => setError(`Browser tools could not connect: ${String(error)}`));
+        void api.registerBrowserView?.(view.getWebContentsId(), ownerId, domReady).catch((error) => setError(`Agent browser tools could not connect: ${formatUserError(error)}`));
       } catch {
         // The guest is not attached yet; dom-ready will come round again.
       }
@@ -413,7 +449,7 @@ export function EmbeddedBrowser({
     }
     setError(undefined);
     publishAddress(next);
-    if (webviewRef.current) void webviewRef.current.loadURL(next).catch((error) => setError(String(error)));
+    if (webviewRef.current) void webviewRef.current.loadURL(next).catch((error) => setError(formatUserError(error)));
     else { setGuestUrl(next); setCurrentUrl(next); }
   };
 
@@ -442,7 +478,7 @@ export function EmbeddedBrowser({
       showToast(image ? "Element and screenshot attached to the conversation" : "Element attached. It was off screen, so there is no screenshot.");
     } catch (error) {
       setPickActive(false);
-      showToast(`Element inspection failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      showToast(`Could not inspect the element: ${formatUserError(error)}`, "error");
     }
   };
   const pickRef = useRef(handlePickElement);
@@ -465,7 +501,7 @@ export function EmbeddedBrowser({
   useEffect(() => {
     if (!mountedView || !ready || !canInspect) return;
     void api.emulateBrowserDevice(mountedView.getWebContentsId(), deviceId).catch((error: unknown) =>
-      showToast(`Could not change the device size: ${error instanceof Error ? error.message : String(error)}`));
+      showToast(`Could not change the device size: ${formatUserError(error)}`, "error"));
   }, [api, mountedView, ready, deviceId, canInspect]);
   const observeFrame = useCallback((frame: HTMLDivElement | null) => {
     frameObserver.current?.disconnect();
@@ -510,7 +546,7 @@ export function EmbeddedBrowser({
       showNotice({ key: "browser", tone: "success", title: "Screenshot copied to clipboard",
         action: attachClipboardImage ? { label: "Attach to message", run: () => { void attachClipboardImage(); } } : undefined });
     } catch (failure) {
-      showToast(`Could not copy screenshot: ${failure instanceof Error ? failure.message : String(failure)}`, "error");
+      showToast(`Could not copy the screenshot: ${formatUserError(failure)}`, "error");
     }
   };
 
@@ -536,9 +572,9 @@ export function EmbeddedBrowser({
     if (!view) return;
     try {
       await api.clearBrowserData(view.getWebContentsId(), "cache");
-      showToast("Browser HTTP cache cleared");
+      showToast("Browser cache cleared");
     } catch {
-      showToast("Unable to clear cache", "error");
+      showToast("Could not clear the browser cache", "error");
     }
     setMoreMenuOpen(false);
   };
@@ -561,7 +597,7 @@ export function EmbeddedBrowser({
             view.reload();
             showToast("Browser cookies and site storage cleared");
           } catch {
-            showToast("Unable to clear cookies", "error");
+            showToast("Could not clear cookies and site data", "error");
           }
         })();
       },
@@ -658,13 +694,13 @@ export function EmbeddedBrowser({
           </button>
 
           {moreMenuOpen && (
-            <div className="preview-more-menu" role="menu">
-              <button type="button" className="preview-menu-item" disabled={!ready} onClick={() => { setFinding(true); setMoreMenuOpen(false); }}>
+            <div className="preview-more-menu" role="menu" aria-label="More options">
+              <button type="button" role="menuitem" className="preview-menu-item" disabled={!ready} onClick={() => { setFinding(true); setMoreMenuOpen(false); }}>
                 Find on page <kbd className="preview-menu-kbd">{isMac() ? "⌘F" : "Ctrl+F"}</kbd>
               </button>
               <button
                 type="button"
-                className="preview-menu-item"
+                role="menuitem" className="preview-menu-item"
                 disabled={!ready}
                 onClick={() => {
                   webviewRef.current?.reloadIgnoringCache();
@@ -675,7 +711,7 @@ export function EmbeddedBrowser({
               </button>
               <button
                 type="button"
-                className="preview-menu-item"
+                role="menuitem" className="preview-menu-item"
                 disabled={!ready}
                 onClick={() => {
                   if (webviewRef.current?.isDevToolsOpened()) {
@@ -698,6 +734,7 @@ export function EmbeddedBrowser({
                     type="button"
                     className="preview-zoom-btn"
                     title="Zoom out"
+                    aria-label="Zoom out"
                     onClick={handleZoomOut}
                     disabled={zoomFactor <= 0.5}
                   >
@@ -717,6 +754,7 @@ export function EmbeddedBrowser({
                     type="button"
                     className="preview-zoom-btn"
                     title="Zoom in"
+                    aria-label="Zoom in"
                     onClick={handleZoomIn}
                     disabled={zoomFactor >= 3.0}
                   >
@@ -729,7 +767,7 @@ export function EmbeddedBrowser({
 
               <button
                 type="button"
-                className="preview-menu-item"
+                role="menuitem" className="preview-menu-item"
                 disabled={!ready}
                 onClick={() => void handleClearCache()}
               >
@@ -737,7 +775,7 @@ export function EmbeddedBrowser({
               </button>
               <button
                 type="button"
-                className="preview-menu-item"
+                role="menuitem" className="preview-menu-item"
                 disabled={!ready}
                 onClick={() => void handleClearCookies()}
               >
@@ -831,7 +869,7 @@ export function EmbeddedBrowser({
         {loading && <div className="preview-loading-bar" />}
       </div>
 
-      {error ? <div className="browser-error" role="alert"><span>{error}</span>{currentUrl && <button type="button" className="chip" onClick={() => navigate(currentUrl)}>Retry page</button>}</div> : null}
+      {error ? <div className="browser-error" role="alert"><span>{error}</span>{currentUrl && <button type="button" className="chip" onClick={() => navigate(currentUrl)}>Reload</button>}</div> : null}
 
       {finding && currentUrl ? <BrowserFindBar view={mountedView} onClose={() => { setFinding(false); mountedView?.focus(); }} /> : null}
       {currentUrl ? (
@@ -853,20 +891,24 @@ export function EmbeddedBrowser({
               <h4>Recently used</h4>
               <div className="local-server-grid recent-server-grid">
                 {recents.map((recent) => (
-                  <button
-                    type="button"
-                    className="local-server-card"
-                    key={recent.url}
-                    onClick={() => navigate(recent.url)}
-                  >
-                    <span className="local-server-icon" aria-hidden><GlobeIcon size={14} /></span>
-                    <span className="local-server-copy">
-                      <b>{recent.title}</b>
-                      <small>
-                        {new URL(recent.url).host} · {recentAge(recent.lastUsedAt)}
-                      </small>
-                    </span>
-                  </button>
+                  <div className="browser-recent" key={recent.url}>
+                    <button
+                      type="button"
+                      className="local-server-card"
+                      onClick={() => navigate(recent.url)}
+                    >
+                      <span className="local-server-icon" aria-hidden><GlobeIcon size={14} /></span>
+                      <span className="local-server-copy">
+                        <b>{recent.title}</b>
+                        <small>
+                          {hostOf(recent.url)} · {recentAge(recent.lastUsedAt)}
+                        </small>
+                      </span>
+                    </button>
+                    <button type="button" className="icon-btn browser-recent-remove" aria-label={`Remove ${recent.title} from recently used`} title="Remove from recently used" onClick={() => forgetRecent(recent.url)}>
+                      <XIcon size={12} />
+                    </button>
+                  </div>
                 ))}
               </div>
             </section>
@@ -884,7 +926,7 @@ export function EmbeddedBrowser({
               {onRetryServers && <button type="button" className="chip" disabled={serversLoading} onClick={onRetryServers}>Retry</button>}
             </div> : null}
             {localServers.length === 0 && !serversLoading && !serversError ? (
-              <p className="faint">No local web servers are responding.</p>
+              <p className="faint">No local servers are running. Start your app’s dev server and it appears here, or type an address above.</p>
             ) : null}
             <div className="local-server-grid">
               {localServers.map((server) => (
@@ -897,7 +939,7 @@ export function EmbeddedBrowser({
                   <span className="local-server-icon" aria-hidden><TerminalIcon size={14} /></span>
                   <span className="local-server-copy">
                     <b>{server.title || server.command || `Port ${server.port}`}</b>
-                    <small>localhost:{server.port}</small>
+                    <small>{hostOf(server.url)}</small>
                   </span>
                 </button>
               ))}

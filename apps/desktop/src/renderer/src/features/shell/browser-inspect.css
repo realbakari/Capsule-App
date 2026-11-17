@@ -30,3 +30,17 @@
 @container browser-head (max-width: 540px) {
   .browser-device-size { display: none; }
 }
+
+/* A recent address can be forgotten; the remove button shows on hover or focus so the list stays quiet. */
+.browser-recent { position: relative; }
+.browser-recent .local-server-card { padding-right: 2.5rem; }
+.browser-recent-remove {
+  position: absolute;
+  top: 50%;
+  right: .5rem;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+.browser-recent:hover .browser-recent-remove,
+.browser-recent:focus-within .browser-recent-remove { opacity: 1; }
+@media (hover: none) { .browser-recent-remove { opacity: 1; } }

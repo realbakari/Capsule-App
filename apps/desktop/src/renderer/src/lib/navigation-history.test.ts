@@ -28,6 +28,16 @@ describe("navigation history", () => {
     expect(canGoForward(history)).toBe(false);
   });
 
+  it("records a view as its own place, so Back from Settings returns to the conversation under it", () => {
+    const settings = { ...b, view: "settings" as const };
+    let history = [a, b, settings].reduce(recordNavigation, EMPTY_NAVIGATION);
+    expect(history.entries).toEqual([a, b, settings]);
+    expect(goBack(history)!.entry).toEqual(b);
+    history = recordNavigation(history, { ...b, view: "chat" });
+    expect(history.entries).toHaveLength(4);
+    expect(recordNavigation(history, b)).toBe(history);
+  });
+
   it("ignores an empty selection and refuses to move past either end", () => {
     expect(recordNavigation(EMPTY_NAVIGATION, {})).toBe(EMPTY_NAVIGATION);
     expect(goBack(EMPTY_NAVIGATION)).toBeUndefined();

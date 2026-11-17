@@ -18,7 +18,6 @@ const VIEW_TITLE: Record<string, string> = {
   project: "Project",
   runtimes: "Agents",
   skills: "Skills",
-  history: "History",
   approvals: "Approvals",
   usage: "Usage",
   settings: "Settings",
@@ -42,7 +41,7 @@ export function Titlebar() {
     keyBindings,
   } = useWorkspace();
 
-  const label = gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state);
+  const label = gatewayConnectionLabel(connected, status?.state);
 
   const projectName = project?.name ?? "Inbox";
   // Whatever the thread is actually called. Substituting a nicer-sounding

@@ -29,7 +29,7 @@ async function firstSend(host: HTMLElement, fail: boolean | "creation") {
   window.capsule = {
     ...original,
     listProjects: async () => [{ id: "ownership-project", name: "Fixture" }],
-    listAgents: async () => [{ id: "general", name: "Fixture" }], listSkills: async () => [], listSkillPacks: async () => [],
+    listAgents: async () => [{ id: "general", name: "Fixture" }], listSkills: async () => [],
     getStatus: async () => ({ kind: "openclaw", state: "connected" }), getSubsystemStatus: async () => ({}),
     listApprovals: async () => [], listHarnesses: async () => [], listHarnessSessions: async () => [],
     getSettings: async () => ({ ...DEFAULT_CAPSULE_SETTINGS, defaultMode: "chat", defaultAgentId: "general" }),

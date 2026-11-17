@@ -1,7 +1,7 @@
 import { UpdateButton } from "./UpdateButton";
 import { ProjectPullRequests } from "./ProjectPullRequests";
 import { gatewayConnectionLabel } from "../../lib/harness";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from "react";
 import { usePanelResize } from "../../lib/panel-resize";
 import { groupThreadsByTag, hasTags, parseThreadQuery, threadShelf, type Session } from "@capsule/shared";
 import { useSessionActions } from "../triage/session-actions";
@@ -36,7 +36,17 @@ import {
   shouldRecedeThread,
   splitProjectThreads,
   type SidebarThreadKind,
+  threadActivityAt,
+  readFoldedProjects,
+  readShowMore,
+  SIDEBAR_FOLDED_KEY,
+  SIDEBAR_SHOW_MORE_KEY,
 } from "../../lib/sidebar";
+import { publishSidebarOrder, readSidebarOrder } from "../../lib/session-cycle";
+import { useMessageSearch } from "../../lib/message-search";
+import { shortcutLabel, withShortcut } from "../../lib/keybindings";
+import { useJumpHintsHeld } from "./useJumpHints";
+import { JUMP_COMMAND_PREFIX } from "@capsule/shared";
 import { SETTINGS_TABS } from "../settings/SettingsView";
 import { isModifiedQuery, searchSettings } from "../settings/settings-search";
 import { revealSetting } from "../settings/reveal";
@@ -48,6 +58,7 @@ import { MenuSelect } from "./MenuSelect";
 import { AddProjectPicker, type ProjectSourceId } from "./AddProjectPicker";
 import { CloneRepositoryDialog } from "./CloneRepositoryDialog";
 import { FirstRunHost } from "../onboarding/FirstRun";
+import { AgentUpdatesPill } from "../harness/AgentUpdatesPill";
 import { SetupChecklist } from "../onboarding/SetupChecklist";
 import { SidebarToggle } from "./SidebarControl";
 import { SidebarThreadPreview } from "./SidebarThreadPreview";
@@ -171,6 +182,8 @@ export function Sidebar() {
     harnesses,
     refresh,
     setNotice,
+    keyBindings,
+    findInThread,
   } = useWorkspace();
   /* A read-only paired device sees the list; changing it belongs to the desktop or a control pairing. */
   const readOnlyPeer = api.isDesktop === false && api.remoteMode !== "control";
@@ -242,12 +255,29 @@ export function Sidebar() {
     else setCloneOpen(source);
   }
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [restLimit, setRestLimit] = useState<Record<string, number>>({});
+  /* Folded projects and how far each one's list is opened outlast a relaunch, like the grouping. */
+  const [collapsed, setCollapsedState] = useState(() => readFoldedProjects(() => localStorage.getItem(SIDEBAR_FOLDED_KEY)));
+  const [restLimit, setRestLimitState] = useState(() => readShowMore(() => localStorage.getItem(SIDEBAR_SHOW_MORE_KEY)));
+  const setCollapsed = (update: (current: Set<string>) => Set<string>) => setCollapsedState((current) => {
+    const next = update(current);
+    if (next !== current) {
+      try { localStorage.setItem(SIDEBAR_FOLDED_KEY, JSON.stringify([...next])); }
+      catch { /* Folding still works for this session when storage is denied. */ }
+    }
+    return next;
+  });
+  const setRestLimit = (update: (current: Record<string, number>) => Record<string, number>) => setRestLimitState((current) => {
+    const next = update(current);
+    try { localStorage.setItem(SIDEBAR_SHOW_MORE_KEY, JSON.stringify(next)); }
+    catch { /* As above. */ }
+    return next;
+  });
   const [recentLimit, setRecentLimit] = useState(20);
   const [grouping, setGrouping] = useState(() => readSidebarGrouping(() => localStorage.getItem(SIDEBAR_GROUPING_KEY)));
   const [expandedGroups, setExpandedGroups] = useState<Set<SidebarStatusGroupId>>(new Set());
   const latestRuns = useMemo(() => latestSidebarRuns(projectRuns), [projectRuns]);
+  /* Lists sort by the latest turn: a rename, pin or new title never makes a thread look new. */
+  const activityOf = (session: Session) => threadActivityAt(session, latestRuns.get(session.id));
   const pendingApprovals = approvals.filter((item) => item.status === "pending").length;
   const askingRuns = useMemo(() => new Set(approvals.filter((item) => item.status === "pending" && item.details?.questions?.length).map((item) => item.runId)), [approvals]);
   const [channelUnread, setChannelUnread] = useState(() => unreadChannelCount(loadChannelPrefs()));
@@ -269,7 +299,7 @@ export function Sidebar() {
   /* Recent is a way of grouping the one list, not a second copy of it under the projects. */
   const recentThreads = useMemo(() => grouping === "recent" ? [...threadsByProject.values()].flat()
     .filter((thread) => projectNames.has(thread.projectId) && threadShelf(thread) !== "snoozed" && (!needle || thread.title.toLowerCase().includes(needle)))
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)) : [], [grouping, threadsByProject, projectNames, needle]);
+    .sort((left, right) => activityOf(right).localeCompare(activityOf(left))) : [], [grouping, threadsByProject, projectNames, needle, latestRuns]);
 
   const THREAD_KIND_SPOKEN: Record<SidebarThreadKind, string> = { working: "working", approval: "needs your approval", failed: "failed", ready: "" };
   const kindOf = (session: Session): SidebarThreadKind => {
@@ -286,7 +316,7 @@ export function Sidebar() {
   /* By tag is across projects, like Recent; a thread with two tags sits under both. */
   const tagGroups = useMemo(() => grouping === "tag" ? groupThreadsByTag([...threadsByProject.values()].flat()
     .filter((thread) => projectNames.has(thread.projectId) && (!needle || thread.title.toLowerCase().includes(needle)))
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))) : [], [grouping, threadsByProject, projectNames, needle]);
+    .sort((left, right) => activityOf(right).localeCompare(activityOf(left)))) : [], [grouping, threadsByProject, projectNames, needle, latestRuns]);
   const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set());
 
   function changeGrouping(value: string) {
@@ -440,11 +470,121 @@ export function Sidebar() {
     setView("chat");
   }
 
-  async function commitEdit() {
-    if (!editing) return;
-    if (editing.kind === "project") await renameProject(editing.id, editing.value);
-    else await renameSession(editing.id, editing.value);
+  /* Enter then a click away would save twice; one save at a time, and the field always closes. */
+  const committing = useRef(false);
+  async function commitEdit(refocus = false) {
+    if (!editing || committing.current) return;
+    committing.current = true;
+    const { kind, id, value } = editing;
+    try {
+      if (kind === "project") await renameProject(id, value);
+      else await renameSession(id, value);
+    } catch (error) {
+      setNotice(formatUserError(error));
+    } finally {
+      committing.current = false;
+      setEditing(undefined);
+      if (refocus && kind === "session") focusRow(id);
+    }
+  }
+  function cancelEdit() {
+    const target = editing;
     setEditing(undefined);
+    if (target?.kind === "session") focusRow(target.id);
+  }
+  /* A keyboard rename gives focus back to the row it started on. */
+  function focusRow(id: string) {
+    requestAnimationFrame(() => sidebarRef.current?.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }));
+  }
+  /* Enter while an input method is composing picks the candidate; it is not a save. */
+  const composing = (event: ReactKeyboardEvent) => event.nativeEvent.isComposing || event.keyCode === 229;
+
+  /*
+   * However a thread is reached (palette, ⌃Tab, ⌘1–9, Back, a toast), its
+   * project opens and its row scrolls into view. Folding the project that
+   * holds the open thread still sticks: only a change of thread unfolds.
+   */
+  const shownSession = useRef(sessionId);
+  useEffect(() => {
+    if (shownSession.current === sessionId) return;
+    shownSession.current = sessionId;
+    if (!sessionId) return;
+    const owner = sessions.find((item) => item.id === sessionId)?.projectId ?? projectId;
+    if (owner) setCollapsed((current) => {
+      if (!current.has(owner)) return current;
+      const next = new Set(current);
+      next.delete(owner);
+      return next;
+    });
+    const frame = requestAnimationFrame(() => {
+      sidebarRef.current?.querySelector(`[data-thread-id="${CSS.escape(sessionId)}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sessionId]);
+
+  /* The order ⌃Tab and ⌘1–9 walk is the one on screen, read after each draw. */
+  useLayoutEffect(() => {
+    const list = sidebarRef.current?.querySelector(".sidebar-scroll");
+    if (view !== "settings" && list) publishSidebarOrder(readSidebarOrder(list));
+  });
+  const jumpHintsHeld = useJumpHintsHeld(view !== "settings" && !sidebarCollapsed);
+  /* Numbers for the rows ⌘1–⌘9 open, from the order the last draw published. */
+  const jumpLabels = useMemo(() => {
+    if (!jumpHintsHeld || document.activeElement?.closest(".agent-model-picker")) return undefined;
+    const labels = new Map<string, string>();
+    readSidebarOrder(sidebarRef.current?.querySelector(".sidebar-scroll") ?? document.createDocumentFragment()).slice(0, 9).forEach((id, index) => {
+      const label = shortcutLabel(`${JUMP_COMMAND_PREFIX}${index + 1}`, keyBindings);
+      if (label) labels.set(id, label);
+    });
+    return labels;
+  }, [jumpHintsHeld, keyBindings]);
+
+  /*
+   * Search reads like a list: arrows move a highlight through the matching
+   * threads and then the messages whose text matched, Enter opens it, Escape
+   * clears. A message opens its thread with find on the words.
+   */
+  const messageSearch = useMessageSearch(api, needle, tagFilter.length === 0);
+  const activeIds = useMemo(() => new Set(sessions.filter((item) => item.state === "active").map((item) => item.id)), [sessions]);
+  const messageHits = messageSearch.messages.filter((hit) => activeIds.has(hit.sessionId)).slice(0, 20);
+  const [searchHighlight, setSearchHighlight] = useState<string>();
+  useEffect(() => { setSearchHighlight(undefined); }, [query]);
+  function openSearchResult(key: string) {
+    const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+    if (kind === "message") {
+      const hit = messageHits.find((item) => item.id === id);
+      if (hit) findInThread(hit.projectId, hit.sessionId, needle);
+      return;
+    }
+    const target = sessions.find((item) => item.id === id);
+    if (!target) return;
+    setProjectId(target.projectId, target.id);
+    setView("chat");
+  }
+  function onSearchKey(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (composing(event)) return;
+    if (event.key === "Escape") {
+      if (!query) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setQuery("");
+      return;
+    }
+    if (!searching || !["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) return;
+    const list = sidebarRef.current?.querySelector(".sidebar-scroll");
+    const results = [...(list ? readSidebarOrder(list) : []).map((id) => `thread:${id}`), ...messageHits.map((hit) => `message:${hit.id}`)];
+    if (results.length === 0) return;
+    event.preventDefault();
+    const index = searchHighlight ? results.indexOf(searchHighlight) : -1;
+    if (event.key === "Enter") {
+      openSearchResult(results[Math.max(0, index)]!);
+      return;
+    }
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    const next = results[index < 0 ? (step === 1 ? 0 : results.length - 1) : (index + step + results.length) % results.length]!;
+    setSearchHighlight(next);
+    const [kind, id] = [next.slice(0, next.indexOf(":")), next.slice(next.indexOf(":") + 1)];
+    requestAnimationFrame(() => list?.querySelector(kind === "thread" ? `[data-thread-id="${CSS.escape(id)}"]` : `[data-message-hit="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" }));
   }
 
   const { startResize } = usePanelResize(!sidebarCollapsed);
@@ -463,14 +603,15 @@ export function Sidebar() {
           onFocus={(event) => event.currentTarget.select()}
           onBlur={() => void commitEdit()}
           onKeyDown={(event) => {
-            if (event.key === "Enter") void commitEdit();
-            if (event.key === "Escape") setEditing(undefined);
+            if (event.key === "Enter" && !composing(event)) void commitEdit(true);
+            if (event.key === "Escape" && !composing(event)) cancelEdit();
           }}
           onClick={(event) => event.stopPropagation()}
         />
       );
     }
     const kind = kindOf(session);
+    const activity = activityOf(session);
     const active = session.id === sessionId;
     const unread = !active && triage.isUnread(session);
     const shelf = threadShelf(session);
@@ -490,11 +631,12 @@ export function Sidebar() {
     const agentName = session.harnessId ? (harnesses ?? []).find((item) => item.id === session.harnessId)?.name ?? session.harnessId : undefined;
     return (
       <SidebarThreadPreview key={session.id} id={previewId} title={session.title}
-        project={projectNames.get(session.projectId)} updatedAt={session.updatedAt} disabled={sidebarCollapsed || Boolean(menu) || Boolean(editing)}>
+        project={projectNames.get(session.projectId)} updatedAt={activity} disabled={sidebarCollapsed || Boolean(menu) || Boolean(editing)}>
       <div
         role="button"
         tabIndex={0}
         data-thread-item
+        data-thread-id={session.id}
         data-menu-open={menu?.kind === "session" && menu.id === session.id ? "true" : undefined}
         /* The row is a button made of divs, so it has no name of its own —
            every conversation in the sidebar read as an unnamed control. */
@@ -502,7 +644,7 @@ export function Sidebar() {
         aria-label={[session.title, THREAD_KIND_SPOKEN[kind], unread ? "unread" : "", shelf === "snoozed" && session.snoozedUntil ? `snoozed until ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}` : ""].filter(Boolean).join(", ")}
         aria-current={active ? "page" : undefined}
         aria-describedby={previewId}
-        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""} ${unread ? "unread" : ""}`}
+        className={`thread-row ${location === "recent" ? "sidebar-recent-row" : ""} ${active ? "active" : ""} ${recede ? "recede" : ""} ${unread ? "unread" : ""}${searchHighlight === `thread:${session.id}` ? " search-highlight" : ""}`}
         data-actions={triageAction ? 2 : 1}
         draggable={location === "project" && grouping === "project" && Boolean(session.pinned)}
         onDragStart={(event) => {
@@ -546,6 +688,10 @@ export function Sidebar() {
             setProjectId(session.projectId, session.id);
             setView("chat");
           }
+          if (event.key === "F2" && !readOnlyPeer) {
+            event.preventDefault();
+            setEditing({ kind: "session", id: session.id, value: session.title, location });
+          }
         }}
         onContextMenu={(event) => void openActions(event, "session", session.id)}
       >
@@ -588,8 +734,9 @@ export function Sidebar() {
           ) : shelf === "snoozed" && session.snoozedUntil ? (
             <span className="thread-wake" title={`Wakes ${formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat)}`}>{formatWakeTime(session.snoozedUntil, new Date(), settings?.timeFormat, true)}</span>
           ) : (
-            <span className="thread-time">{compactRelativeTime(session.updatedAt)}</span>
+            <span className="thread-time">{compactRelativeTime(activity)}</span>
           )}
+          {jumpLabels?.has(session.id) ? <kbd className="thread-jump-hint" aria-hidden>{jumpLabels.get(session.id)}</kbd> : null}
         </span>
         <span className="thread-quick-actions">
         {triageAction && <button type="button" className="thread-quick-action" aria-label={triageAction.label} title={triageAction.label}
@@ -773,8 +920,8 @@ export function Sidebar() {
         <SidebarToggle />
         <span className="brand">Capsule</span>
         <span className="sidebar-history">
-          <button type="button" className="icon-btn" title="Back (⌘[)" aria-label="Back" disabled={!canGoBack} onClick={goBack}><ArrowLeftIcon size={14} /></button>
-          <button type="button" className="icon-btn" title="Forward (⌘])" aria-label="Forward" disabled={!canGoForward} onClick={goForward}><ArrowRightIcon size={14} /></button>
+          <button type="button" className="icon-btn" title={withShortcut("Back", "history-back", keyBindings)} aria-label="Back" disabled={!canGoBack} onClick={goBack}><ArrowLeftIcon size={14} /></button>
+          <button type="button" className="icon-btn" title={withShortcut("Forward", "history-forward", keyBindings)} aria-label="Forward" disabled={!canGoForward} onClick={goForward}><ArrowRightIcon size={14} /></button>
         </span>
       </div>
       <div className="sidebar-toolbar">
@@ -786,6 +933,7 @@ export function Sidebar() {
             value={query}
             aria-label="Search conversations"
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={onSearchKey}
           />
           {query ? (
             <button
@@ -860,7 +1008,8 @@ export function Sidebar() {
           })}
           {ready && projects.length > 0 && statusGroups.length === 0 && <div className="sidebar-empty">{searching ? "No conversations match this search." : "No conversations"}</div>}
         </> : grouping === "recent" ? <section className="sidebar-recents" aria-label="Recent conversations">
-          {recentThreads.slice(0, recentLimit).map((thread) => renderThread(thread, "recent"))}
+          {/* The open thread stays listed past the cut, as it does under a project. */}
+          {recentThreads.filter((thread, index) => index < recentLimit || thread.id === sessionId).map((thread) => renderThread(thread, "recent"))}
           {recentThreads.length > recentLimit && <button type="button" className="show-more" onClick={() => setRecentLimit((limit) => limit + 20)}>Show more</button>}
           {recentLimit > 20 && <button type="button" className="show-more" onClick={() => setRecentLimit(20)}>Show fewer</button>}
           {ready && projects.length > 0 && recentThreads.length === 0 && <div className="sidebar-empty">{searching ? "No conversations match this search." : "No conversations"}</div>}
@@ -887,7 +1036,7 @@ export function Sidebar() {
           const threads = sessionsFor(item.id);
           const isOpen = searching ? threads.length > 0 || item.id === projectId : !collapsed.has(item.id);
           const limit = restLimit[item.id] ?? SETTLED_THREAD_PREVIEW;
-          const groups = splitProjectThreads(threads, kindOf, searching ? threads.length : limit, threads.find((thread) => thread.id === sessionId));
+          const groups = splitProjectThreads(threads, kindOf, activityOf, searching ? threads.length : limit, threads.find((thread) => thread.id === sessionId));
           const ProjectGlyph = item.name === "Inbox" ? InboxIcon : FolderIcon;
           const liveKind = resolveProjectThreadKind(threads.map(kindOf));
           const conversationCount = threadsByProject.get(item.id)?.length ?? 0;
@@ -903,8 +1052,8 @@ export function Sidebar() {
                   onFocus={(event) => event.currentTarget.select()}
                   onBlur={() => void commitEdit()}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") void commitEdit();
-                    if (event.key === "Escape") setEditing(undefined);
+                    if (event.key === "Enter" && !composing(event)) void commitEdit();
+                    if (event.key === "Escape" && !composing(event)) setEditing(undefined);
                   }}
                 />
               ) : (
@@ -1058,6 +1207,24 @@ export function Sidebar() {
             </div>
           );
         })}
+        {searching && messageSearch.active && (messageHits.length > 0 || messageSearch.error) ? (
+          <section className="sidebar-message-hits" aria-label="Messages" aria-busy={messageSearch.pending}>
+            <h3 className="session-label">Messages</h3>
+            {messageSearch.error ? (
+              <div className="sidebar-empty">
+                {messageSearch.error} <button type="button" className="show-more" onClick={messageSearch.retry}>Try again</button>
+              </div>
+            ) : null}
+            {messageHits.map((hit) => (
+              <button key={hit.id} type="button" data-message-hit={hit.id}
+                className={`sidebar-message-hit${searchHighlight === `message:${hit.id}` ? " search-highlight" : ""}`}
+                onClick={() => openSearchResult(`message:${hit.id}`)}>
+                <span className="truncate">{hit.sessionTitle}</span>
+                <small className="sidebar-message-excerpt">{hit.excerpt}</small>
+              </button>
+            ))}
+          </section>
+        ) : null}
       </div>
       <div className="sidebar-footer">
         <div className="sidebar-utils">
@@ -1090,11 +1257,16 @@ export function Sidebar() {
           })}
           <span className="grow" />
           {/* Updating replaces the app on the host; a paired device never drives that. */}
+          {/* Agent updates run package managers here; a paired device never drives them either. */}
+          {api.isDesktop !== false ? <AgentUpdatesPill /> : null}
           {api.isDesktop !== false ? <UpdateButton /> : null}
-          <span
-            className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : settings?.runtimeMode === "direct" ? "" : "off"}`}
-            title={gatewayConnectionLabel(settings?.runtimeMode, connected, status?.state)}
-          />
+          {/* Direct mode runs agents here; the optional Gateway's state is not theirs to show. */}
+          {settings?.runtimeMode !== "direct" ? (
+            <span
+              className={`dot ${connected ? "on" : status?.state === "connecting" ? "warn live" : "off"}`}
+              title={gatewayConnectionLabel(connected, status?.state)}
+            />
+          ) : null}
         </div>
       </div>
       <div

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { UpdateCheck } from "@capsule/shared";
-import { updateButtonView, updateDownloadedToast, updateOutcomeToast, useUpdates, type UpdateButtonView } from "../../lib/updates";
+import { updateButtonView, updateDownloadedToast, updateNotAppliedToast, updateOutcomeToast, useUpdates, type UpdateButtonView } from "../../lib/updates";
 import { useToasts } from "../../lib/toasts";
 import { CheckIcon, DownloadIcon, RefreshIcon, RotateClockwiseIcon } from "./icons";
 
@@ -36,10 +36,19 @@ export function UpdateButton() {
   const previous = useRef<UpdateCheck["state"] | undefined>(undefined);
   useEffect(() => {
     if (state === "ready-to-install" && (previous.current === "downloading" || previous.current === "update-available")) {
-      show(updateDownloadedToast(update.status?.latest));
+      show(updateDownloadedToast(update.status));
     }
     previous.current = state;
-  }, [state, show, update.status?.latest]);
+  }, [state, show, update.status]);
+  const notApplied = update.status?.notApplied;
+  const retryInstall = useRef(update.retryInstall);
+  retryInstall.current = update.retryInstall;
+  const toldNotApplied = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!notApplied || !update.status || toldNotApplied.current === notApplied) return;
+    toldNotApplied.current = notApplied;
+    show(updateNotAppliedToast(update.status, () => retryInstall.current()));
+  }, [notApplied, show, update.status]);
 
   const view = updateButtonView(update.status, update.working);
   const label = view.detail ? `${view.tooltip}: ${view.detail}` : view.tooltip;

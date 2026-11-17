@@ -1,7 +1,10 @@
+import type { View } from "./workspace";
+
 /**
- * Where the user has been: a bounded list of (project, conversation)
- * selections with a cursor, so Back returns to the previous conversation the
- * way a browser returns to the previous page. Recording the same place twice
+ * Where the user has been: a bounded list of (project, conversation, view)
+ * places with a cursor, so Back returns to the previous place the way a
+ * browser returns to the previous page. The view is part of the place:
+ * Back from Settings lands on the conversation it was opened over. Recording the same place twice
  * in a row is a no-op, and moving somewhere new after going back discards
  * the forward entries, as a browser does.
  */
@@ -9,6 +12,8 @@
 export interface NavigationEntry {
   projectId?: string;
   sessionId?: string;
+  /** Absent means the conversation view. */
+  view?: View;
 }
 
 export interface NavigationHistory {
@@ -20,7 +25,7 @@ export const EMPTY_NAVIGATION: NavigationHistory = { entries: [], index: -1 };
 const LIMIT = 50;
 
 export function sameEntry(a: NavigationEntry | undefined, b: NavigationEntry | undefined): boolean {
-  return a?.projectId === b?.projectId && a?.sessionId === b?.sessionId;
+  return a?.projectId === b?.projectId && a?.sessionId === b?.sessionId && (a?.view ?? "chat") === (b?.view ?? "chat");
 }
 
 export function recordNavigation(history: NavigationHistory, entry: NavigationEntry): NavigationHistory {

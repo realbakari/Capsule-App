@@ -64,7 +64,7 @@ events and relied on reconnect refreshes.
 
 ## HTTPS deployment
 
-For a browser on the host, use Settings → Gateway → Browser access → This
+For a browser on the host, use Settings → Devices & access → Remote access → This
 computer. For another device, terminate HTTPS using a trusted reverse proxy or
 private-network tunnel on the same host. Start Capsule with:
 

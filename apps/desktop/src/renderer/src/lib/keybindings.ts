@@ -44,7 +44,6 @@ export const FIXED_SHORTCUTS: ReadonlyArray<{ label: string; keys: string | { ma
   { label: "Stash the prompt, or open the stash", keys: "cmd+s" },
   { label: "Next region: sidebar, conversation, composer, panel", keys: "f6" },
   { label: "Previous region", keys: "shift+f6" },
-  { label: "Side chat", keys: "cmd+alt+s" },
   { label: "Open the terminal", keys: "ctrl+`" },
   { label: "Add terminal selection to the message", keys: { mac: "cmd+l", other: "ctrl+shift+l" } },
   { label: "Undo the latest archive, settle or snooze", keys: "cmd+z" },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { TerminalDataEvent, TerminalExitEvent, TerminalHandle } from "@capsule/shared";
-import { conversationFolderRoots, localTimings } from "@capsule/shared";
+import { conversationFolderRoots, DEFAULT_CAPSULE_SETTINGS, localTimings } from "@capsule/shared";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 
@@ -11,8 +11,8 @@ import { useWorkspace } from "../../lib/workspace";
 import { withShortcut } from "../../lib/keybindings";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
-import { onTerminalCommand, takeTerminalCommand } from "../../lib/terminal-requests";
-import { osc7Folder, type TerminalLinkTarget } from "../../lib/terminal-links";
+import { actionTabCandidates, actionTabLabel, onTerminalCommand, takeTerminalCommand, terminalInput, type ActionTab, type TerminalRequest } from "../../lib/terminal-requests";
+import { fileReference, osc7Folder, type TerminalLinkTarget } from "../../lib/terminal-links";
 import { insertBlock, terminalSnippet } from "../../lib/terminal-selection";
 import { registerTerminalLinks } from "./terminalLinks";
 import "./terminal.css";
@@ -24,16 +24,19 @@ const HEIGHT_STEP = 24;
 const HEIGHT_KEY = "capsule.terminal.height";
 /* Enough for a full build or test log; xterm's own default of 1,000 lines cuts most of them. */
 const SCROLLBACK = 10_000;
+const DEFAULT_TERMINAL_FONT_SIZE = DEFAULT_CAPSULE_SETTINGS.terminalFontSize;
 
 interface Pane {
   id: string;
-  /** "Terminal 2": the tab's name, unique among the dock's open tabs. */
+  /** "Terminal 2": the tab's name, unique among the dock's open tabs. An action's tab is 0 and named after it. */
   number: number;
   label: string;
   terminal: Terminal;
   fit: FitAddon;
   /** Set when the shell ended with a failure; a clean exit closes the tab instead. */
   exitCode?: number;
+  /** The action this tab was opened for: running it again reuses the tab while its shell is idle. */
+  action?: string;
 }
 
 /**
@@ -44,7 +47,10 @@ interface Pane {
  * because tearing down an xterm loses the scrollback and the running command.
  */
 export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: string; onClose: () => void; onEmpty?: () => void; visible?: boolean }) {
-  const { api, attachContext, project, session, setBrowserUrl, openInspector, openFile, setDraft, keyBindings } = useWorkspace();
+  const { api, attachContext, project, session, setBrowserUrl, openInspector, openFile, setDraft, keyBindings, settings } = useWorkspace();
+  const fontSize = settings?.terminalFontSize ?? DEFAULT_TERMINAL_FONT_SIZE;
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
   const mac = (api.platform ?? (navigator.platform.startsWith("Mac") ? "darwin" : "")) === "darwin";
   /*
    * xterm keeps one link provider for a pane's life, so it reads the current
@@ -62,6 +68,8 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
   const alive = useRef(true);
   const [panes, setPanes] = useState<Pane[]>([]);
   const [activeId, setActiveId] = useState<string>();
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
   const [preferredHeight, setHeight] = useState(() => {
     let stored = Number.NaN;
     try { stored = Number(localStorage.getItem(HEIGHT_KEY)); } catch { /* Unreadable storage keeps the default. */ }
@@ -94,7 +102,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       allowProposedApi: true,
       cursorBlink: true,
       fontFamily: terminalFont(),
-      fontSize: 12,
+      fontSize: fontSizeRef.current,
       lineHeight: 1.2,
       scrollback: SCROLLBACK,
       // The panel reads as part of the app, not a pasted-in black rectangle.
@@ -134,21 +142,26 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
 
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
-  /* Typed, never run: the person reads the command and presses Return. */
-  const typeInto = useCallback((pane: Pane, command: string) => {
-    void api.terminalInput(pane.id, command).catch((error) => setError(formatUserError(error)));
+  /* A typed command waits for the person to press Return; an action's runs at once. */
+  const typeInto = useCallback((pane: Pane, request: TerminalRequest) => {
+    void api.terminalInput(pane.id, terminalInput(request)).catch((error) => setError(formatUserError(error)));
   }, [api]);
 
-  /* Numbered as it joins the list, which is synchronous, so two shells starting together never share a name. */
-  const admitPane = useCallback((pane: Pane) => {
-    pane.number = nextTerminalNumber(panesRef.current.map((item) => item.number));
-    pane.label = `Terminal ${pane.number}`;
+  /* Named as it joins the list, which is synchronous, so two shells starting together never share a name. */
+  const admitPane = useCallback((pane: Pane, tab?: ActionTab) => {
+    if (tab) {
+      pane.action = tab.key;
+      pane.label = actionTabLabel(tab.label, panesRef.current.map((item) => item.label));
+    } else {
+      pane.number = nextTerminalNumber(panesRef.current.map((item) => item.number));
+      pane.label = `Terminal ${pane.number}`;
+    }
     panesRef.current = [...panesRef.current, pane];
     setPanes(panesRef.current);
     setActiveId(pane.id);
   }, []);
 
-  const openPane = useCallback(async (): Promise<Pane | undefined> => {
+  const openPane = useCallback(async (tab?: ActionTab): Promise<Pane | undefined> => {
     if (panesRef.current.length + openingPanes.current >= 8) {
       setError("This folder has eight terminals. Close one before opening another.");
       return undefined;
@@ -158,7 +171,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
       const pane = await createPane();
       if (!alive.current) { void api.terminalStop(pane.id); pane.terminal.dispose(); return; }
       setError(undefined);
-      admitPane(pane);
+      admitPane(pane, tab);
       return pane;
     } catch (error) { if (alive.current) setError(formatUserError(error)); return undefined; }
     finally { openingPanes.current--; }
@@ -194,10 +207,10 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
         disposePane(pane);
         return;
       }
-      admitPane(pane);
-      // Opened to run something: the first shell takes it.
-      const command = visibleRef.current ? takeTerminalCommand() : undefined;
-      if (command) typeInto(pane, command);
+      // Opened to run something: the first shell takes it, named after the action that asked.
+      const request = visibleRef.current ? takeTerminalCommand() : undefined;
+      admitPane(pane, request?.kind === "run" ? request.tab : undefined);
+      if (request) typeInto(pane, request);
     }).catch((error) => { if (!unmounted) setError(formatUserError(error)); })
       .finally(() => { openingPanes.current--; });
     return () => {
@@ -212,22 +225,39 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
 
   /*
    * A command for a dock already on screen gets a shell of its own, so it
-   * never lands in the middle of whatever the open one is running. While the
-   * first shell is still starting, the request waits for it instead.
+   * never lands in the middle of whatever the open one is running. An action
+   * goes back to its own tab instead, while that shell sits at its prompt.
    */
+  const deliver = useCallback(async (request: TerminalRequest) => {
+    let pane: Pane | undefined;
+    if (request.kind === "run") {
+      const tabs = panesRef.current.map((item) => ({ id: item.id, action: item.action, exitCode: item.exitCode, folder: shellFolders.current.get(item.id) }));
+      for (const id of actionTabCandidates(tabs, request.tab.key, activeIdRef.current, cwd)) {
+        if (!await api.terminalIdle(id).catch(() => false)) continue;
+        pane = panesRef.current.find((item) => item.id === id);
+        if (pane) break;
+      }
+    }
+    pane ??= await openPane(request.kind === "run" ? request.tab : undefined);
+    if (!pane) return;
+    setActiveId(pane.id);
+    pane.terminal.focus();
+    typeInto(pane, request);
+  }, [api, cwd, openPane, typeInto]);
+
+  /* While the first shell is still starting, a request waits for it instead. */
   useEffect(() => {
     if (!visible) return;
-    const run = (command: string) => void openPane().then((pane) => { if (pane) typeInto(pane, command); });
     if (panesRef.current.length > 0) {
       const waiting = takeTerminalCommand();
-      if (waiting) run(waiting);
+      if (waiting) void deliver(waiting);
     }
-    return onTerminalCommand((command) => {
+    return onTerminalCommand((request) => {
       if (panesRef.current.length === 0) return false;
-      run(command);
+      void deliver(request);
       return true;
     });
-  }, [visible, openPane, typeInto]);
+  }, [visible, deliver]);
 
   useEffect(() => {
     if (!visible) return;
@@ -323,6 +353,15 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
   const closePaneRef = useRef(closePane);
   closePaneRef.current = closePane;
 
+  /* A new size from Appearance applies to the shells already open. */
+  useEffect(() => {
+    for (const pane of panesRef.current) {
+      if (pane.terminal.options.fontSize === fontSize) continue;
+      pane.terminal.options.fontSize = fontSize;
+      try { pane.fit.fit(); } catch { /* A hidden pane is refit when shown. */ }
+    }
+  }, [fontSize]);
+
   /* Theme and code font follow Appearance while the shells run, not only when a tab opens. */
   useEffect(() => {
     let frame = 0;
@@ -353,7 +392,7 @@ export function TerminalDock({ cwd, onClose, onEmpty, visible = true }: { cwd: s
 
   const openLink = (target: TerminalLinkTarget, outside: boolean) => {
     if (target.kind === "file") {
-      links.current.openFile(target.path, target.root);
+      links.current.openFile(fileReference(target), target.root);
       return;
     }
     if (outside) {

@@ -12,6 +12,39 @@ export function readSidebarGrouping(read: () => string | null): SidebarGrouping 
   catch { return "project"; }
 }
 
+/** Folded projects and each project's "Show more" depth, kept across launches. */
+export const SIDEBAR_FOLDED_KEY = "capsule.sidebarFolded";
+export const SIDEBAR_SHOW_MORE_KEY = "capsule.sidebarShowMore";
+
+export function readFoldedProjects(read: () => string | null): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(read() ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  }
+  catch { return new Set(); }
+}
+
+export function readShowMore(read: () => string | null): Record<string, number> {
+  try {
+    const parsed: unknown = JSON.parse(read() ?? "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, number] =>
+      typeof entry[1] === "number" && Number.isInteger(entry[1]) && entry[1] > 0));
+  }
+  catch { return {}; }
+}
+
+/**
+ * When a thread last had a turn: its latest run's start or finish, or its
+ * creation when it has none. Lists sort on this rather than `updatedAt`,
+ * which every rename, pin and setting change moves.
+ */
+export function threadActivityAt(session: Pick<Session, "createdAt">, run?: Pick<Run, "createdAt" | "completedAt">): string {
+  let latest = session.createdAt ?? "";
+  for (const time of [run?.createdAt, run?.completedAt]) if (time && time > latest) latest = time;
+  return latest;
+}
+
 export function latestSidebarRuns(runs: readonly Run[]): Map<string, Run> {
   const latest = new Map<string, Run>();
   for (const run of runs) {
@@ -67,9 +100,10 @@ export function groupSidebarThreads(
       : run?.status === "completed" && answered ? groups[2]! : groups[3]!;
     group.threads.push(session);
   }
+  const activity = (session: Session) => threadActivityAt(session, latestRuns.get(session.id));
   for (const group of groups) {
     group.threads.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
-      || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+      || activity(b).localeCompare(activity(a)) || a.id.localeCompare(b.id));
   }
   return groups.filter((group) => group.threads.length);
 }
@@ -172,9 +206,10 @@ export function shouldRecedeThread(kind: SidebarThreadKind, isActive: boolean): 
 
 export const SETTLED_THREAD_PREVIEW = 3;
 
-export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: string; settledAt?: string; snoozedUntil?: string }>(
+export function splitProjectThreads<T extends { pinned?: boolean; settledAt?: string; snoozedUntil?: string }>(
   threads: readonly T[],
   kindOf: (thread: T) => SidebarThreadKind,
+  activityOf: (thread: T) => string,
   preview = SETTLED_THREAD_PREVIEW,
   selected?: T,
   now = Date.now(),
@@ -205,7 +240,7 @@ export function splitProjectThreads<T extends { pinned?: boolean; updatedAt: str
   }
   shelvedSettled.sort((left, right) => ((left.settledAt ?? "") < (right.settledAt ?? "") ? 1 : -1));
   shelvedSnoozed.sort((left, right) => ((left.snoozedUntil ?? "") < (right.snoozedUntil ?? "") ? -1 : 1));
-  settled.sort((left, right) => (left.updatedAt < right.updatedAt ? 1 : -1));
+  settled.sort((left, right) => activityOf(right).localeCompare(activityOf(left)));
   const rest = settled.slice(0, preview);
   if (selected && settled.includes(selected) && !rest.includes(selected)) rest.push(selected);
   return {
@@ -228,4 +263,16 @@ export function indexSidebarThreads(sessions: readonly Session[]) {
     else byProject.set(session.projectId, [session]);
   }
   return byProject;
+}
+
+/**
+ * The pinned order Undo puts back after an unpin: the order from before it,
+ * with anything pinned in the meantime kept after, in its own order.
+ */
+export function restoredPinOrder(before: readonly string[], pinnedNow: readonly { id: string; pinOrder?: number }[]): string[] {
+  const rank = (item: { id: string; pinOrder?: number }) => {
+    const index = before.indexOf(item.id);
+    return index < 0 ? before.length + (item.pinOrder ?? Number.MAX_SAFE_INTEGER) : index;
+  };
+  return [...pinnedNow].sort((a, b) => rank(a) - rank(b)).map((item) => item.id);
 }

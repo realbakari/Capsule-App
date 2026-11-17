@@ -832,10 +832,6 @@ export function CloudUploadIcon(props: IconProps) {
   return <Svg {...props}><path d="M12 13v8M8.5 16.5 12 13l3.5 3.5" /><path d="M20 16.6A4.5 4.5 0 0 0 17.5 8h-1.3A7 7 0 1 0 4 14.9" /></Svg>;
 }
 
-export function CoffeeIcon(props: IconProps) {
-  return <Svg {...props}><path d="M10 2v2M14 2v2M6 2v2" /><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h12Z" /><path d="M17 9h1a3 3 0 0 1 0 6h-1" /></Svg>;
-}
-
 export function InfoIcon(props: IconProps) {
   return <Svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></Svg>;
 }

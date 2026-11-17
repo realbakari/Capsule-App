@@ -8,8 +8,8 @@ agent, whether the conversation runs through the Gateway or directly, and from
 a paired phone or browser.
 
 The conversation keeps what you typed, `/review-pr 123`. The agent receives the
-expanded text. The turn's **Run log** has a `command.expanded` line naming the
-file it came from, and anything that went wrong while expanding it.
+expanded text. If the turn fails, its **Turn details** name the file the
+command came from and anything that went wrong while expanding it.
 
 ## Where commands live
 
@@ -83,8 +83,7 @@ name is passed as text and cannot start another command.
 
 `@path` in a command attaches that file to the message, the same way choosing
 a file after `@` in the message box does. Paths are read from the
-conversation's folder. A path that leads outside it is not attached, and the
-Run log says so. A message holds at most eight files.
+conversation's folder. A path that leads outside it is not attached. A message holds at most eight files.
 
 ## Commands from a project
 

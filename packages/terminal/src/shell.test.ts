@@ -35,6 +35,24 @@ describe("platform shells", () => {
       });
     } finally { session?.kill(); rmSync(dir, { recursive: true, force: true }); }
   });
+  it.skipIf(process.platform === "win32")("reads a shell as idle at its prompt and busy while a command holds the terminal", { timeout: 15_000 }, async () => {
+    let output = "";
+    const session = startPty({ cwd: tmpdir() }, { onData: (text) => { output += text; }, onExit: () => {} });
+    const waitFor = async (want: boolean) => {
+      const deadline = Date.now() + 5_000;
+      while (await session.idle() !== want) {
+        if (Date.now() > deadline) throw new Error(`Shell never read as ${want ? "idle" : "busy"}: ${output}`);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    };
+    try {
+      await waitFor(true);
+      session.write("sleep 30\r");
+      await waitFor(false);
+      session.write("\x03");
+      await waitFor(true);
+    } finally { session.kill(); }
+  });
   it.skipIf(process.platform === "win32")("runs argv directly, with no shell between, and adds the given env", { timeout: 10_000 }, async () => {
     const run = (argv: string[], env?: Record<string, string>) => new Promise<{ code: number; output: string }>((resolve, reject) => {
       let output = "";

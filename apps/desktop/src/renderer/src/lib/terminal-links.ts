@@ -171,8 +171,13 @@ export function bufferRange(line: LogicalLine, start: number, end: number): { st
 export function terminalLinkHint(target: TerminalLinkTarget, modifier: string): string {
   if (target.kind === "browser") return `Open in the Browser panel. ${modifier}-click opens your default browser.`;
   if (target.kind === "external") return `${modifier}-click to open in your default browser.`;
+  return `Open ${fileReference(target)} in Files.`;
+}
+
+/** `src/app.ts:12:3`, the form Files reads a line and column from. */
+export function fileReference(target: Extract<TerminalLinkTarget, { kind: "file" }>): string {
   const position = target.line ? `:${target.line}${target.column ? `:${target.column}` : ""}` : "";
-  return `Open ${target.path}${position} in Files.`;
+  return `${target.path}${position}`;
 }
 
 /** The folder a shell reports through OSC 7 (`file://host/path`), if it does. */

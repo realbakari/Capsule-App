@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ThreadDetailsRows } from "../threads/ThreadDetails";
-import { favoriteOpenInApp, folderBasename } from "@capsule/shared";
+import { applyBranchPrefix, favoriteOpenInApp, folderBasename } from "@capsule/shared";
 import { OpenInControl } from "../open-in/OpenInPicker";
 import { useOpenIn } from "../open-in/useOpenIn";
 import { OPEN_IN_EVENT } from "../../lib/shortcuts-event";
+import { OPEN_GIT_MENU_EVENT, type GitMenu } from "../../lib/git-palette";
 import { formatUserError } from "../../lib/errors";
 import { formatProjectRoot } from "../../lib/paths";
 import { useWorkspace } from "../../lib/workspace";
@@ -14,9 +15,9 @@ import { CommitControl } from "./CommitControl";
 import { ProjectActionsControl } from "./ProjectActionsControl";
 import { HeaderPopover } from "./HeaderPopover";
 import { MenuSelect } from "./MenuSelect";
-import { SURFACES, onBar, tabForTool, toolFromTab, type Surface } from "./surfaces";
+import { SURFACES, offered, onBar, tabForTool, toolFromTab, type Surface } from "./surfaces";
 import { simulatorAttachedTo } from "./SimulatorPane";
-import { AlertTriangleIcon, CheckIcon, ChevronDownIcon, CoffeeIcon, DiffSquareIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHorizontalIcon, TerminalIcon } from "./icons";
+import { AlertTriangleIcon, CheckIcon, ChevronDownIcon, DiffSquareIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, LaptopIcon, MoreHorizontalIcon, PlusIcon, TerminalIcon } from "./icons";
 
 /**
  * The panel's surfaces, one icon each, in the titlebar. Clicking an icon shows
@@ -31,10 +32,12 @@ const ICON_PX = 32;
 const FIXED_BAR_PX = 3 * ICON_PX + 44;
 
 export function SurfaceBar() {
-  const { api, project, session, git, gitError, files, inspectorOpen, inspectorTab, openInspector, setInspectorOpen, terminalOpen, setTerminalOpen, settings, updateSettings, setNotice, keyBindings } = useWorkspace();
+  const { api, project, session, git, gitError, files, inspectorOpen, inspectorTab, openInspector, setInspectorOpen, terminalOpen, setTerminalOpen, setNotice, keyBindings } = useWorkspace();
   const [details, setDetails] = useState(false);
   /* Bumped by the Open in shortcut when there is no favourite: details opens with the app list showing. */
   const [pickApp, setPickApp] = useState(0);
+  /* Set by the palette's Commit… and Switch branch… rows: details opens with that menu showing. */
+  const [gitMenu, setGitMenu] = useState<{ menu: GitMenu; count: number; }>();
   const detailsAnchor = useRef<HTMLDivElement>(null);
   const openIn = useOpenIn();
   const active = inspectorOpen ? toolFromTab(inspectorTab) : undefined;
@@ -61,9 +64,16 @@ export function SurfaceBar() {
     return () => window.removeEventListener(OPEN_IN_EVENT, onOpenIn);
   }, [api, project, session?.id, terminalCwd, openIn, setNotice]);
 
-  /* A surface that cannot exist on this machine is left off; one that cannot open yet says why. */
-  const offered = (surface: Surface) => !(surface.tool === "simulator" && surface.blockedBy({ desktop: state.desktop, platform: state.platform }))
-    && !(surface.tool === "compare" && !state.groupId);
+  useEffect(() => {
+    const onGitMenu = (event: Event) => {
+      const menu = (event as CustomEvent<GitMenu>).detail;
+      setGitMenu((current) => ({ menu, count: (current?.count ?? 0) + 1 }));
+      setDetails(true);
+    };
+    window.addEventListener(OPEN_GIT_MENU_EVENT, onGitMenu);
+    return () => window.removeEventListener(OPEN_GIT_MENU_EVENT, onGitMenu);
+  }, []);
+
   const toggle = (surface: Surface) => {
     if (active === surface.tool) setInspectorOpen(false);
     else openInspector(tabForTool(surface.tool));
@@ -84,22 +94,23 @@ export function SurfaceBar() {
     observer.observe(header);
     return () => observer.disconnect();
   }, []);
-  const candidates = SURFACES.filter((surface) => offered(surface) && onBar(surface, state, active));
+  /* A surface that cannot exist on this machine is left off; one that cannot open yet says why. */
+  const candidates = SURFACES.filter((surface) => offered(surface, state) && onBar(surface, state, active));
   const slots = Math.max(1, Math.floor((room - TITLE_ROOM_PX - FIXED_BAR_PX) / ICON_PX));
   const ordered = [...candidates].sort((a, b) => Number(b.tool === active) - Number(a.tool === active));
   const shown = new Set(ordered.slice(0, slots).map((surface) => surface.tool));
   const inBar = candidates.filter((surface) => shown.has(surface.tool));
-  const more = [...candidates.filter((surface) => !shown.has(surface.tool)), ...SURFACES.filter((surface) => offered(surface) && !onBar(surface, state, active))];
+  const more = [...candidates.filter((surface) => !shown.has(surface.tool)), ...SURFACES.filter((surface) => offered(surface, state) && !onBar(surface, state, active))];
 
   return (
     <div className="surface-bar" role="toolbar" aria-label="Panels" ref={barRef}>
       <div ref={detailsAnchor} className="surface-bar-details">
-        <button type="button" className={`icon-btn${details ? " active" : ""}${gitError ? " has-notice" : ""}`} title={gitError ? "Conversation details · Git status could not be read" : "Conversation details"} aria-label={gitError ? "Conversation details, Git status could not be read" : "Conversation details"} aria-expanded={details} onClick={() => { setPickApp(0); setDetails((open) => !open); }}>
+        <button type="button" className={`icon-btn${details ? " active" : ""}${gitError ? " has-notice" : ""}`} title={gitError ? "Conversation details · Git status could not be read" : "Conversation details"} aria-label={gitError ? "Conversation details, Git status could not be read" : "Conversation details"} aria-expanded={details} onClick={() => { setPickApp(0); setGitMenu(undefined); setDetails((open) => !open); }}>
           <ListIcon size={15} />
         </button>
         {details && (
           <HeaderPopover anchor={detailsAnchor} label="Conversation details" className="session-details" onClose={() => setDetails(false)}>
-            <SessionDetails key={pickApp} pickApp={pickApp > 0} onReview={() => { setDetails(false); openInspector("changes"); }} onClose={() => setDetails(false)} />
+            <SessionDetails key={`${pickApp}/${gitMenu?.count ?? 0}`} pickApp={pickApp > 0} gitMenu={gitMenu?.menu} onReview={() => { setDetails(false); openInspector("changes"); }} onClose={() => setDetails(false)} />
           </HeaderPopover>
         )}
       </div>
@@ -120,7 +131,7 @@ export function SurfaceBar() {
       {inBar.map((surface) => {
         const Icon = surface.icon;
         const blocked = surface.blockedBy(state);
-        const keys = surface.command ? shortcutLabel(surface.command, keyBindings) : surface.shortcut;
+        const keys = surface.command ? shortcutLabel(surface.command, keyBindings) : undefined;
         const title = blocked ?? `${surface.label}${keys ? ` (${keys})` : ""}`;
         return (
           <button
@@ -143,16 +154,10 @@ export function SurfaceBar() {
         placeholder="More"
         iconOnly
         icon={<MoreHorizontalIcon size={15} />}
-        options={[
-          ...more.map((surface) => ({ id: surface.tool, label: surface.label, detail: surface.detail, icon: <surface.icon size={14} /> })),
-          { id: "keep-awake", label: settings?.keepAwakeWhileRunning ? "Keep computer awake: on" : "Keep computer awake: off", detail: "While a turn is running. Also in Settings.", icon: <CoffeeIcon size={14} /> },
-        ]}
+        options={more.map((surface) => ({ id: surface.tool, label: surface.label, detail: surface.detail, icon: <surface.icon size={14} /> }))}
         onChange={(id) => {
           const surface = more.find((item) => item.tool === id);
-          if (surface) { toggle(surface); return; }
-          if (id === "keep-awake") {
-            void updateSettings({ keepAwakeWhileRunning: !settings?.keepAwakeWhileRunning }).catch((error) => setNotice(formatUserError(error)));
-          }
+          if (surface) toggle(surface);
         }}
       />
     </div>
@@ -160,7 +165,7 @@ export function SurfaceBar() {
 }
 
 /** Where this conversation runs, how full its context is, what changed, and what is running. */
-function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; onClose: () => void; pickApp: boolean }) {
+function SessionDetails({ onReview, onClose, pickApp, gitMenu }: { onReview: () => void; onClose: () => void; pickApp: boolean; gitMenu?: GitMenu }) {
   const { api, project, session, git, gitError, contextUsage, openTerminal, initializeGit, setNotice } = useWorkspace();
   const folder = session?.workingDirectory ?? project?.workingDirectory;
   const reveal = async () => {
@@ -172,7 +177,7 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
     <div className="session-details-body">
       <section>
         <h4>Environment</h4>
-        <p className="session-details-row"><LaptopIcon size={14} /><span>{api.isDesktop === false ? "Paired device, reading this computer" : "This computer"}</span></p>
+        {api.isDesktop === false ? <p className="session-details-row"><LaptopIcon size={14} /><span>Paired device, reading this computer</span></p> : null}
         {folder && (
           <div className="session-details-row" title={folder}>
             <FolderIcon size={14} />
@@ -187,15 +192,15 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
         {folder && project && api.isDesktop !== false ? (
           <OpenInControl target={{ projectId: project.id, sessionId: session?.id }} what="folder" variant="row" startOpen={pickApp} />
         ) : null}
-        <BranchRow />
+        <BranchRow startOpen={gitMenu === "branch"} />
         <ApplyToLocalRow onApply={onClose} />
       </section>
       <ThreadDetailsRows />
       {/* What the titlebar used to carry: run an action, commit and push, or start Git. */}
       {folder && api.isDesktop !== false && (
         <section className="session-details-actions" aria-label="Workspace actions">
-          <ProjectActionsControl />
-          <CommitControl />
+          <ProjectActionsControl onRun={onClose} />
+          <CommitControl startOpen={gitMenu === "commit"} />
           {git?.available && !git.isRepo ? (
             <button type="button" className="session-details-action" onClick={() => void initializeGit()}>
               <GitBranchIcon size={14} /><span>Initialize Git in this folder</span>
@@ -203,14 +208,14 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
           ) : null}
         </section>
       )}
-      <section className="session-details-line">
-        <h4>Context</h4>
-        {percent === undefined ? <span className="faint">Not reported yet</span> : (
+      {percent === undefined ? null : (
+        <section className="session-details-line">
+          <h4>Context</h4>
           <span className="session-details-meter" aria-label={`${percent}% of the context window used`}>
             {percent}%<span className="session-details-bar"><i style={{ width: `${percent}%` }} /></span>
           </span>
-        )}
-      </section>
+        </section>
+      )}
       {gitError ? (
         <section aria-label="Changes">
           <h4>Changes</h4>
@@ -233,53 +238,103 @@ function SessionDetails({ onReview, onClose, pickApp }: { onReview: () => void; 
 
 /*
  * The checked-out branch, and switching it. The composer offers this only
- * before the first message, so a started conversation switches here. A
- * paired viewer that can only read sees the name without the menu.
+ * before the first message, so a started conversation switches here. Remote
+ * branches check out as local branches that track them; a name nobody has
+ * yet can be created. A paired device sees the name without the menu: every
+ * branch change is a write it cannot make.
  */
-function BranchRow() {
-  const { api, git, checkoutBranch } = useWorkspace();
+function BranchRow({ startOpen = false }: { startOpen?: boolean }) {
+  const { api, git, project, sessions, settings, checkoutBranch, gitCreateBranch, setSessionId } = useWorkspace();
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  useEffect(() => { if (startOpen) setOpen(true); }, [startOpen]);
   if (!git?.branch) return null;
-  const readOnly = api.isDesktop === false && api.remoteMode !== "control";
-  if (readOnly || git.branches.length < 2) {
+  if (api.isDesktop === false) {
     return <p className="session-details-row"><GitBranchIcon size={14} /><span className="mono">{git.branch}</span></p>;
   }
   const needle = query.trim().toLowerCase();
-  const shown = needle ? git.branches.filter((branch) => branch.toLowerCase().includes(needle)) : git.branches;
+  const matches = (branch: string) => !needle || branch.toLowerCase().includes(needle);
+  const local = git.branches.filter(matches);
+  const remote = (git.remoteBranches ?? []).filter(matches);
+  const created = query.trim() ? applyBranchPrefix(settings?.branchPrefix, query.trim()) : "";
+  const canCreate = Boolean(created) && !git.branches.includes(created);
+  const elsewhere = git.checkedOutElsewhere ?? {};
+  const threadAt = (folder: string) => sessions.find((item) => item.projectId === project?.id && item.workingDirectory && samePath(item.workingDirectory, folder));
+  const close = () => { setOpen(false); setQuery(""); };
   const choose = (branch: string) => {
-    setOpen(false);
-    setQuery("");
+    close();
     if (branch !== git.branch) void checkoutBranch(branch);
+  };
+  const create = () => {
+    close();
+    void gitCreateBranch(query.trim());
   };
   return (
     <div className="session-details-anchor" ref={anchor}>
-      <button type="button" className="session-details-action" aria-haspopup="dialog" aria-expanded={open} title="Switch branch" onClick={() => setOpen((value) => !value)}>
+      <button type="button" className="session-details-action" aria-haspopup="dialog" aria-expanded={open} title="Switch or create a branch" onClick={() => setOpen((value) => !value)}>
         <GitBranchIcon size={14} /><span className="mono">{git.branch}</span><ChevronDownIcon size={12} />
       </button>
       {open && (
-        <HeaderPopover anchor={anchor} label="Switch branch" className="branch-menu" onClose={() => { setOpen(false); setQuery(""); }}>
-          {git.branches.length > 8 ? (
-            <input
-              className="branch-menu-search"
-              type="search"
-              aria-label="Find a branch"
-              placeholder="Find a branch"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter" && shown[0]) { event.preventDefault(); choose(shown[0]); } }}
-            />
-          ) : null}
-          {shown.map((branch) => (
-            <button key={branch} type="button" aria-current={branch === git.branch ? "true" : undefined} onClick={() => choose(branch)}>
-              {branch === git.branch ? <CheckIcon size={13} /> : <span className="branch-menu-spacer" aria-hidden />}
+        <HeaderPopover anchor={anchor} label="Switch branch" className="branch-menu" onClose={close}>
+          <input
+            className="branch-menu-search"
+            type="search"
+            aria-label="Find or create a branch"
+            placeholder="Find or create a branch"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              const first = local.find((branch) => !elsewhere[branch]) ?? remote[0];
+              if (first) choose(first);
+              else if (canCreate) create();
+            }}
+          />
+          {local.map((branch) => {
+            const folder = elsewhere[branch];
+            const thread = folder ? threadAt(folder) : undefined;
+            if (folder) {
+              return (
+                <button key={branch} type="button" disabled={!thread}
+                  title={thread ? `Open the thread working on ${branch}` : `Checked out in another worktree, at ${folder}`}
+                  onClick={() => { close(); if (thread) setSessionId(thread.id); }}>
+                  <span className="branch-menu-spacer" aria-hidden />
+                  <span className="mono">{branch}</span>
+                  <span className="branch-menu-where">{thread ? "open thread" : "other worktree"}</span>
+                </button>
+              );
+            }
+            return (
+              <button key={branch} type="button" aria-current={branch === git.branch ? "true" : undefined} onClick={() => choose(branch)}>
+                {branch === git.branch ? <CheckIcon size={13} /> : <span className="branch-menu-spacer" aria-hidden />}
+                <span className="mono">{branch}</span>
+              </button>
+            );
+          })}
+          {remote.length ? <h5 className="branch-menu-heading">Remote</h5> : null}
+          {remote.map((branch) => (
+            <button key={branch} type="button" title={`Check out ${branch.slice(branch.indexOf("/") + 1)}, tracking ${branch}`} onClick={() => choose(branch)}>
+              <span className="branch-menu-spacer" aria-hidden />
               <span className="mono">{branch}</span>
             </button>
           ))}
-          {shown.length === 0 ? <p className="commit-menu-note">No branch matches.</p> : null}
+          {canCreate ? (
+            <button type="button" onClick={create}>
+              <PlusIcon size={13} />
+              <span>Create branch <span className="mono">{created}</span></span>
+            </button>
+          ) : null}
+          {!local.length && !remote.length && !canCreate ? <p className="commit-menu-note">No branch matches.</p> : null}
         </HeaderPopover>
       )}
     </div>
   );
+}
+
+/** Git reports real paths; a thread may hold the same folder through /var or a trailing slash. */
+function samePath(left: string, right: string): boolean {
+  const normal = (value: string) => value.replace(/\/+$/, "").replace(/^\/private(?=\/)/, "");
+  return normal(left) === normal(right);
 }

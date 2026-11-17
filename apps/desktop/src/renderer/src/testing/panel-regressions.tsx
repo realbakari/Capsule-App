@@ -6,7 +6,7 @@ import { Titlebar } from "../features/shell/Titlebar";
 import { Palette } from "../features/shell/Palette";
 import { UsageView } from "../features/library/UsageView";
 import { usePanelResize } from "../lib/panel-resize";
-import { SIDEBAR_GROUPING_KEY } from "../lib/sidebar";
+import { SIDEBAR_FOLDED_KEY, SIDEBAR_GROUPING_KEY, SIDEBAR_SHOW_MORE_KEY } from "../lib/sidebar";
 import type { ProviderUsageSnapshot } from "@capsule/shared";
 import { ProviderQuota } from "../features/library/ProviderQuota";
 import { RuntimesView } from "../features/harness/RuntimesView";
@@ -33,6 +33,8 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
   const savedWidth = localStorage.getItem("capsule.inspectorWidth");
   const savedGrouping = localStorage.getItem(SIDEBAR_GROUPING_KEY);
   localStorage.removeItem(SIDEBAR_GROUPING_KEY);
+  localStorage.removeItem(SIDEBAR_FOLDED_KEY);
+  localStorage.removeItem(SIDEBAR_SHOW_MORE_KEY);
   const root = createRoot(host);
   try {
     const terminalToggles: boolean[] = [];
@@ -122,6 +124,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     assert(actionBoxes.every((box) => box.width === 0) && shown.every((box, index) => index === 0 || box.left >= shown[index - 1]!.right - 0.5),
       "Project row actions overlap or hold space while folded away");
     project.blur();
+    toggle.click(); await settle(); // A fold now outlasts a remount; open it again for the rows below.
 
     const navigated: string[] = [];
     const groupedBase = { ...sidebarBase, projects: [...sidebarBase.projects, { id: "other", name: "Second workspace" }],
@@ -211,14 +214,24 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     const runtimeBase = { ...base, ready: true, connected: false, settings: { runtimeMode: "direct" },
       api: { homeDir: "/fixture", isDesktop: true },
       project: { id: "p", name: "Workspace", workingDirectory: "/fixture" }, projectId: "p",
-      harnesses: [localHarness], harnessSessions: [], harnessStatuses: {}, doctors: {}, busy: false,
+      harnesses: [localHarness], allHarnesses: [localHarness], harnessSessions: [], harnessStatuses: {}, doctors: {}, busy: false,
     };
     window.testWorkspace = runtimeBase;
     root.render(<RuntimesView />); await settle();
     assert(!document.querySelector('.gateway-recovery'), "Local agent setup demanded an optional Gateway connection");
     const start = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === "Start a session");
     assert(start && !start.disabled, "Ready local agent was blocked by a disconnected Gateway");
-    window.testWorkspace = { ...runtimeBase, harnesses: [{ ...localHarness, runtimeRoute: "gateway" }] };
+    assert(!document.querySelector('select[aria-label="Session mode"]') && !document.body.textContent?.includes("How Capsule starts an agent"), "Agents still shows the session-mode picker or the spawn explainer");
+    assert(document.querySelector(".harness-advanced > summary")?.textContent === "Advanced", "Protocol detail is not behind Advanced");
+    assert(document.querySelector('input[aria-label="Claude Code binary path"]') && document.querySelector('[aria-label="Show Claude Code"]'), "Agent detail lacks its launch options or its on/off switch");
+    window.testWorkspace = { ...runtimeBase, harnesses: [], allHarnesses: [] };
+    root.render(<RuntimesView />); await settle();
+    assert(document.querySelector(".harness-empty")?.textContent === "No agents found on this computer yet.", "Direct mode's empty Agents list blamed the Gateway");
+    window.testWorkspace = { ...runtimeBase, harnesses: [], allHarnesses: [{ ...localHarness }], settings: { runtimeMode: "direct", agentOverrides: { claude: { enabled: false } } } };
+    root.render(<RuntimesView />); await settle();
+    assert(document.querySelector(".harness-catalog-row small")?.textContent === "Turned off", "A turned-off agent left Agents or did not say it is off");
+    const gatewayHarness = { ...localHarness, runtimeRoute: "gateway" };
+    window.testWorkspace = { ...runtimeBase, harnesses: [gatewayHarness], allHarnesses: [gatewayHarness] };
     root.render(<RuntimesView />); await settle();
     assert(document.querySelector('.gateway-recovery'), "Gateway agent lost its connection recovery control");
 
@@ -261,14 +274,18 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     const today = new Date(); const day = (back: number) => { const at = new Date(today); at.setDate(at.getDate() - back);
       return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`; };
     const totals = { input: 400, cachedInput: 9_000, cacheWrite: 0, output: 600, reasoning: 0 };
-    window.testWorkspace = { api: { usageSummary: async () => ({ totals, requests: 3, sessions: 1,
+    window.testWorkspace = { projects: [{ id: "p1", name: "Storefront" }], api: { usageSummary: async () => ({ totals, requests: 3, sessions: 1,
       byDay: [{ key: day(4), totals, requests: 2 }, { key: day(0), totals: { ...totals, cachedInput: 0 }, requests: 1 }],
-      byProvider: [{ key: "codex", totals, requests: 3 }], byModel: [{ key: "gpt-5", totals, requests: 3 }], unavailableSources: [] }) } };
+      byProvider: [{ key: "codex", totals, requests: 3 }], byModel: [{ key: "gpt-5", totals, requests: 3 }],
+      byProject: [{ key: "p1", totals, requests: 2 }, { key: "", totals: { ...totals, cachedInput: 0 }, requests: 1 }], unavailableSources: [] }) } };
     localStorage.setItem("capsule.usageWindowDays", "7");
     root.render(null); await settle(); root.render(<UsageView />); await settle();
     assert(document.querySelectorAll(".usage-col").length === 7, "Idle days were dropped from the daily chart");
     assert(document.querySelectorAll(".usage-col-fill").length === 2, "An idle day drew a bar");
     assert(document.querySelector(".usage-tiles")?.textContent?.includes("Not reported"), "Usage implied a cost it does not have");
+    const byProject = document.querySelector('[aria-label="Tokens by project"]')?.textContent ?? "";
+    assert(byProject.includes("Storefront") && byProject.includes("Other folders") && !byProject.includes("/"), "Usage by project did not name projects or leaked a folder");
+    assert(document.body.textContent?.includes("Other agents’ transcripts are not read yet"), "Usage did not say which agents it counts");
     Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Today")!.click(); await settle();
     assert(!document.querySelector(".usage-chart") && document.querySelector(".settings-breadcrumb")?.textContent?.includes("today"), "The one-day range was not labelled as today");
     if (savedRange === null) localStorage.removeItem("capsule.usageWindowDays"); else localStorage.setItem("capsule.usageWindowDays", savedRange);
@@ -285,7 +302,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
       on: (name: string, handler: (payload: unknown) => void) => { listeners.set(name, handler); return () => listeners.delete(name); },
     } };
     root.render(<ProviderQuota />); await settle(); await settle();
-    assert(document.body.textContent?.includes("Not reported yet"), "Absent quota looked like zero usage");
+    assert(document.body.textContent?.includes("No limits reported"), "Absent quota looked like zero usage");
     const observedAtMs = Date.now();
     const source = (sessionId: string, usedPercent: number) => ({ sessionId, title: `Conversation ${sessionId}`, report: {
       providerId: "muse" as const, tier: "Standard", observedAtMs,
@@ -319,7 +336,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     deferred = undefined;
     resolveRead({ reports: [source("closed", 99)], truncated: false });
     await settle(); await settle();
-    assert(document.body.textContent?.includes("Not reported yet") && !document.querySelector('.provider-quota-card'), "An in-flight snapshot resurrected a closed quota source");
+    assert(document.body.textContent?.includes("No limits reported") && !document.querySelector('.provider-quota-card'), "An in-flight snapshot resurrected a closed quota source");
     root.render(null); await settle();
     assert(listeners.size === 0, "Quota unmount retained event subscriptions");
   } finally {
@@ -328,5 +345,7 @@ export async function runPanelRegressions(host: HTMLElement, base: Record<string
     else localStorage.setItem("capsule.inspectorWidth", savedWidth);
     if (savedGrouping === null) localStorage.removeItem(SIDEBAR_GROUPING_KEY);
     else localStorage.setItem(SIDEBAR_GROUPING_KEY, savedGrouping);
+    localStorage.removeItem(SIDEBAR_FOLDED_KEY);
+    localStorage.removeItem(SIDEBAR_SHOW_MORE_KEY);
   }
 }

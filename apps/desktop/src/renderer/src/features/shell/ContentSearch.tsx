@@ -40,7 +40,7 @@ export function ContentSearch() {
   }, [contentSearch, projectId, sessionId, query, retry]);
 
   function pick(hit: ContentHit) {
-    openFile(hit.path);
+    openFile(`${hit.path}:${hit.line}`);
     setContentSearch(false);
     setQuery("");
   }

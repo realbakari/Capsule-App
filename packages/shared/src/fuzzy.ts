@@ -103,3 +103,51 @@ export function rankFuzzy<T>(items: readonly T[], query: string, text: (item: T)
   ranked.sort((a, b) => b.score - a.score || a.length - b.length || a.index - b.index);
   return ranked.map(({ item, score, positions }) => ({ item, score, positions }));
 }
+
+/** Edits between two short words: a letter changed, added, dropped, or two neighbours swapped. Stops counting past `max`. */
+export function editDistance(a: string, b: string, max = Infinity): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let before: number[] = [];
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let smallest = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) best = Math.min(best, before[j - 2]! + 1);
+      row.push(best);
+      smallest = Math.min(smallest, best);
+    }
+    if (smallest > max) return max + 1;
+    before = previous;
+    previous = row;
+  }
+  return previous[b.length]!;
+}
+
+/**
+ * Whether `word` is a slip away from a word of `text`, or from that word's
+ * start, so a half-typed word with a typo still counts. One slip, or two in a
+ * word of eight letters or more; words under four letters must be exact. For a
+ * fallback when nothing matches as typed. `seen` caches answers per text word
+ * across one ranking, where the same words recur in many titles.
+ */
+export function nearMiss(word: string, text: string, seen?: Map<string, boolean>): boolean {
+  const needle = word.toLowerCase();
+  if (needle.length < 4) return false;
+  const allowed = needle.length >= 8 ? 2 : 1;
+  return text.toLowerCase().split(/[^\p{L}\p{N}]+/u).some((candidate) => {
+    const key = `${needle}\u0000${candidate}`;
+    const known = seen?.get(key);
+    if (known !== undefined) return known;
+    let near = false;
+    if (candidate.length >= needle.length - allowed) {
+      for (const length of [needle.length - 1, needle.length, needle.length + 1, candidate.length]) {
+        if (length > 0 && length <= candidate.length && editDistance(needle, candidate.slice(0, length), allowed) <= allowed) { near = true; break; }
+      }
+    }
+    seen?.set(key, near);
+    return near;
+  });
+}

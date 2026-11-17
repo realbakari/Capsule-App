@@ -33,6 +33,25 @@ export interface KeyCommand {
   menuOwned?: boolean;
 }
 
+/** ⌘1–⌘9: the sidebar's first nine conversations, top to bottom. */
+export const JUMP_COMMAND_PREFIX = "go-to-conversation-";
+
+const JUMP_COMMANDS: readonly KeyCommand[] = Array.from({ length: 9 }, (_, index) => ({
+  id: `${JUMP_COMMAND_PREFIX}${index + 1}`,
+  label: `Go to conversation ${index + 1}`,
+  group: "Go to" as const,
+  ...(index === 0 ? { description: "The sidebar's conversations, top to bottom, through 9. Hold the key to see the numbers." } : {}),
+  context: "global" as const,
+  keys: `cmd+${index + 1}`,
+}));
+
+/** Which sidebar row a jump command opens, from 0, or undefined for any other command. */
+export function jumpCommandIndex(id: string): number | undefined {
+  if (!id.startsWith(JUMP_COMMAND_PREFIX)) return undefined;
+  const index = Number(id.slice(JUMP_COMMAND_PREFIX.length)) - 1;
+  return Number.isInteger(index) && index >= 0 && index < 9 ? index : undefined;
+}
+
 export const KEY_COMMANDS: readonly KeyCommand[] = [
   { id: "palette", label: "Command palette", group: "General", context: "global", keys: "cmd+k", menuOwned: true },
   { id: "settings", label: "Settings", group: "General", context: "global", keys: "cmd+,", menuOwned: true },
@@ -48,6 +67,7 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
   { id: "previous-conversation", label: "Previous conversation", group: "Go to", context: "global", keys: "ctrl+shift+tab" },
   { id: "history-back", label: "Back", group: "Go to", description: "To the conversation you were in before.", context: "global", keys: "cmd+[" },
   { id: "history-forward", label: "Forward", group: "Go to", context: "global", keys: "cmd+]" },
+  ...JUMP_COMMANDS,
   { id: "settle-and-next", label: "Settle and go to next", group: "Go to", description: "Settles this conversation and opens the next one waiting for you.", context: "global", keys: "cmd+e" },
   { id: "find-in-thread", label: "Find in conversation", group: "Conversation", description: "In the Browser panel, finds on the page; in Files, searches the tree.", context: "global", keys: "cmd+f" },
   { id: "jump-to-prompt", label: "Jump to a prompt", group: "Conversation", context: "global", keys: "cmd+shift+j" },
@@ -62,6 +82,8 @@ export const KEY_COMMANDS: readonly KeyCommand[] = [
   { id: "open-mode", label: "Choose permissions", group: "Composer", context: "global", keys: "cmd+shift+p" },
   { id: "open-effort", label: "Choose effort", group: "Composer", context: "global", keys: "cmd+shift+e" },
   { id: "cycle-favorite-model", label: "Next favorite model", group: "Composer", context: "global", keys: "cmd+alt+m" },
+  { id: "composer-other-action", label: "Queue or steer the other way", group: "Composer", description: "While a turn runs: queues when Enter would steer, or steers when Enter would queue.", context: "composer", keys: "alt+enter" },
+  { id: "steer-first-queued", label: "Send the first queued message now", group: "Composer", description: "Steers it into the running turn, or sends it when the queue is waiting for you.", context: "composer", keys: "cmd+alt+enter" },
   // L for listen: ⌘⇧D already opens Review, and ⌥ chords arrive as composed characters on macOS.
   { id: "dictation", label: "Start or finish dictation", group: "Composer", context: "global", keys: "cmd+shift+l" },
   { id: "toggle-sidebar", label: "Toggle sidebar", group: "Workspace", context: "global", keys: "cmd+b" },

@@ -122,6 +122,22 @@ export function projectFolderName(path: string | undefined): string | undefined 
 }
 
 /**
+ * The folder among `roots` that holds an absolute `path`, deepest first.
+ * Undefined for a relative path, which its caller resolves against the
+ * conversation's own folder; null for an absolute path outside all of them.
+ */
+export function owningRoot(pathWithPosition: string, roots: readonly string[]): string | undefined | null {
+  const path = canonicalizeWindowsDrivePath(normalizeSeparators(splitPathAndPosition(pathWithPosition).path.trim()));
+  if (!/^(?:[A-Za-z]:)?\//.test(path)) return undefined;
+  const lower = path.toLowerCase();
+  const owner = [...roots]
+    .map((root) => ({ root, norm: canonicalizeWindowsDrivePath(normalizeSeparators(trimTrailingSeparators(root))).toLowerCase() }))
+    .filter(({ norm }) => lower === norm || lower.startsWith(`${norm}/`))
+    .sort((a, b) => b.norm.length - a.norm.length)[0];
+  return owner ? owner.root : null;
+}
+
+/**
  * The path to hand the file reader, given whatever the transcript said.
  *
  * An agent writes paths several ways in the same conversation: absolute,

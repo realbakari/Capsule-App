@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { keymapConflicts, parseChordSequence, parseKeybindingsFile, resolveKeymap } from "./keymap.js";
-import { defaultBindings, KEY_COMMAND_GROUPS, KEY_COMMANDS, keybindingWarnings, takenByMenu } from "./keymap-defaults.js";
+import { defaultBindings, jumpCommandIndex, KEY_COMMAND_GROUPS, KEY_COMMANDS, keybindingWarnings, takenByMenu } from "./keymap-defaults.js";
 
 describe("the default keymap", () => {
   it("parses every command's keys and leaves menu-owned ones to the menu", () => {
@@ -28,6 +28,16 @@ describe("the default keymap", () => {
     for (const id of ["toggle-sidebar", "toggle-terminal", "toggle-inspector", "open-review", "search-files", "find-in-thread", "next-conversation", "previous-conversation", "previous-turn", "next-turn", "stop-turn", "focus-composer", "open-model", "open-mode", "open-effort", "show-shortcuts"]) {
       expect(ids, id).toContain(id);
     }
+  });
+});
+
+describe("jumping to a sidebar row", () => {
+  it("binds ⌘1 through ⌘9 to the first nine rows and reads the row back", () => {
+    const jumps = defaultBindings().filter((binding) => jumpCommandIndex(binding.id) !== undefined);
+    expect(jumps.map((binding) => [jumpCommandIndex(binding.id), binding.sequence[0]])).toEqual(
+      Array.from({ length: 9 }, (_, index) => [index, { key: String(index + 1), meta: true }]));
+    expect(jumpCommandIndex("go-to-conversation-10")).toBeUndefined();
+    expect(jumpCommandIndex("toggle-sidebar")).toBeUndefined();
   });
 });
 

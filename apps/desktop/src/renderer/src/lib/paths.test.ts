@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  owningRoot,
   formatProjectRoot,
   formatWorkspaceRelativePath,
   projectFolderName,
@@ -118,5 +119,21 @@ describe("projectFolderName", () => {
   it("returns the folder name", () => {
     expect(projectFolderName("/Users/realbakari/Downloads/site/")).toBe("site");
     expect(projectFolderName(undefined)).toBeUndefined();
+  });
+});
+
+describe("owningRoot", () => {
+  const roots = ["/repo", "/repo/packages/app", "C:/work"];
+  it("leaves a relative path to the caller", () => {
+    expect(owningRoot("src/app.ts:12", roots)).toBeUndefined();
+  });
+  it("finds the deepest folder that holds an absolute path", () => {
+    expect(owningRoot("/repo/src/app.ts:12", roots)).toBe("/repo");
+    expect(owningRoot("/repo/packages/app/index.ts", roots)).toBe("/repo/packages/app");
+    expect(owningRoot("C:\\work\\a.ts", roots)).toBe("C:/work");
+  });
+  it("refuses an absolute path outside every folder instead of reading it as relative", () => {
+    expect(owningRoot("/var/folders/bz/T/review.md", roots)).toBeNull();
+    expect(owningRoot("/repository/x.ts", roots)).toBeNull();
   });
 });

@@ -22,29 +22,34 @@ and tooltips show your own platform's names.
 | Open a reply link in your system browser | `⌥`-click the link |
 | Jump to an earlier prompt in this conversation | `⇧⌘J` |
 | Previous or next turn: scroll to the prompt before or after the one you are reading | `⌥⌘↑` / `⌥⌘↓` |
+| Page through the conversation without leaving the message box | `Page Up` / `Page Down` in the composer, unless the draft can scroll that way |
 | Move between turns from the ticks at the conversation's left edge | `↑` / `↓`, `Home` / `End`, then `Enter` |
-| Back to the previous conversation you visited | `⌘[` |
-| Forward again | `⌘]` |
+| Back to where you were before: the previous conversation, or the conversation under Settings or the board | `⌘[`, the mouse's back button, or a three-finger swipe on a Mac trackpad set to swipe between pages with three fingers, the way a browser goes back |
+| Forward again | `⌘]`, the mouse's forward button, or a three-finger swipe the other way |
 | Stash the current prompt | `⌘S` |
 | Undo the latest archive, settle or snooze while its notice is visible | `⌘Z` / `Ctrl+Z`, outside an editor or dialog |
 | Settle this conversation and go to the next one waiting for you | `⌘E` |
 | Mark this conversation unread | `⇧⌘U` |
-| Send | `Enter`, or `⌘Enter` if you changed the send key |
+| Send | `Enter` or `⌘Enter`; only `⌘Enter` if you changed the send key. On a phone or tablet, the send button |
+| Send and start another conversation | `⇧⌘Enter` |
+| During a turn, send the other way: steer instead of queue, or queue instead of steer | `⌥Enter` in the composer |
+| Send the first queued message now (steer it into the turn, or send it when the queue is paused) | `⌥⌘Enter` in the composer |
 | Stop the running turn | `⌘.` from anywhere, `Esc` in the composer, or **Stop the running turn** in the command palette |
 | Put the caret in the composer | `⇧Esc` |
-| Take the last queued follow-up back to edit | `⌥↑` in an empty composer |
+| Edit the last queued follow-up in place | `⌥↑` in an empty composer |
 | Move focus to the next region (sidebar, conversation, composer, side panel) | `F6`, or `⇧F6` to go back |
 | Show every shortcut | `⌘/` |
 | Add the terminal selection to the message | `⌘L` in the terminal (`Ctrl+Shift+L` on Windows and Linux) |
 | Open a terminal link in your default browser | `⌘`-click |
 | Open Review; press again on Review to close the panel | `⇧⌘D` |
 | Open the Browser; press again to close the panel | `⇧⌘B` |
-| Next conversation, by recent activity | `⌃Tab` (`Ctrl+Tab` everywhere) |
-| Previous conversation | `⌃⇧Tab` |
+| Next conversation in the sidebar, top to bottom | `⌃Tab` (`Ctrl+Tab` everywhere) |
+| Previous conversation in the sidebar | `⌃⇧Tab` |
+| Open one of the first nine conversations in the sidebar; hold `⌘` for a moment to see their numbers | `⌘1` to `⌘9` (`Ctrl+1` to `Ctrl+9` on Windows and Linux) |
 | Choose the model | `⇧⌘M` |
 | Choose permissions (Ask, Auto, Full) | `⇧⌘P` |
 | Choose the reasoning effort | `⇧⌘E` |
-| Pick one of the first nine models while the model panel is open | `⌘1` to `⌘9` |
+| Pick one of the first nine models while the model panel is open | `⌘1` to `⌘9` (these numbers belong to the panel while it has focus) |
 | Next favorite model | `⌥⌘M` |
 | Switch between Plan and Act | `⇧Tab` in the prompt |
 | Start or finish dictation (macOS) | `⇧⌘L` |
@@ -157,13 +162,15 @@ Diagnostics; the rest of the file still applies.
 ## In the composer
 
 - `/` for commands: `/new`, `/init`, `/model`, `/plan`, `/compact`, `/stash`, saved prompts and skills
-- `Esc` stops the running turn; with text in the prompt, Send queues it (or steers the turn) instead of stopping
+- `Esc` closes the stash, a menu or a queued-message edit first, then stops the running turn; an `Esc` straight after one that closed something, or a held `Esc`, does not stop it
+- `Enter` sends when an open menu has nothing to pick
 - `@` to mention a file, or `@thread`, `@diff`, `@diagnostics` and `@url` to attach context
 - `!` at the start of the prompt, then `Enter`, to run a command and attach its output
 - `$` to attach a skill
 - Paperclip or drop to attach local files
 - `⌘S` to stash the current prompt, or open the stash when the composer is empty
-- `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back
+- `↑` in an empty prompt recalls earlier prompts from this conversation; `↓` comes back. In a recalled prompt of several lines they step only from its first or last line
+- `⌘Z` takes back a menu pick, a recalled prompt, a filled saved prompt or a restored stash
 - `⇧Tab` switches the next turn between Plan and Act; while a suggestion menu is open, Tab picks from the menu instead
 - `⇧⌘L` to dictate; `Enter` keeps the text and `Esc` cancels and restores the draft
 
@@ -175,8 +182,9 @@ previous one. `k` keeps the hunk, `u` unstages it and `x` rejects it. See
 
 ## Finding your way around
 
-Archiving a conversation offers **Undo** for ten seconds. After that, open
-**History** and choose **Restore** on an archived conversation. Messages and the
+Archiving a conversation offers **Undo** for ten seconds. After that, choose
+**Archived conversations…** in the command palette and pick the conversation to
+restore it. Messages and the
 agent's session identity are preserved. These actions are desktop-only.
 
 Opened with nothing typed, the command palette lists what you can do right
@@ -204,17 +212,36 @@ no matches; failed searches offer **Retry**.
 
 You do not have to type a name in full. The letters you type only need to appear
 in order, starting at the beginning of a word: `nc` finds **New conversation**
-and `gtf` finds **Go to file…**. Matches at word starts and runs of consecutive
-letters rank first, a shorter name wins a tie, and the matched letters are
-underlined. When a command and a conversation match equally well, the command
-comes first, so `new` then `Enter` starts a conversation. Conversations that
-match equally well are ordered by recent activity, independently of sidebar
-pins, and message-body matches come last. The palette keeps its size while you
+and `gtf` finds **Go to file…**. Each word you type is matched on its own, in any
+order, so `redirect fix` finds **Fix login redirect**, and a conversation is also
+found by its project's name: `login web` finds it in the `web` project. Matches
+at word starts and runs of consecutive letters rank first, and the matched
+letters are underlined. When a command and a conversation match equally well,
+the command comes first, so `new` then `Enter` starts a conversation.
+Conversations that match equally well are ordered by their latest turn, and a
+conversation you worked in today ranks a little above an equal match from last
+month. When nothing matches what you typed, the palette forgives a small typo:
+`setings` still finds Settings. Message-body matches come last; while you type,
+the previous message results stay until new ones arrive. Choosing one opens the
+conversation with **Find in conversation** already searching for your words.
+
+Every setting can be found by name, as **Settings** rows that open the setting
+itself, and **New conversation in** each of your projects can be typed straight
+from the palette. The palette keeps its size while you
 type, and "Searching messages…" waits in its footer, so results do not jump
 under the pointer.
 
 Each command shows its current keys, including keys you changed in Settings, so
 the palette doubles as a way to learn them.
+
+Git commands work on the open project's folder: **Commit…** and **Switch
+branch…** or **Create branch…** open those menus in **Conversation details**;
+**Push** (or **Publish branch** for a branch never pushed), **Pull** (or
+**Rebase onto** the remote branch when both sides have new commits) and
+**Create pull request** run straight away, with the same question before
+pushing to the default branch as the commit menu asks. Each one that cannot run
+says why, such as "Nothing to push" or "Pull first", and on a paired device
+they are all off. Type `git` to list them.
 
 **This conversation** appears while a conversation is open. It holds the same
 actions as the conversation's menu (rename, pin, settle, snooze, mark unread,
@@ -250,4 +277,5 @@ restores them.
 
 When the panel shows its list of surfaces, press a surface's letter to open it:
 **R** Review, **B** Browser, **M** Simulator, **F** Files, **A** Agents,
-**S** Side chat. Each card shows its letter.
+**C** Compare. The list shows only the surfaces that apply to this
+conversation, and each card shows its letter.

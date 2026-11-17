@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fuzzyScore, rankFuzzy } from "./fuzzy.js";
+import { editDistance, fuzzyScore, nearMiss, rankFuzzy } from "./fuzzy.js";
 
 const labels = (items: Array<{ item: string }>) => items.map((entry) => entry.item);
 
@@ -62,5 +62,19 @@ describe("rankFuzzy", () => {
     const started = performance.now();
     rankFuzzy(titles, "payments retry", (item) => item);
     expect(performance.now() - started).toBeLessThan(200);
+  });
+});
+
+describe("near misses", () => {
+  it("counts a swapped, missing, extra or wrong letter, including in a half-typed word", () => {
+    expect(editDistance("convresation", "conversation")).toBe(1);
+    expect(nearMiss("setings", "Open settings")).toBe(true);
+    expect(nearMiss("convrs", "New conversation")).toBe(true);
+    expect(nearMiss("teme", "Dark theme")).toBe(true);
+  });
+
+  it("asks short words to be exact and refuses far misses", () => {
+    expect(nearMiss("thm", "Dark theme")).toBe(false);
+    expect(nearMiss("banana", "Dark theme")).toBe(false);
   });
 });

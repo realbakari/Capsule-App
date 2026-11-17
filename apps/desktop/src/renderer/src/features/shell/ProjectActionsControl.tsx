@@ -1,52 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import type { ProjectAction, ProjectActionRun } from "@capsule/shared";
+import type { ProjectAction } from "@capsule/shared";
 import { isSharedAction, PROJECT_FILE_NAME } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
-import { ChevronDownIcon, PlayIcon, PlusIcon, StopIcon, TerminalIcon } from "./icons";
+import { usePrimaryAction } from "../../lib/project-actions";
+import { ChevronDownIcon, PlayIcon, PlusIcon, TerminalIcon } from "./icons";
 import { HeaderPopover } from "./HeaderPopover";
 import { ProjectActionDialog } from "./ProjectActionDialog";
 
-export function ProjectActionsControl() {
-  const {
-    api,
-    project,
-    session,
-    saveProjectActions,
-    setBrowserUrl,
-    openInspector,
-    setConfirm,
-  } = useWorkspace();
+/**
+ * A split button: the action this project ran last, one click away, and the
+ * full list behind the chevron. Actions run in the terminal dock, where their
+ * output is live and Control-C stops them.
+ */
+export function ProjectActionsControl({ onRun }: { onRun?: () => void }) {
+  const { project, session, settings, saveProjectActions, runProjectAction, setConfirm } = useWorkspace();
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectAction>();
-  const [runs, setRuns] = useState<ProjectActionRun[]>([]);
-  const [error, setError] = useState<string>();
 
   const actions = project?.actions ?? [];
+  const primary = usePrimaryAction(project?.id, actions);
+  const blocked = settings?.sandbox === "strict" ? "Strict sandbox blocks terminal commands." : undefined;
 
   // Switching project or thread closes the menu and drops anything half-typed
   // in it, rather than carrying it into a place it does not belong.
   useEffect(() => {
     setOpen(false);
     setEditing(undefined);
-    setError(undefined);
   }, [project?.id, session?.id]);
-
-  useEffect(() => {
-    if (!project?.id || !open) return undefined;
-    let disposed = false;
-    const refresh = () => {
-      void api.listProjectActionRuns(project.id, session?.id).then((next) => {
-        if (!disposed) setRuns(next as ProjectActionRun[]);
-      });
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 1_500);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [api, open, project?.id, session?.id]);
 
   function edit(action?: ProjectAction) {
     setEditing(action ?? { id: "", name: "", command: "" });
@@ -59,47 +40,53 @@ export function ProjectActionsControl() {
     return saveProjectActions(updated);
   }
 
-  async function run(action: ProjectAction) {
-    if (!project) return;
-    setError(undefined);
-    try {
-      const next = (await api.runProjectAction(project.id, action.id, session?.id)) as ProjectActionRun;
-      setRuns((current) => [next, ...current.filter((run) => run.actionId !== next.actionId)]);
-      if (action.previewUrl && action.openPreview !== false) {
-        setBrowserUrl(action.previewUrl);
-        openInspector("browser");
-      }
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
-  }
-
-  async function stop(action: ProjectAction) {
-    if (!project) return;
-    setError(undefined);
-    try {
-      const next = (await api.stopProjectAction(project.id, action.id, session?.id)) as ProjectActionRun;
-      setRuns((current) => current.map((run) => (run.actionId === next.actionId ? next : run)));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
+  function run(action: ProjectAction) {
+    setOpen(false);
+    runProjectAction(action);
+    onRun?.();
   }
 
   if (!project?.workingDirectory) return null;
 
+  const dialog = editing ? (
+    <ProjectActionDialog
+      action={editing}
+      onSave={save}
+      onClose={() => setEditing((current) => current === editing ? undefined : current)}
+    />
+  ) : null;
+
+  if (!primary) {
+    return (
+      <div className="session-details-anchor project-actions-control">
+        <button type="button" className="session-details-action" onClick={() => edit()}>
+          <PlusIcon size={14} />
+          <span>Add project action</span>
+        </button>
+        {dialog}
+      </div>
+    );
+  }
+
   return (
     <div className="session-details-anchor project-actions-control" ref={root}>
-      <button
-        type="button"
-        className="session-details-action"
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        {actions.length ? <PlayIcon size={14} /> : <PlusIcon size={14} />}
-        <span>{actions.length ? `Run a project action (${actions.length})` : "Add project action"}</span>
-        <ChevronDownIcon size={12} />
-      </button>
+      <div className="project-action-split">
+        <button type="button" className="session-details-action" disabled={Boolean(blocked)} title={blocked ?? primary.command} onClick={() => run(primary)}>
+          <PlayIcon size={14} />
+          <span>Run {primary.name}</span>
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="All project actions"
+          title="All project actions"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <ChevronDownIcon size={12} />
+        </button>
+      </div>
       {open ? (
         /*
          * Portalled, like the other two header controls. This menu lived
@@ -112,73 +99,49 @@ export function ProjectActionsControl() {
           className="project-actions-menu"
           onClose={() => setOpen(false)}
         >
-          {
-            <>
-              {error ? <p className="notice project-action-error" role="alert">{error}</p> : null}
-              {actions.length === 0 ? <p className="faint project-actions-empty">No saved actions.</p> : null}
-              {actions.map((action) => {
-                const runState = runs.find((run) => run.actionId === action.id);
-                const running = runState?.status === "running";
-                const stopping = runState?.status === "stopping";
-                return (
-                  <div className="project-action-row" key={action.id}>
-                    <button type="button" className="project-action-run" disabled={running || stopping} onClick={() => void run(action)}>
-                      <TerminalIcon size={12} />
-                      <span>
-                        <b>{action.name}</b>
-                        <small>{action.command}</small>
-                      </span>
-                      <span className={`project-action-state ${runState?.status ?? "idle"}`}>
-                        {runState?.status ?? "run"}
-                      </span>
-                    </button>
-                    {running || stopping ? (
-                      <button type="button" className="ghost" disabled={stopping} title={stopping ? "Waiting for the action to exit" : "Stop action"} onClick={() => void stop(action)}>
-                        <StopIcon size={11} />
-                      </button>
-                    ) : isSharedAction(action) ? <span className="chip-static" title={`Declared in ${PROJECT_FILE_NAME}`}>shared</span> : (
-                      <button type="button" className="ghost" onClick={() => edit(action)}>
-                        Edit
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="danger"
-                      disabled={isSharedAction(action)}
-                      title={isSharedAction(action) ? `Remove it from ${PROJECT_FILE_NAME} instead` : undefined}
-                      onClick={() =>
-                        setConfirm({
-                          title: `Delete “${action.name}”?`,
-                          detail: "The saved command is removed from this project. Files are not changed.",
-                          confirmLabel: "Delete action",
-                          danger: true,
-                          onConfirm: () => {
-                            setConfirm(undefined);
-                            void saveProjectActions(actions.filter((item) => item.id !== action.id));
-                          },
-                        })
-                      }
-                    >
-                      Delete
-                    </button>
-                    {runState?.output ? <pre className="project-action-output">{runState.output}</pre> : null}
-                  </div>
-                );
-              })}
-              <button type="button" onClick={() => edit()}>
-                <PlusIcon size={12} /> New action…
+          {blocked ? <p className="faint project-actions-empty">{blocked}</p> : null}
+          {actions.map((action) => (
+            <div className="project-action-row" key={action.id}>
+              <button type="button" className="project-action-run" disabled={Boolean(blocked)} onClick={() => run(action)}>
+                <TerminalIcon size={12} />
+                <span>
+                  <b>{action.name}</b>
+                  <small>{action.command}</small>
+                </span>
               </button>
-            </>
-          }
+              {isSharedAction(action) ? <span className="chip-static" title={`Declared in ${PROJECT_FILE_NAME}`}>shared</span> : (
+                <button type="button" className="ghost" onClick={() => edit(action)}>
+                  Edit
+                </button>
+              )}
+              <button
+                type="button"
+                className="danger"
+                disabled={isSharedAction(action)}
+                title={isSharedAction(action) ? `Remove it from ${PROJECT_FILE_NAME} instead` : undefined}
+                onClick={() =>
+                  setConfirm({
+                    title: `Delete “${action.name}”?`,
+                    detail: "The saved command is removed from this project. Files are not changed.",
+                    confirmLabel: "Delete action",
+                    danger: true,
+                    onConfirm: () => {
+                      setConfirm(undefined);
+                      void saveProjectActions(actions.filter((item) => item.id !== action.id));
+                    },
+                  })
+                }
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => edit()}>
+            <PlusIcon size={12} /> New action…
+          </button>
         </HeaderPopover>
       ) : null}
-      {editing ? (
-        <ProjectActionDialog
-          action={editing}
-          onSave={save}
-          onClose={() => setEditing((current) => current === editing ? undefined : current)}
-        />
-      ) : null}
+      {dialog}
     </div>
   );
 }

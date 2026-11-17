@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeBrowserRecent, normalizedBrowserUrl, parseBrowserRecents } from "./EmbeddedBrowser";
+import { describeLoadFailure, mergeBrowserRecent, normalizedBrowserUrl, parseBrowserRecents, removeBrowserRecent } from "./EmbeddedBrowser";
 
 describe("normalizedBrowserUrl", () => {
   it("adds HTTP to local addresses", () => {
@@ -53,5 +53,27 @@ describe("browser recents", () => {
     const second = { url: "http://localhost:5173/", title: "Second", lastUsedAt: "2026-01-02T00:00:00.000Z" };
     const revisited = { ...first, title: "Updated", lastUsedAt: "2026-01-03T00:00:00.000Z" };
     expect(mergeBrowserRecent([second, first], revisited)).toEqual([revisited, second]);
+  });
+
+  it("forgets one address and keeps the rest in order", () => {
+    const a = { url: "http://localhost:3000/", title: "A", lastUsedAt: "2026-01-01T00:00:00.000Z" };
+    const b = { url: "http://localhost:5173/", title: "B", lastUsedAt: "2026-01-02T00:00:00.000Z" };
+    const c = { url: "https://example.com/", title: "C", lastUsedAt: "2026-01-03T00:00:00.000Z" };
+    expect(removeBrowserRecent([c, b, a], b.url)).toEqual([c, a]);
+    expect(removeBrowserRecent([a], "https://not-there.test/")).toEqual([a]);
+  });
+});
+
+describe("describeLoadFailure", () => {
+  it("says why a page did not load in plain words, naming the host", () => {
+    expect(describeLoadFailure("ERR_CONNECTION_REFUSED", "http://localhost:3000/app")).toBe("Could not open localhost:3000: nothing is answering there. Check that the server is running.");
+    expect(describeLoadFailure("ERR_NAME_NOT_RESOLVED", "https://nope.invalid/")).toBe("Could not open nope.invalid: that address could not be found.");
+    expect(describeLoadFailure("ERR_CERT_AUTHORITY_INVALID", "https://self.test/")).toBe("Could not open self.test: its security certificate is not trusted.");
+  });
+
+  it("keeps an unknown code for searching, and copes with no code at all", () => {
+    expect(describeLoadFailure("ERR_HTTP2_PROTOCOL_ERROR", "https://example.com/")).toBe("Could not open example.com (ERR_HTTP2_PROTOCOL_ERROR).");
+    expect(describeLoadFailure(undefined, "https://example.com/")).toBe("Could not open example.com.");
+    expect(describeLoadFailure("", "")).toBe("Could not open the page.");
   });
 });

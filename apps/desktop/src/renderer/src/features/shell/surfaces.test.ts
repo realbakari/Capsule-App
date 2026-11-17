@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SURFACES, looksLikeMobileApp, onBar, type SurfaceState } from "./surfaces.js";
+import { SURFACES, applies, looksLikeMobileApp, onBar, type SurfaceState } from "./surfaces.js";
 
 const reasons = (state: { projectId?: string; git?: { isRepo?: boolean }; groupId?: string }) =>
   Object.fromEntries(SURFACES.map((s) => [s.tool, s.blockedBy(state)]));
@@ -15,7 +15,7 @@ describe("inspector surfaces", () => {
 
   it("puts the panel surfaces on the bar in order, with the rest under More", () => {
     expect(bar({ folderNames: ["App.xcodeproj"] })).toEqual(["review", "browser", "simulator", "files"]);
-    expect(SURFACES.filter((s) => !onBar(s, { folderNames: ["App.xcodeproj"] })).map((s) => s.tool)).toEqual(["agents", "chat", "compare"]);
+    expect(SURFACES.filter((s) => !onBar(s, { folderNames: ["App.xcodeproj"] })).map((s) => s.tool)).toEqual(["agents", "compare"]);
     // The terminal is the real dock, toggled from the bar, not a panel surface.
     expect(SURFACES.some((s) => (s.tool as string) === "terminal")).toBe(false);
   });
@@ -37,9 +37,8 @@ describe("inspector surfaces", () => {
 
   it("keeps the surfaces that need neither always available", () => {
     const blocked = reasons({});
-    // A browser and a side chat do not depend on a folder being open.
+    // A browser does not depend on a folder being open.
     expect(blocked.browser).toBeUndefined();
-    expect(blocked.chat).toBeUndefined();
   });
 
   it("keeps the simulator on the desktop, on a Mac", () => {
@@ -68,6 +67,14 @@ describe("inspector surfaces", () => {
     expect(bar({ git: { isRepo: false } }, "review")).toContain("review");
     // Still loading: Review stays where it will be.
     expect(bar({})).toContain("review");
+  });
+
+  it("offers in the launcher only the surfaces that apply to this folder and thread", () => {
+    const launcher = (state: SurfaceState) => SURFACES.filter((s) => applies(s, state)).map((s) => s.tool);
+    const mac = { desktop: true, platform: "darwin" };
+    expect(launcher({ ...mac, git: { isRepo: true }, folderNames: ["package.json"] })).toEqual(["review", "browser", "files", "agents"]);
+    expect(launcher({ ...mac, git: { isRepo: false }, folderNames: ["App.xcodeproj"], groupId: "g1" })).toEqual(["browser", "simulator", "files", "agents", "compare"]);
+    expect(launcher({ desktop: false, folderNames: ["App.xcodeproj"] })).not.toContain("simulator");
   });
 
   it("gives every surface a label and a description", () => {

@@ -1,12 +1,13 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { lineRange, type FilePreview, type SharedSelection } from "@capsule/shared";
-import { highlight } from "../../lib/highlight";
+import { lineSpan, rangeForLine } from "../../lib/line-target";
 import { showNativeContextMenu } from "../../lib/bridge";
 import { registerSelectionReader, selectionContext, touchSelectionSurface } from "../../lib/selection-share";
 import { useWorkspace } from "../../lib/workspace";
 
 export function FilePreviewView({
   doc,
+  line,
   editing,
   contents,
   saveState,
@@ -22,6 +23,8 @@ export function FilePreviewView({
   openIn,
 }: {
   doc: FilePreview;
+  /** A line to bring into view and mark, from a `file:42` reference in the transcript. */
+  line?: { line: number };
   editing: boolean;
   contents: string;
   saveState: "idle" | "pending" | "saving" | "saved" | "error" | "truncated" | "conflict";
@@ -45,6 +48,37 @@ export function FilePreviewView({
      preview; the last one made here is kept until another replaces it. */
   const lastSelection = useRef<SharedSelection | undefined>(undefined);
   const text = editing ? contents : doc.contents ?? contents;
+  const [band, setBand] = useState<{ top: number; height: number; for: object }>();
+  const bandRef = useRef<HTMLSpanElement>(null);
+  const scrolledFor = useRef<object | undefined>(undefined);
+
+  /* The band is measured from the rendered line, so a wrapped line is marked whole. */
+  useLayoutEffect(() => {
+    const host = code.current;
+    const pre = host?.parentElement;
+    if (!line || editing || doc.kind !== "text" || !host || !pre) { setBand(undefined); return undefined; }
+    const measure = () => {
+      const range = rangeForLine(host, line.line);
+      if (!range) { setBand(undefined); return; }
+      const rects = Array.from(range.getClientRects());
+      const box = rects.length ? { top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) } : range.getBoundingClientRect();
+      const frame = pre.getBoundingClientRect();
+      const height = Math.max(box.bottom - box.top, parseFloat(getComputedStyle(pre).lineHeight) || 0);
+      setBand({ top: box.top - frame.top + pre.scrollTop, height, for: line });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pre);
+    return () => observer.disconnect();
+  }, [line, editing, doc.kind, doc.path, text]);
+
+  /* Scrolled once per request, so reading on from the line is not pulled back to it. */
+  useEffect(() => {
+    // The band from the previous request is still drawn for one commit; wait for this one's.
+    if (!band || !line || band.for !== line || scrolledFor.current === line) return;
+    scrolledFor.current = line;
+    bandRef.current?.scrollIntoView({ block: "center" });
+  }, [band, line]);
 
   function readSelection(): SharedSelection | undefined {
     const at = (selected: string, start: number) => selected.trim()
@@ -132,6 +166,11 @@ export function FilePreviewView({
       {doc.truncated && doc.kind === "text" ? (
         <div className="faint file-editor-note">Showing the first part of a large file.</div>
       ) : null}
+      {line && doc.kind === "text" && !lineSpan(text, line.line) ? (
+        <div className="faint file-editor-note">
+          {doc.truncated ? `Line ${line.line} is past the part shown here.` : `Line ${line.line} is past the end of this file.`}
+        </div>
+      ) : null}
       {(saveState === "conflict" || saveState === "error") ? (
         <div className="file-conflict">
           <span>{saveState === "conflict" ? "This file changed on disk since you opened it." : "The file could not be saved."} Your draft is retained until the app closes.</span>
@@ -162,7 +201,8 @@ export function FilePreviewView({
       ) : null}
       {doc.kind === "text" && !editing ? (
         <pre className="mono file-preview-code" onContextMenu={(event) => void selectionMenu(event)}>
-          <code ref={code}>{highlight(doc.contents ?? contents, doc.language)}</code>
+          {band && line ? <span ref={bandRef} className="file-preview-line" style={{ top: band.top, height: band.height }} data-line={line.line} aria-hidden /> : null}
+          <code ref={code}><CodeLines text={doc.contents ?? contents} language={doc.language} target={line?.line} /></code>
         </pre>
       ) : null}
       {doc.kind === "binary" ? (
@@ -171,4 +211,5 @@ export function FilePreviewView({
     </div>
   );
 }
+import { CodeLines } from "./CodeLines";
 import { ImagePreview } from "./ImagePreview";
