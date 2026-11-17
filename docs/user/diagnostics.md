@@ -62,7 +62,8 @@ folder and cannot be used for the global report.
 Unreadable sources show a warning alongside any available totals, not a claim
 that no work happened. Check access to the CLI's transcript folder, then choose
 **Refresh**. A CLI that has never created transcripts normally has no data.
-Usage remains token-only, not a bill or subscription-limit report.
+Transcript figures are token counts, not a bill. Limits come separately from
+agents that report them; see [Usage](./usage.md).
 
 Refresh handles transcripts that are still being written: partial records are
 reread when complete, and model context is preserved across incremental reads.

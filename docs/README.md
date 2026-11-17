@@ -31,6 +31,7 @@ need the shipped-product voice.
 - [Hooks](./user/hooks.md)
 - [Automations](./user/automations.md)
 - [Plugins](./user/plugins.md)
+- [Usage and limits](./user/usage.md)
 - [Providers and credentials](./user/providers.md)
 - [Reading from another device](./user/reading-from-another-device.md)
 - [Exporting a conversation](./user/exporting-conversations.md)

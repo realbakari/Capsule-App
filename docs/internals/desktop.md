@@ -1503,8 +1503,27 @@ stores the current draft; `⌘S` on an empty composer or `/stash` restores or re
 recent entries, and sending clears only the active draft. Stale paths are
 reported by main-process validation when a restored draft is sent.
 
-Usage lives in its own view, read from the CLIs' transcripts. It reports
-tokens only — prices are not in the transcripts.
+Usage lives in its own view (`features/library/UsageView.tsx`), ordered by the
+question it answers: **Limits** (`ProviderQuota`), then **Tokens**, then **Your
+results**. Ranges are Today / 7 / 30 / 90 days (default 7, remembered in
+`capsule.usageWindowDays`); the main process counts a range from local
+midnight, so the one-day range is labelled Today, not "24 hours". One
+**Refresh** rereads both the transcript summary and the cached limit snapshot.
+The pure view model is `usage-model.ts`: `dailySeries` fills idle days so the
+chart's x-axis is real time, `niceCeiling` gives round y ticks, and
+`limitTone` / `pacePercent` / `resetText` drive the limit meters (amber at
+80%, red at 100%, words alongside colour; a pace tick where even use would be,
+weekly windows taken as seven days). Tokens show four tiles (Today, range
+total, Requests with sessions, Cost **Not reported**), a per-day column chart
+(today in the accent, others de-emphasised, hover tooltip, **Daily figures**
+table as the non-hover path; hidden for Today), ranked bars by agent and by
+token type on one baseline, and a model table capped at fifteen rows plus a
+"N more models" total. While a range loads the previous figures stay, dimmed
+via `aria-busy`. Transcript tokens carry the label "From transcripts on this
+computer"; limits carry "Reported by running agents". Only native Muse reports
+limits today; the Limits card says other agents do not and points to the
+conversation's limit banner. No price table is shipped: prices are not in the
+transcripts.
 Transcript discovery honors inherited `CLAUDE_CONFIG_DIR` and `CODEX_HOME`
 before the default home directories. Home-relative paths expand locally;
 other relative paths report an error rather than guessing a project's cwd.

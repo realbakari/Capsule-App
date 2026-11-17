@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProviderSubscriptionUsage, ProviderUsageSnapshot, ProviderUsageSource, ReportedQuotaWindow } from "@capsule/shared";
 import { useWorkspace } from "../../lib/workspace";
 import { formatUserError } from "../../lib/errors";
+import { limitTone, pacePercent, resetText } from "./usage-model";
 
 const STALE_AFTER_MS = 5 * 60_000;
 
@@ -10,15 +11,21 @@ export function quotaObservationLabel(report: ProviderSubscriptionUsage, now: nu
   return failed || now - report.observedAtMs > STALE_AFTER_MS ? "Last reported · may be out of date" : "Reported observation";
 }
 
-function QuotaWindow({ label, quota, now }: { label: string; quota: ReportedQuotaWindow; now: number }) {
+const WEEK_MINS = 7 * 24 * 60;
+const TONE_NOTE = { ok: "", near: " · near limit", over: " · at limit" } as const;
+
+function QuotaWindow({ label, quota, durationMins, now }: { label: string; quota: ReportedQuotaWindow; durationMins: number; now: number }) {
   const fill = Math.min(100, quota.usedPercent);
-  return <div className="provider-quota-window">
-    <div className="provider-quota-window-heading"><span>{label}</span><strong>{quota.usedPercent}% used</strong></div>
+  const tone = limitTone(quota.usedPercent);
+  const pace = pacePercent(quota.resetsAtMs, durationMins, now);
+  return <div className="provider-quota-window" data-tone={tone}>
+    <div className="provider-quota-window-heading"><span>{label}</span><strong>{quota.usedPercent}% used{TONE_NOTE[tone]}</strong></div>
     <div className="provider-quota-track" role="progressbar" aria-label={label}
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={fill} aria-valuetext={`${quota.usedPercent}% used`}>
       <span style={{ width: `${fill}%` }} data-over-limit={quota.usedPercent >= 100} />
+      {pace !== undefined && <i className="provider-quota-pace" style={{ left: `${pace}%` }} title={`Even use would be ${pace}% by now`} aria-hidden />}
     </div>
-    <p>{quota.resetsAtMs <= now ? "Reset time passed; awaiting a new report" : `Resets ${new Date(quota.resetsAtMs).toLocaleString()}`}</p>
+    <p>{resetText(quota.resetsAtMs, now)}</p>
   </div>;
 }
 
@@ -33,9 +40,10 @@ export function ProviderQuotaCard({ source, now, failed = false }: { source: Pro
     <p className="provider-quota-observed">As of <time dateTime={new Date(report.observedAtMs).toISOString()}>{new Date(report.observedAtMs).toLocaleString()}</time>
       {report.observedAtMs <= now && ` · ${ageMinutes === 0 ? "less than a minute ago" : `${ageMinutes} min ago`}`}</p>
     <div className="provider-quota-windows">
-      <QuotaWindow label={windowLabel} quota={report.window} now={now} />
-      <QuotaWindow label="Weekly window" quota={report.weekly} now={now} />
+      <QuotaWindow label={windowLabel} quota={report.window} durationMins={duration} now={now} />
+      <QuotaWindow label="Weekly window" quota={report.weekly} durationMins={WEEK_MINS} now={now} />
     </div>
+    <p className="provider-quota-legend">The tick on each bar is where even use across the window would be now.</p>
   </article>;
 }
 
@@ -106,15 +114,12 @@ export function ProviderQuota({ refreshNonce = 0 }: { refreshNonce?: number }) {
   const reports = snapshot?.reports ?? [];
   const selected = reports.find((source) => source.sessionId === selectedId) ?? reports[0];
 
-  return <section className="card provider-quotas" aria-label="Subscription usage">
-    <header className="provider-quotas-heading"><h3>Subscription usage</h3>
-      {available && <button className="ghost" type="button" disabled={loading} title="Read the latest cached observation; does not contact the provider" onClick={() => requestRefresh.current()}>Refresh report</button>}
-    </header>
-    <p className="muted">Observations from running native Muse sessions, separate from transcript tokens. Refresh rereads the latest report, not a live balance.</p>
-    {!available ? <p className="muted">Subscription reports are unavailable in this connection. Reopen with an updated desktop app.</p>
-      : loading && !snapshot ? <p role="status" className="muted">Reading reported usage…</p>
-      : !selected && !error ? <p className="muted">Not reported yet. Start a conversation with Muse Code and send a message; its subscription usage appears here once that session reports it.</p> : null}
-    {error && <p role="alert" className="settings-keybind-error">Could not read subscription reports: {error} Use Refresh report to retry. Previous values may be out of date.</p>}
+  return <section className="card provider-quotas" aria-label="Limits" aria-busy={loading}>
+    <header className="provider-quotas-heading"><h3>Limits</h3><span className="usage-source">Reported by running agents</span></header>
+    {!available ? <p className="muted">Limit reports are unavailable in this connection. Reopen with an updated desktop app.</p>
+      : loading && !snapshot ? <p role="status" className="muted">Reading reported limits…</p>
+      : !selected && !error ? <p className="muted">Not reported yet. Start a conversation with Muse Code and send a message; its limits appear here once that session reports them.</p> : null}
+    {error && <p role="alert" className="settings-keybind-error">Could not read limit reports: {error} Use Refresh to retry. Previous values may be out of date.</p>}
     {reports.length > 1 && <label className="provider-quota-select">Reported by conversation
       <select value={selected?.sessionId} onChange={(event) => setSelectedId(event.target.value)}>
         {reports.map((source) => <option key={source.sessionId} value={source.sessionId}>{source.title}</option>)}
@@ -123,5 +128,6 @@ export function ProviderQuota({ refreshNonce = 0 }: { refreshNonce?: number }) {
     </label>}
     {snapshot?.truncated && <p className="muted">Showing the latest 128 reported sources.</p>}
     {selected && <ProviderQuotaCard source={selected} now={now} failed={Boolean(error)} />}
+    <p className="provider-quota-others">A report is the agent's last observation, not a live balance. Other agents don't report limits to Capsule; when a turn stops on one, its conversation says when it resets.</p>
   </section>;
 }

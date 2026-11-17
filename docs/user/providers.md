@@ -24,17 +24,17 @@ Some direct agents report context occupancy and per-turn token counts. The
 context meter uses the latest occupancy snapshot, not a sum of repeated reports.
 Expand **Agent-reported usage** in the run log for reported turn tokens and any
 reported cumulative session cost. These are separate measures and are not added
-to the Usage page's transcript estimates. Missing values remain **not reported**.
+to the Usage page's transcript totals. Missing values remain **not reported**.
 Gateway sessions continue to use the information that route actually carries.
 
-Open the compact **Turn details** disclosure beneath a reply for the run log
-and verification. A completed reply does not mean checks passed: expand
-**Verification** to see the evidence. Failed or stale checks remain labelled
-beside the disclosure. Long event pages scroll without expanding the entire chat.
+The run log and verification sit at the foot of a turn's **Worked for…** fold.
+A turn that failed keeps them in its own **Turn details** row. A completed reply
+does not mean checks passed: expand **Verification** to see the evidence. Long
+event pages scroll without expanding the entire chat.
 
 ### Subscription observations
 
-**Usage → Subscription usage** shows the latest allowance reported by a running
+**Usage → Limits** shows the latest allowance reported by a running
 native Muse session: its plan, current window, weekly window and reset times.
 This is separate from transcript tokens and cost. Missing data means **Not
 reported**, not unused allowance. Old observations, clock differences and reset
@@ -43,19 +43,19 @@ balance. Values above 100% remain visible.
 
 When several conversations report usage, choose the source conversation. Their
 accounts may differ, so Capsule never adds their allowances together. Closing
-the source removes its report. **Refresh report** rereads the cached observation;
+the source removes its report. **Refresh** at the top of Usage rereads the cached observation;
 it does not start an agent or contact a provider. Failed reads preserve the last
-observation with a warning and a retry button. Paired read-only devices can view
+observation with a warning until Refresh succeeds. Paired read-only devices can view
 these reports too.
 
 ## Installed agents
 
 Capsule drives coding CLIs that are already installed and signed in on the
-machine running the selected route. New installations default to **Direct · local
-agents**, which needs no Gateway. Gateway-backed agents and messaging channels
+machine running the selected route. New installations run agents on **This
+computer**, which needs no Gateway. Gateway-backed agents and messaging channels
 remain optional. Saved route preferences and existing conversations are not
-migrated: change the default under **Settings → Agents → Runtime** for new
-conversations. In Direct mode startup does not attempt a Gateway connection;
+migrated: change the default under **Settings → Agents → New conversations →
+Advanced → Where agents run** for new conversations. In Direct mode startup does not attempt a Gateway connection;
 use **Settings → Gateway** to connect explicitly when needed.
 Capsule never resells tokens. It installs or signs in an agent only when you
 ask it to; see [Installing and signing in](#installing-and-signing-in).
@@ -195,7 +195,7 @@ empty reply.
 
 ## Choose and check a harness
 
-Open **Agents** from the agent picker or type `/runtimes`. The catalog puts
+Open **Agents** from the agent picker or the command palette. The catalog puts
 installed agents first. Select one to see its readiness, run **Check this
 agent**, make it the default for the current project, or start a persistent or
 one-turn session.
@@ -208,8 +208,8 @@ The project folder and session lifetime are set once in the bar above the
 catalog. An open session appears in the selected agent's detail panel, where
 you can refresh status, cancel the current turn, or close it. Gateway sessions
 can request supported model, permission, timeout and mode changes. Direct
-sessions expose **Agent settings** inside Capabilities in both the composer and
-Agents. Selectors and switches use the exact IDs and choices reported by the
+sessions expose **Agent settings** inside Capabilities in Agents, and the
+composer's model panel offers the agent's effort levels and permission modes. Selectors and switches use the exact IDs and choices reported by the
 agent, and wait for its acknowledgement. Model choices require a reported model
 selector. Capsule's permission profiles are not automatically mapped to the
 agent's own policy controls; read the setting description before changing it.

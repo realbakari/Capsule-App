@@ -27,3 +27,14 @@ it("keeps exact percentages in text and accessibility while clamping the visual 
   expect(html).toContain("Source thread");
   expect(html).toContain("5-hour window");
 });
+
+it("marks a window near its limit in words and colour, with the even-use tick inside the window", () => {
+  const near: ProviderSubscriptionUsage = { ...report, window: { usedPercent: 84, resetsAtMs: now + 125 * 60_000, windowDurationMins: 300 },
+    weekly: { usedPercent: 41, resetsAtMs: now + 3 * 86_400_000 } };
+  const html = renderToStaticMarkup(createElement(ProviderQuotaCard, { source: { sessionId: "one", title: "Source thread", report: near }, now }));
+  expect(html).toContain("84% used · near limit");
+  expect(html).toContain('data-tone="near"');
+  expect(html).toContain("Resets in 2h 05m");
+  expect(html).toContain("left:58%");
+  expect(html).not.toContain("41% used ·");
+});

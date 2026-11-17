@@ -1417,9 +1417,9 @@ window.runRendererRegressions = async () => {
     localStorage.setItem("capsule.sidebarGrouping", "project");
     previewRoot ??= createRoot(host);
     previewRoot.render(surface === "sidebar" ? <div className="app" style={{ height: "100vh" }}><Sidebar key={`${surface}-${theme}`} /></div>
-      : surface === "quota" ? <ProviderQuota /> : <RuntimeModeCard settings={DEFAULT_CAPSULE_SETTINGS} onPatch={() => {}} />);
+      : surface === "quota" ? <ProviderQuota /> : <div className="card"><RuntimeModeRow settings={DEFAULT_CAPSULE_SETTINGS} onPatch={() => {}} /></div>);
     await until(() => surface === "sidebar" ? document.querySelector(".sidebar")
-      : surface === "quota" ? document.querySelector(".provider-quota-card") : document.querySelector(".runtime-modes"));
+      : surface === "quota" ? document.querySelector(".provider-quota-card") : document.querySelector('select[aria-label="Where agents run"]'));
     await new Promise((resolve) => setTimeout(resolve, 150));
   };
   window.runDiffPreviewRegressions = async () => {
