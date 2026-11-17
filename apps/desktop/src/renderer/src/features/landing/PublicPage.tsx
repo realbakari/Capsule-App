@@ -65,14 +65,14 @@ function Updates() {
     <article className="site-release">
       <aside><span className="site-release-version">{RELEASE}</span><time dateTime={RELEASE_DATE}>November 17, 2026</time></aside>
       <div>
-        <h2>Pair your phone, set up agents inside Capsule, and review pull requests from the sidebar</h2>
+        <h2>A calmer conversation, one model picker, and panels that only show what you can use</h2>
         <ul>
-          <li>Pair a phone or tablet by scanning a QR code. The connection is encrypted, and you choose whether a device can only read or can also control conversations.</li>
-          <li>Install a coding agent, sign in and finish its setup without leaving Capsule.</li>
-          <li>Each project lists its open pull requests. Open one in Review, then hand its failing checks or review comments back to the agent.</li>
-          <li>A finished turn keeps its plan as a checklist under the prompt.</li>
-          <li>Stuck turns and approvals settle on their own, errors say what happened and what to do, and a follow-up is sent once.</li>
-          <li>The agent can ask for browser control where it was refused, notifications are one setting, and menus open from the button you pressed.</li>
+          <li>A finished turn folds its work under one "Worked for" row, so the answer stands on its own. Long prompts fold, and a turn rail beside long threads jumps to any prompt.</li>
+          <li>The composer has one model pill with a reasoning column and permissions, and Send queues a follow-up while a turn runs.</li>
+          <li>Find highlights every match, links can open in your browser, and a turn that ignores Stop offers Force stop.</li>
+          <li>Files shows real file icons, the terminal has readable colours and numbered tabs, and Review switches between unified, split and wrapped diffs.</li>
+          <li>Settings, the sidebar, the command palette and keyboard shortcuts were reworked, and shortcuts now work on every keyboard layout.</li>
+          <li>Notifications follow one rule, updates live in one sidebar button, first run is one page, the companion moves like a character, and Usage leads with your limits.</li>
         </ul>
         <p className="site-fine">Existing projects, threads and settings carry over. The macOS app is signed and notarized; the Windows build is an unsigned preview.</p>
         <div className="site-release-links"><a className="site-text-link" href={RELEASE_URL}>Full release notes and checksums<Arrow external /></a><a className="site-text-link" href={`${DOCS}/updating.md`}>Updating Capsule<Arrow external /></a></div>

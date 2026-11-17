@@ -2,7 +2,7 @@
 export const SITE = "https://cpcl.dev";
 export const REPO = "https://github.com/realbakari/Capsule-App";
 export const DOCS = `${REPO}/blob/main/docs/user`;
-export const RELEASE = "0.13.0";
+export const RELEASE = "0.14.0";
 export const RELEASE_DATE = "2026-11-17";
 export const RELEASE_URL = `${REPO}/releases/tag/v${RELEASE}`;
 export const ASSETS = `${REPO}/releases/download/v${RELEASE}`;
