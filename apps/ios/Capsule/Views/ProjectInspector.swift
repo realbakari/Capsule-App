@@ -99,7 +99,7 @@ struct GitChangesView: View {
                             IconTile(symbol: "arrow.triangle.branch", tint: .textSecondary, size: 30)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(status.branch ?? String(localized: "Detached")).font(.body.weight(.medium).monospaced())
-                                Text(syncLine(status)).font(.caption).foregroundStyle(Color.textMuted)
+                                Text(syncLine(status)).font(.subheadline).foregroundStyle(Color.textMuted)
                             }
                             Spacer()
                             if status.changed > 0 {
@@ -116,16 +116,32 @@ struct GitChangesView: View {
                         }
                         .listRowBackground(Color.card)
                     } else {
-                        Section(status.files.count == 1 ? String(localized: "1 changed file") : String(localized: "\(status.files.count) changed files")) {
-                            ForEach(status.files) { change in
-                                NavigationLink {
-                                    WorkingTreePatchView(projectID: projectID, threadID: threadID, path: change.path)
-                                } label: {
-                                    ChangeRow(change: change)
+                        let grouping = FolderGrouping(status.files, path: \.path)
+                        ForEach(grouping.groups) { group in
+                            Section {
+                                ForEach(group.files) { change in
+                                    NavigationLink {
+                                        WorkingTreePatchView(projectID: projectID, threadID: threadID, path: change.path)
+                                    } label: {
+                                        ChangedFileRow(path: change.path, status: ChangeStatus(git: change.code), added: change.added, removed: change.removed)
+                                    }
+                                }
+                            } header: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if group.id == grouping.groups.first?.id {
+                                        Text(status.files.count == 1 ? String(localized: "1 changed file") : String(localized: "\(status.files.count) changed files"))
+                                        if !grouping.common.isEmpty {
+                                            Text(grouping.common).font(.caption.monospaced()).foregroundStyle(Color.textMuted)
+                                                .lineLimit(1).truncationMode(.middle).textCase(nil)
+                                        }
+                                    }
+                                    if grouping.groups.count > 1 || !group.folder.isEmpty {
+                                        FolderHeader(folder: group.folder.isEmpty ? String(localized: "Top level") : group.folder)
+                                    }
                                 }
                             }
+                            .listRowBackground(Color.card)
                         }
-                        .listRowBackground(Color.card)
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -139,51 +155,6 @@ struct GitChangesView: View {
         if let behind = status.behind, behind > 0 { parts.append(String(localized: "\(behind) behind")) }
         if parts.isEmpty { parts.append(status.dirty ? String(localized: "Uncommitted changes") : String(localized: "Up to date")) }
         return parts.joined(separator: " · ")
-    }
-}
-
-private struct ChangeRow: View {
-    let change: GitChange
-
-    var body: some View {
-        HStack(spacing: 12) {
-            IconTile(symbol: Icons.file(change.path), tint: .textSecondary, size: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                Text((change.path as NSString).lastPathComponent).font(.body)
-                let folder = (change.path as NSString).deletingLastPathComponent
-                if !folder.isEmpty {
-                    Text(folder).font(.caption).foregroundStyle(Color.textMuted).lineLimit(1).truncationMode(.head)
-                }
-            }
-            Spacer()
-            Text(label)
-                .font(.caption2.weight(.semibold).monospaced())
-                .foregroundStyle(tint)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(tint.opacity(0.12), in: .rect(cornerRadius: 4))
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(change.path), \(spoken)"))
-    }
-
-    private var code: String { change.code.trimmingCharacters(in: .whitespaces) }
-    private var label: String { code == "??" ? "U" : String(code.prefix(1)) }
-    private var tint: Color {
-        switch label {
-        case "A", "U": .success
-        case "D": .failure
-        default: .attention
-        }
-    }
-    private var spoken: String {
-        switch label {
-        case "A": String(localized: "added")
-        case "U": String(localized: "untracked")
-        case "D": String(localized: "deleted")
-        case "R": String(localized: "renamed")
-        default: String(localized: "modified")
-        }
     }
 }
 
@@ -207,6 +178,7 @@ struct WorkingTreePatchView: View {
         }
         .background(Color.screen)
         .navigationTitle((path as NSString).lastPathComponent)
+        .navigationSubtitle((path as NSString).deletingLastPathComponent)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -233,11 +205,11 @@ struct FilesRoot: View {
                             FilePreviewView(projectID: projectID, path: entry.path, threadID: threadID)
                         } label: {
                             HStack(spacing: 12) {
-                                IconTile(symbol: Icons.file(entry.name), tint: .textMuted, size: 28)
+                                FileGlyph(path: entry.name, size: 28)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(entry.name).font(.body)
                                     let folder = (entry.path as NSString).deletingLastPathComponent
-                                    if !folder.isEmpty { Text(folder).font(.caption).foregroundStyle(Color.textMuted).lineLimit(1).truncationMode(.head) }
+                                    if !folder.isEmpty { Text(folder).font(.subheadline).foregroundStyle(Color.textMuted).lineLimit(1).truncationMode(.head) }
                                 }
                             }
                         }
@@ -284,8 +256,11 @@ struct FolderView: View {
                         }
                     } label: {
                         HStack(spacing: 12) {
-                            IconTile(symbol: entry.isDirectory ? "folder.fill" : Icons.file(entry.name),
-                                     tint: entry.isDirectory ? .textSecondary : .textMuted, size: 28)
+                            if entry.isDirectory {
+                                IconTile(symbol: "folder.fill", tint: .textSecondary, size: 28)
+                            } else {
+                                FileGlyph(path: entry.name, size: 28)
+                            }
                             Text(entry.name).font(.body)
                         }
                     }
@@ -304,6 +279,8 @@ struct FilePreviewView: View {
     let projectID: String
     let path: String
     var threadID: String? = nil
+    /// The line a reply pointed at; the code view opens there.
+    var line: Int? = nil
     @State private var rendered = true
 
     private var isMarkdown: Bool { ["md", "mdx", "markdown"].contains((path as NSString).pathExtension.lowercased()) }
@@ -320,7 +297,7 @@ struct FilePreviewView: View {
                     ContentUnavailableView("Can't show this image", systemImage: "photo")
                 }
             case "text":
-                if isMarkdown && rendered {
+                if isMarkdown && rendered && line == nil {
                     ScrollView {
                         MarkdownView(text: preview.contents ?? "")
                             .modifier(ReadingFont())
@@ -329,7 +306,7 @@ struct FilePreviewView: View {
                             .frame(maxWidth: .infinity)
                     }
                 } else {
-                    CodeFileView(text: preview.contents ?? "", truncated: preview.truncated, path: path)
+                    CodeFileView(text: preview.contents ?? "", truncated: preview.truncated, path: path, target: line)
                 }
             default:
                 ContentUnavailableView("Binary file", systemImage: "doc",
@@ -365,11 +342,14 @@ private struct CodeFileView: View {
     let text: String
     let truncated: Bool
     var path = ""
+    /// One-based; highlighted and scrolled to.
+    var target: Int? = nil
     @State private var viewport: CGFloat = 0
 
     var body: some View {
         let lines = text.components(separatedBy: "\n")
-        ScrollView([.vertical, .horizontal]) {
+        ScrollViewReader { reader in
+            ScrollView([.vertical, .horizontal]) {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                     HStack(alignment: .top, spacing: 0) {
@@ -385,6 +365,8 @@ private struct CodeFileView: View {
                     }
                     .font(.footnote.monospaced())
                     .padding(.vertical, 1)
+                    .background(target == index + 1 ? Color.attention.opacity(0.14) : Color.clear)
+                    .id(index + 1)
                 }
                 if truncated {
                     Text("The rest of this file is on your computer.")
@@ -399,6 +381,13 @@ private struct CodeFileView: View {
         }
         .defaultScrollAnchor(.topLeading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
+        .task {
+            // Only a line the preview holds: a truncated file may stop before it.
+            guard let target, target <= lines.count else { return }
+            try? await Task.sleep(for: .milliseconds(100))
+            reader.scrollTo(target, anchor: UnitPoint(x: 0, y: 0.3))
+        }
+        }
     }
 }
 
@@ -440,9 +429,9 @@ private struct PullRequestRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(pr.title).font(.body).foregroundStyle(Color.textPrimary).lineLimit(2)
                 HStack(spacing: 6) {
-                    Text(verbatim: "#\(pr.number)").font(.caption.monospacedDigit())
-                    if let author = pr.author { Text(author).font(.caption) }
-                    if let branch = pr.headRefName { Text(branch).font(.caption.monospaced()).lineLimit(1) }
+                    Text(verbatim: "#\(pr.number)").font(.subheadline.monospacedDigit())
+                    if let author = pr.author { Text(author).font(.subheadline) }
+                    if let branch = pr.headRefName { Text(branch).font(.subheadline.monospaced()).lineLimit(1) }
                 }
                 .foregroundStyle(Color.textMuted)
             }

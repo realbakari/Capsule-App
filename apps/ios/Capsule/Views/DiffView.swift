@@ -2,20 +2,39 @@ import SwiftUI
 
 /*
  * What a turn changed, from the checkpoints the computer saved when it
- * finished. Files first, with counts; each opens into its own patch so a big
- * change never has to be laid out at once.
+ * finished. Files are grouped by folder, each opening into its own patch so a
+ * big change never has to be laid out at once; from a patch, the up and down
+ * arrows walk the list in the same order. "Viewed" marks are kept per turn.
+ * The title menu switches to an earlier turn or to the uncommitted changes.
  */
 struct DiffView: View {
     @Environment(Workspace.self) private var workspace
     @Environment(\.dismiss) private var dismiss
-    let runID: String
+    /// The thread's finished turns that saved a checkpoint, newest first.
+    let turns: [Run]
     /// The thread to ask in, when lines can be asked about.
     var threadID: String? = nil
     /// Set when shown as an inspector column, which `dismiss` doesn't close.
     var close: (() -> Void)? = nil
+    @State private var scope: ChangesScope
     @State private var diff: TurnDiff?
-    @State private var path: [String] = []
+    @State private var path: [ChangesRoute] = []
     @State private var error: String?
+    @State private var marks = ViewedMarks.load()
+    @State private var query = ""
+    @AppStorage("diff.hideViewed") private var hideViewed = false
+
+    init(runID: String, turns: [Run] = [], threadID: String? = nil, close: (() -> Void)? = nil) {
+        self.turns = turns
+        self.threadID = threadID
+        self.close = close
+        _scope = State(initialValue: .turn(runID))
+    }
+
+    private var runID: String {
+        if case .turn(let id) = scope { return id }
+        return ""
+    }
 
     private var askHandler: ((String) -> Void)? {
         guard let threadID, workspace.canControl else { return nil }
@@ -25,6 +44,21 @@ struct DiffView: View {
         }
     }
 
+    private var projectID: String? { threadID.flatMap { workspace.thread($0)?.projectId } }
+
+    /// Every file in the order the list shows them, which is the order the arrows step through.
+    private var ordered: [TurnDiff.File] { FolderGrouping(diff?.files ?? [], path: \.path).files }
+
+    private var comments: Binding<[ReviewComment]> {
+        Binding(get: { threadID.flatMap { workspace.reviewComments[$0] } ?? [] },
+                set: { if let threadID { workspace.reviewComments[threadID] = $0.isEmpty ? nil : $0 } })
+    }
+
+    private var actions: ChangeActions {
+        ChangeActions(runID: runID, ask: askHandler, canOpen: projectID != nil,
+                      open: { path.append(.file($0)) }, marks: $marks, comments: comments)
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             content
@@ -32,19 +66,81 @@ struct DiffView: View {
                 .background(Color.screen)
                 .scrollContentBackground(.hidden)
                 .navigationTitle("Changes")
+                .navigationSubtitle(scopeTitle(scope))
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) { Button("Done") { if let close { close() } else { dismiss() } }.keyboardShortcut(.cancelAction) }
-                }
-                .navigationDestination(for: String.self) { path in
-                    FilePatchView(runID: runID, path: path, ask: askHandler)
+                .toolbar { listToolbar }
+                .toolbarTitleMenu { scopeMenu }
+                .safeAreaInset(edge: .bottom, spacing: 0) { CommentsBar(actions: actions) }
+                .navigationDestination(for: ChangesRoute.self) { route in
+                    switch route {
+                    case .patch(let start):
+                        TurnFilePager(files: ordered, start: start, actions: actions)
+                    case .file(let file):
+                        if let projectID { FilePreviewView(projectID: projectID, path: file, threadID: threadID) }
+                    }
                 }
         }
-        .task { await load() }
+        .task(id: scope) { await load() }
+        .onChange(of: marks) { _, marks in marks.save() }
+    }
+
+    @ViewBuilder private var scopeMenu: some View {
+        if turns.count > 1 || projectID != nil {
+            Picker("Changes", selection: $scope) {
+                Section("Turns") {
+                    ForEach(turns) { run in
+                        Text(turnTitle(run)).tag(ChangesScope.turn(run.id))
+                    }
+                }
+                if projectID != nil {
+                    Text("Uncommitted changes").tag(ChangesScope.workingTree)
+                }
+            }
+        }
+    }
+
+    private func scopeTitle(_ scope: ChangesScope) -> String {
+        switch scope {
+        case .workingTree: return String(localized: "Uncommitted changes")
+        case .turn(let id):
+            guard let index = turns.firstIndex(where: { $0.id == id }) else { return String(localized: "This turn") }
+            if index == 0 { return String(localized: "Latest turn") }
+            return Timestamp.date(turns[index].createdAt).map { String(localized: "Turn from \(TurnLabel.stamp($0))") } ?? String(localized: "Earlier turn")
+        }
+    }
+
+    /// "2:14 PM · Fix the login redirect", from the turn's prompt.
+    private func turnTitle(_ run: Run) -> String {
+        let prompt = (run.prompt ?? "").split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let short = prompt.count > 44 ? String(prompt.prefix(43)) + "…" : prompt
+        let stamp = Timestamp.date(run.createdAt).map { TurnLabel.stamp($0) } ?? ""
+        return [stamp, short].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    @ToolbarContentBuilder private var listToolbar: some ToolbarContent {
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Done") { if let close { close() } else { dismiss() } }.keyboardShortcut(.cancelAction)
+        }
+        if scope != .workingTree, let files = diff?.files, !files.isEmpty {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    Toggle("Hide viewed files", systemImage: "eye.slash", isOn: $hideViewed)
+                    Divider()
+                    Button("Mark all as viewed", systemImage: "checkmark.circle") { marks.set(true, files, in: runID) }
+                        .disabled(marks.unviewedCount(files, in: runID) == 0)
+                    Button("Mark all as unviewed", systemImage: "circle") { marks.set(false, files, in: runID) }
+                        .disabled(marks.unviewedCount(files, in: runID) == files.count)
+                } label: {
+                    Label("Filter", systemImage: hideViewed ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                }
+            }
+        }
     }
 
     @ViewBuilder private var content: some View {
-        if let error {
+        if scope == .workingTree, let projectID {
+            GitChangesView(projectID: projectID, threadID: threadID)
+        } else if let error {
             ContentUnavailableView("Couldn't load changes", systemImage: "exclamationmark.triangle", description: Text(error))
         } else if let diff {
             if diff.available == false {
@@ -53,31 +149,8 @@ struct DiffView: View {
             } else if diff.files.isEmpty {
                 ContentUnavailableView("No file changes", systemImage: "checkmark.circle", description: Text("This turn didn't change any files."))
             } else {
-                List {
-                    Section {
-                        ForEach(diff.files) { file in
-                            NavigationLink(value: file.path) {
-                                FileSummaryRow(file: file)
-                            }
-                        }
-                    } header: {
-                        let added = diff.files.reduce(0) { $0 + ($1.added ?? 0) }
-                        let removed = diff.files.reduce(0) { $0 + ($1.removed ?? 0) }
-                        HStack(spacing: 8) {
-                            Text(diff.files.count == 1 ? String(localized: "1 file") : String(localized: "\(diff.files.count) files"))
-                            Spacer()
-                            Text("+\(added)").foregroundStyle(Color.success)
-                            Text("−\(removed)").foregroundStyle(Color.failure)
-                            ChangeBar(added: added, removed: removed)
-                        }
-                        .font(.footnote.weight(.medium).monospacedDigit())
-                        .textCase(nil)
-                    } footer: {
-                        if diff.filesTruncated == true || diff.patchTruncated == true {
-                            Text("This change is large; some files are shown on your computer only.")
-                        }
-                    }
-                }
+                ChangesList(diff: diff, actions: actions, query: query, hideViewed: $hideViewed)
+                    .modifier(SearchWhenLong(count: diff.files.count, query: $query))
             }
         } else {
             ProgressView()
@@ -85,13 +158,16 @@ struct DiffView: View {
     }
 
     private func load() async {
+        guard case .turn(let runID) = scope else { return }
+        diff = nil
+        error = nil
         do {
             diff = try await workspace.turnDiffSummary(runID: runID)
             #if DEBUG
             if !DebugLaunch.diffFileShown, let file = UserDefaults.standard.string(forKey: "CapsuleDiffFile"),
                let match = diff?.files.first(where: { $0.path.hasSuffix(file) }) {
                 DebugLaunch.diffFileShown = true
-                path = [match.path]
+                path = [.patch(match.path)]
             }
             #endif
         } catch {
@@ -100,48 +176,298 @@ struct DiffView: View {
     }
 }
 
-private struct FileSummaryRow: View {
-    let file: TurnDiff.File
+enum ChangesScope: Hashable {
+    case turn(String)
+    case workingTree
+}
 
-    var body: some View {
-        HStack(spacing: 12) {
-            IconTile(symbol: Icons.file(file.path), tint: .textSecondary, size: 30, background: .subtle)
-                .overlay(alignment: .bottomTrailing) {
-                    if file.status == "added" || file.status == "deleted" {
-                        Image(systemName: file.status == "added" ? "plus.circle.fill" : "minus.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(file.status == "added" ? Color.success : Color.failure)
-                            .background(Circle().fill(Color.card))
-                            .offset(x: 4, y: 4)
-                    }
-                }
-            VStack(alignment: .leading, spacing: 2) {
-                Text((file.path as NSString).lastPathComponent).font(.body.weight(.medium)).foregroundStyle(Color.textPrimary)
-                let folder = (file.path as NSString).deletingLastPathComponent
-                if !folder.isEmpty {
-                    Text(folder).font(.caption).foregroundStyle(Color.textMuted).lineLimit(1).truncationMode(.head)
-                }
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                HStack(spacing: 6) {
-                    if let added = file.added { Text("+\(added)").foregroundStyle(Color.success) }
-                    if let removed = file.removed, removed > 0 || (file.added ?? 0) == 0 { Text("−\(removed)").foregroundStyle(Color.failure) }
-                }
-                .font(.caption.monospacedDigit().weight(.medium))
-                ChangeBar(added: file.added ?? 0, removed: file.removed ?? 0)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(file.path), \(file.added ?? 0) lines added, \(file.removed ?? 0) removed"))
+enum ChangesRoute: Hashable {
+    case patch(String)
+    case file(String)
+}
+
+/// What a file in a turn's changes can do, shared by the list and the patch.
+struct ChangeActions {
+    let runID: String
+    let ask: ((String) -> Void)?
+    let canOpen: Bool
+    let open: (String) -> Void
+    @Binding var marks: ViewedMarks
+    @Binding var comments: [ReviewComment]
+
+    /// Notes on one file's lines; only where lines can be asked about, since that's where they go.
+    func notes(_ path: String) -> ReviewNotes? {
+        guard ask != nil else { return nil }
+        let binding = $comments
+        return ReviewNotes(comments: comments.filter { $0.path == path },
+                           add: { binding.wrappedValue.append($0) },
+                           remove: { id in binding.wrappedValue.removeAll { $0.id == id } })
+    }
+
+    /// Sends every note to the message box as one block.
+    func sendComments() {
+        guard let ask, !comments.isEmpty else { return }
+        ask(ReviewComment.block(comments))
+        comments = []
+        Haptics.success()
+    }
+
+    func isViewed(_ file: TurnDiff.File) -> Bool { marks.isViewed(file, in: runID) }
+    func toggleViewed(_ file: TurnDiff.File) {
+        marks.set(!isViewed(file), [file], in: runID)
+        Haptics.selection()
     }
 }
 
-struct FilePatchView: View {
+/// A search field once a turn changes enough files to look for one.
+private struct SearchWhenLong: ViewModifier {
+    let count: Int
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if count > 8 {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text("Filter files"))
+        } else {
+            content
+        }
+    }
+}
+
+private struct ChangesList: View {
+    let diff: TurnDiff
+    let actions: ChangeActions
+    let query: String
+    @Binding var hideViewed: Bool
+
+    private var visible: [TurnDiff.File] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return diff.files.filter { file in
+            (q.isEmpty || file.path.localizedCaseInsensitiveContains(q)) && !(hideViewed && actions.isViewed(file))
+        }
+    }
+
+    var body: some View {
+        let grouping = FolderGrouping(visible, path: \.path)
+        // One folder needs no header: the summary already names it.
+        let showFolders = grouping.groups.count > 1 || grouping.groups.first?.folder.isEmpty == false
+        List {
+            Section {
+                EmptyView()
+            } header: {
+                ChangesSummary(diff: diff, actions: actions, common: FolderGrouping(diff.files, path: \.path).common)
+            } footer: {
+                if diff.filesTruncated == true || diff.patchTruncated == true {
+                    Text("This change is large; some files are shown on your computer only.")
+                }
+            }
+            ForEach(grouping.groups) { group in
+                Section {
+                    ForEach(group.files) { file in
+                        ChangeListRow(file: file, actions: actions)
+                    }
+                } header: {
+                    if showFolders { FolderHeader(folder: group.folder.isEmpty ? String(localized: "Top level") : group.folder) }
+                }
+            }
+        }
+        .listSectionSpacing(.compact)
+        .overlay { emptyFilter(grouping.groups.isEmpty) }
+    }
+
+    @ViewBuilder private func emptyFilter(_ empty: Bool) -> some View {
+        if empty && !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            ContentUnavailableView.search(text: query)
+        } else if empty {
+            ContentUnavailableView {
+                Label("All files viewed", systemImage: "checkmark.circle")
+            } actions: {
+                Button("Show viewed files") { hideViewed = false }
+            }
+        }
+    }
+}
+
+/// "12 files · 5 unviewed", the turn's line counts, and the folder they share.
+private struct ChangesSummary: View {
+    let diff: TurnDiff
+    let actions: ChangeActions
+    let common: String
+
+    var body: some View {
+        let added = diff.files.reduce(0) { $0 + ($1.added ?? 0) }
+        let removed = diff.files.reduce(0) { $0 + ($1.removed ?? 0) }
+        let unviewed = actions.marks.unviewedCount(diff.files, in: actions.runID)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(countLine(unviewed))
+                    .foregroundStyle(Color.textSecondary)
+                Spacer(minLength: 8)
+                LineCounts(added: added, removed: removed)
+                ChangeBar(added: added, removed: removed)
+            }
+            .font(.footnote.weight(.medium).monospacedDigit())
+            if !common.isEmpty {
+                Text(common)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Color.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .textCase(nil)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func countLine(_ unviewed: Int) -> String {
+        let files = diff.files.count == 1 ? String(localized: "1 file") : String(localized: "\(diff.files.count) files")
+        if unviewed == 0 { return String(localized: "\(files) · all viewed") }
+        if unviewed == diff.files.count { return files }
+        return String(localized: "\(files) · \(unviewed) unviewed")
+    }
+}
+
+private struct ChangeListRow: View {
+    let file: TurnDiff.File
+    let actions: ChangeActions
+
+    var body: some View {
+        let viewed = actions.isViewed(file)
+        NavigationLink(value: ChangesRoute.patch(file.path)) {
+            ChangedFileRow(path: file.path, status: ChangeStatus(turn: file.status), added: file.added, removed: file.removed, viewed: viewed)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button { actions.toggleViewed(file) } label: {
+                Label(viewed ? "Unviewed" : "Viewed", systemImage: viewed ? "circle" : "checkmark.circle")
+            }
+            .tint(viewed ? .gray : .success)
+        }
+        .contextMenu {
+            ChangeFileMenu(file: file, actions: actions)
+        }
+    }
+}
+
+/// The file's own actions, in a row's context menu and the patch's toolbar.
+struct ChangeFileMenu: View {
+    let file: TurnDiff.File
+    let actions: ChangeActions
+
+    var body: some View {
+        let viewed = actions.isViewed(file)
+        Button(viewed ? "Mark as unviewed" : "Mark as viewed", systemImage: viewed ? "circle" : "checkmark.circle") {
+            actions.toggleViewed(file)
+        }
+        if let ask = actions.ask {
+            Button("Ask about this file", systemImage: "text.bubble") { ask("`\(file.path)` "); Haptics.success() }
+        }
+        if actions.canOpen && ChangeStatus(turn: file.status) != .deleted {
+            Button("Open file", systemImage: "doc.text") { actions.open(file.path) }
+        }
+        Button("Copy path", systemImage: "doc.on.doc") { UIPasteboard.general.string = file.path; Haptics.tap() }
+    }
+}
+
+/*
+ * One file's patch, with the arrows to the previous and next file in the
+ * list. Stays one screen while stepping, so Back returns to the list rather
+ * than through every file seen.
+ */
+private struct TurnFilePager: View {
+    @Environment(Workspace.self) private var workspace
+    let files: [TurnDiff.File]
+    let actions: ChangeActions
+    @State private var current: String
+    @AppStorage("diff.ignoreWhitespace") private var ignoreWhitespace = false
+
+    init(files: [TurnDiff.File], start: String, actions: ChangeActions) {
+        self.files = files
+        self.actions = actions
+        _current = State(initialValue: start)
+    }
+
+    private var index: Int? { files.firstIndex { $0.path == current } }
+    private var file: TurnDiff.File { index.map { files[$0] } ?? TurnDiff.File(path: current) }
+
+    var body: some View {
+        TurnFilePatch(runID: actions.runID, path: current, ignoreWhitespace: ignoreWhitespace, ask: actions.ask, notes: actions.notes(current))
+            .id(current + (ignoreWhitespace ? "\u{0}w" : ""))
+            .safeAreaInset(edge: .top, spacing: 0) {
+                FileHeaderBar(file: file, position: index.map { ($0 + 1, files.count) }, actions: actions)
+            }
+            .background(Color.screen)
+            .navigationTitle((current as NSString).lastPathComponent)
+            .navigationSubtitle((current as NSString).deletingLastPathComponent)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { pagerToolbar }
+    }
+
+    @ToolbarContentBuilder private var pagerToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button { step(-1) } label: { Label("Previous file", systemImage: "chevron.up") }
+                .disabled((index ?? 0) == 0)
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            Button { step(1) } label: { Label("Next file", systemImage: "chevron.down") }
+                .disabled(index.map { $0 >= files.count - 1 } ?? true)
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+        }
+        ToolbarItemGroup(placement: .secondaryAction) {
+            Toggle("Hide whitespace changes", systemImage: "space", isOn: $ignoreWhitespace)
+            ChangeFileMenu(file: file, actions: actions)
+            if !actions.comments.isEmpty {
+                Button(actions.comments.count == 1 ? String(localized: "Add 1 comment to message") : String(localized: "Add \(actions.comments.count) comments to message"),
+                       systemImage: "text.bubble") { actions.sendComments() }
+            }
+        }
+    }
+
+    private func step(_ delta: Int) {
+        guard let index, files.indices.contains(index + delta) else { return }
+        current = files[index + delta].path
+        Haptics.selection()
+    }
+}
+
+/// Under the title: how the file changed, where it sits in the list, and Viewed.
+private struct FileHeaderBar: View {
+    let file: TurnDiff.File
+    let position: (Int, Int)?
+    let actions: ChangeActions
+
+    var body: some View {
+        let status = ChangeStatus(turn: file.status)
+        let viewed = actions.isViewed(file)
+        HStack(spacing: 10) {
+            Text(status.spoken.capitalized(with: .current))
+                .foregroundStyle(status == .modified ? Color.textSecondary : StatusLetter.tint(status))
+            LineCounts(added: file.added, removed: file.removed)
+            Spacer(minLength: 8)
+            if let position, position.1 > 1 {
+                Text("\(position.0) of \(position.1)").foregroundStyle(Color.textMuted).monospacedDigit()
+            }
+            Button { actions.toggleViewed(file) } label: {
+                Label("Viewed", systemImage: viewed ? "checkmark.square.fill" : "square")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(viewed ? Color.textPrimary : Color.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(viewed ? Text("On") : Text("Off"))
+        }
+        .font(.footnote.weight(.medium))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.hairline).frame(height: 0.5) }
+    }
+}
+
+/// Loads one file's patch from the turn and shows it.
+private struct TurnFilePatch: View {
     @Environment(Workspace.self) private var workspace
     let runID: String
     let path: String
+    let ignoreWhitespace: Bool
     var ask: ((String) -> Void)? = nil
+    var notes: ReviewNotes? = nil
     @State private var file: UnifiedDiff.FilePatch?
     @State private var truncated = false
     @State private var error: String?
@@ -154,222 +480,27 @@ struct FilePatchView: View {
                 if file.isBinary {
                     ContentUnavailableView("Binary file", systemImage: "doc", description: Text("Binary changes can't be shown as text."))
                 } else if file.lines.isEmpty {
-                    ContentUnavailableView("No line changes", systemImage: "doc.text", description: Text("Only the file's mode or name changed."))
+                    ContentUnavailableView(ignoreWhitespace ? "Only whitespace changed" : "No line changes", systemImage: "doc.text",
+                                           description: ignoreWhitespace ? Text("Turn off Hide whitespace changes to see them.") : Text("Only the file's mode or name changed."))
                 } else {
-                    PatchLines(file: file, truncated: truncated, ask: ask)
+                    PatchLines(file: file, truncated: truncated, ask: ask, notes: notes)
                 }
             } else {
                 ProgressView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.screen)
-        .navigationTitle((path as NSString).lastPathComponent)
-        .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
 
     private func load() async {
         do {
-            let result = try await workspace.turnDiff(runID: runID, file: path)
+            let result = try await workspace.turnDiff(runID: runID, file: path, ignoreWhitespace: ignoreWhitespace)
             let parsed = await Task.detached { UnifiedDiff.parse(result.patch) }.value
             truncated = result.patchTruncated == true
             file = parsed.files.first ?? UnifiedDiff.FilePatch(path: path, lines: [], added: 0, removed: 0, isBinary: false)
         } catch {
             self.error = error.localizedDescription
-        }
-    }
-}
-
-/// A file's patch as coloured, numbered lines that scroll both ways.
-struct PatchLines: View {
-    let file: UnifiedDiff.FilePatch
-    var truncated = false
-    /// When set, tapping lines selects them and the bar sends them to the composer.
-    var ask: ((String) -> Void)? = nil
-    @State private var viewport: CGFloat = 0
-    /// Indexes into `file.lines`, first and last tapped.
-    @State private var selection: ClosedRange<Int>?
-
-    var body: some View {
-        ScrollView([.vertical, .horizontal]) {
-            // At least as wide as the screen and pinned leading: a two-way scroll
-            // view centres narrow content, and line tints should run edge to edge.
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(file.lines.enumerated()), id: \.element.id) { index, line in
-                    DiffLineRow(line: line, selected: selection?.contains(index) == true)
-                        .frame(minWidth: viewport, alignment: .leading)
-                        .contentShape(.rect)
-                        .onTapGesture { if ask != nil { tap(index) } }
-                }
-                if truncated {
-                    Text("The rest of this file's change is on your computer.")
-                        .font(.footnote)
-                        .foregroundStyle(Color.textMuted)
-                        .padding(16)
-                }
-            }
-            .padding(.vertical, 8)
-            .frame(minWidth: viewport, alignment: .leading)
-            .textSelection(.enabled)
-        }
-        // A two-way scroll view centres short content; a patch starts at the top.
-        .defaultScrollAnchor(.topLeading)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewport = $0 }
-        .safeAreaInset(edge: .bottom) {
-            if let ask {
-                askBar(ask)
-            }
-        }
-        .animation(.snappy(duration: 0.2), value: selection)
-    }
-
-    @ViewBuilder private func askBar(_ ask: @escaping (String) -> Void) -> some View {
-        if let selection {
-            HStack(spacing: 10) {
-                Button { self.selection = nil } label: {
-                    Image(systemName: "xmark").font(.footnote.weight(.bold)).frame(width: 34, height: 34)
-                        .foregroundStyle(Color.textSecondary).background(Color.subtle, in: .circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Clear selection"))
-                Button {
-                    ask(PatchLines.quote(file, selection))
-                    self.selection = nil
-                    Haptics.success()
-                } label: {
-                    Label(selection.count == 1 ? String(localized: "Ask about this line") : String(localized: "Ask about \(selection.count) lines"),
-                          systemImage: "text.bubble")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .glassSurface(cornerRadius: 26)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else {
-            Text("Tap lines to ask the agent about them.")
-                .font(.caption)
-                .foregroundStyle(Color.textTertiary)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(Color.screen)
-        }
-    }
-
-    private func tap(_ index: Int) {
-        guard [.added, .removed, .context].contains(file.lines[index].kind) else { return }
-        Haptics.selection()
-        if let current = selection {
-            if current.contains(index) { selection = current.count == 1 ? nil : index...index }
-            else { selection = min(current.lowerBound, index)...max(current.upperBound, index) }
-        } else {
-            selection = index...index
-        }
-    }
-
-    /// "`Sources/Forecast.swift` lines 12–18:" and the lines as a diff block.
-    static func quote(_ file: UnifiedDiff.FilePatch, _ range: ClosedRange<Int>) -> String {
-        let lines = file.lines[range].filter { [.added, .removed, .context].contains($0.kind) }
-        let numbers = lines.compactMap { $0.newNumber ?? $0.oldNumber }
-        let where_: String = switch (numbers.min(), numbers.max()) {
-        case let (low?, high?) where low == high: String(localized: "line \(low)")
-        case let (low?, high?): String(localized: "lines \(low)–\(high)")
-        default: ""
-        }
-        let body = lines.map { line in
-            (line.kind == .added ? "+" : line.kind == .removed ? "-" : " ") + line.text
-        }.joined(separator: "\n")
-        return "`\(file.path)` \(where_):\n```diff\n\(body)\n```\n"
-    }
-}
-
-private struct DiffLineRow: View {
-    let line: UnifiedDiff.Line
-    var selected = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            Text(number)
-                .frame(minWidth: 44, alignment: .trailing)
-                .foregroundStyle(.tertiary)
-                .padding(.trailing, 8)
-                .accessibilityHidden(true)
-            Text(marker)
-                .frame(width: 14, alignment: .leading)
-                .foregroundStyle(markerColor)
-                .accessibilityHidden(true)
-            Text(styled)
-                .foregroundStyle(line.kind == .hunk || line.kind == .meta ? Color.textMuted : Color.textPrimary)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.trailing, 16)
-            Spacer(minLength: 0)
-        }
-        .font(.footnote.monospaced())
-        .padding(.vertical, 1)
-        .background(background)
-        .overlay(alignment: .leading) {
-            if selected { Rectangle().fill(Color.textPrimary).frame(width: 3) }
-        }
-        .background(selected ? Color.subtleStrong : .clear)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(accessibilityText))
-    }
-
-    /// The line, with the words that changed against its pair drawn stronger.
-    private var styled: AttributedString {
-        var text = AttributedString(line.text.isEmpty ? " " : line.text)
-        guard !line.changed.isEmpty else { return text }
-        let utf16 = line.text.utf16
-        for range in line.changed {
-            guard range.upperBound <= utf16.count,
-                  let lower = utf16.index(utf16.startIndex, offsetBy: range.lowerBound, limitedBy: utf16.endIndex),
-                  let upper = utf16.index(utf16.startIndex, offsetBy: range.upperBound, limitedBy: utf16.endIndex),
-                  let from = AttributedString.Index(lower, within: text), let to = AttributedString.Index(upper, within: text)
-            else { continue }
-            text[from..<to].backgroundColor = line.kind == .added ? Color.success.opacity(0.28) : Color.failure.opacity(0.26)
-        }
-        return text
-    }
-
-    private var number: String {
-        switch line.kind {
-        case .added: line.newNumber.map(String.init) ?? ""
-        case .removed: line.oldNumber.map(String.init) ?? ""
-        case .context: line.newNumber.map(String.init) ?? ""
-        default: ""
-        }
-    }
-
-    private var marker: String {
-        switch line.kind {
-        case .added: "+"
-        case .removed: "−"
-        default: ""
-        }
-    }
-
-    private var markerColor: Color { line.kind == .added ? .success : .failure }
-
-    private var background: Color {
-        switch line.kind {
-        case .added: .diffAdd
-        case .removed: .diffRemove
-        case .hunk: .subtle
-        default: .clear
-        }
-    }
-
-    private var accessibilityText: String {
-        switch line.kind {
-        case .added: String(localized: "Added: \(line.text)")
-        case .removed: String(localized: "Removed: \(line.text)")
-        case .hunk: String(localized: "Section \(line.text)")
-        default: line.text
         }
     }
 }
@@ -418,5 +549,35 @@ struct ChangeBar: View {
     return NavigationStack {
         PatchLines(file: UnifiedDiff.parse(patch).files[0])
             .background(Color.screen)
+    }
+}
+
+/// The notes waiting to go to the message box, under the list of changes.
+private struct CommentsBar: View {
+    let actions: ChangeActions
+
+    var body: some View {
+        if !actions.comments.isEmpty, actions.ask != nil {
+            HStack(spacing: 10) {
+                Menu {
+                    Button("Discard comments", systemImage: "trash", role: .destructive) { actions.comments = [] }
+                } label: {
+                    Label(actions.comments.count == 1 ? String(localized: "1 comment") : String(localized: "\(actions.comments.count) comments"),
+                          systemImage: "text.bubble")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                Spacer(minLength: 8)
+                Button("Add to message") { actions.sendComments() }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .fixedSize()
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 10)
+            .padding(.vertical, 8)
+            .glassSurface(cornerRadius: 26)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
     }
 }

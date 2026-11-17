@@ -19,7 +19,41 @@ nonisolated struct UnifiedDiff: Equatable, Sendable {
         var added: Int
         var removed: Int
         var isBinary: Bool
+        /// From the patch's own header, when it says the file was created, deleted or moved.
+        var status: ChangeStatus? = nil
+        /// Where a moved file came from.
+        var oldPath: String? = nil
         var id: String { path }
+    }
+
+    /// One `@@ -a,b +c,d @@ context` header.
+    nonisolated struct Hunk: Equatable, Sendable {
+        let oldStart: Int, oldCount: Int, newStart: Int, newCount: Int
+        /// The enclosing function or type git names after the second `@@`.
+        let context: String
+
+        static func parse(_ header: String) -> Hunk? {
+            guard header.hasPrefix("@@") else { return nil }
+            let body = header.dropFirst(2)
+            guard let close = body.range(of: "@@") else { return nil }
+            let ranges = body[..<close.lowerBound].split(separator: " ")
+            func range(_ sign: Character) -> (Int, Int)? {
+                guard let token = ranges.first(where: { $0.first == sign }) else { return nil }
+                let parts = token.dropFirst().split(separator: ",", omittingEmptySubsequences: false)
+                guard let start = parts.first.flatMap({ Int($0) }) else { return nil }
+                return (start, parts.count > 1 ? Int(parts[1]) ?? 1 : 1)
+            }
+            guard let old = range("-"), let new = range("+") else { return nil }
+            let context = body[close.upperBound...].trimmingCharacters(in: .whitespaces)
+            return Hunk(oldStart: old.0, oldCount: old.1, newStart: new.0, newCount: new.1, context: context)
+        }
+
+        /// "Lines 26–32" on the new side, or the old side when the hunk only removes.
+        var lines: String {
+            let (start, count) = newCount > 0 ? (newStart, newCount) : (oldStart, oldCount)
+            if count <= 1 { return String(localized: "Line \(start)") }
+            return String(localized: "Lines \(start)–\(start + count - 1)")
+        }
     }
 
     var files: [FilePatch]
@@ -46,7 +80,16 @@ nonisolated struct UnifiedDiff: Equatable, Sendable {
                 continue
             }
             if raw.hasPrefix("--- ") || raw.hasPrefix("index ") || raw.hasPrefix("similarity ") { continue }
-            if raw.hasPrefix("new file") || raw.hasPrefix("deleted file") || raw.hasPrefix("rename ") || raw.hasPrefix("old mode") || raw.hasPrefix("new mode") {
+            // Said once in the file's header rather than as rows of the patch.
+            if raw.hasPrefix("new file") { current?.status = .added; continue }
+            if raw.hasPrefix("deleted file") { current?.status = .deleted; continue }
+            if raw.hasPrefix("rename from ") {
+                current?.status = .renamed
+                current?.oldPath = String(raw.dropFirst("rename from ".count))
+                continue
+            }
+            if raw.hasPrefix("rename to ") || raw.hasPrefix("copy ") { continue }
+            if raw.hasPrefix("old mode") || raw.hasPrefix("new mode") {
                 current?.lines.append(Line(id: counter, kind: .meta, text: raw, oldNumber: nil, newNumber: nil))
                 continue
             }
@@ -55,9 +98,9 @@ nonisolated struct UnifiedDiff: Equatable, Sendable {
                 continue
             }
             if raw.hasPrefix("@@") {
-                let numbers = Self.hunkStarts(raw)
-                oldLine = numbers.old
-                newLine = numbers.new
+                let hunk = Hunk.parse(raw)
+                oldLine = hunk?.oldStart ?? 0
+                newLine = hunk?.newStart ?? 0
                 current?.lines.append(Line(id: counter, kind: .hunk, text: raw, oldNumber: nil, newNumber: nil))
                 continue
             }
@@ -165,15 +208,5 @@ nonisolated struct UnifiedDiff: Equatable, Sendable {
         }
         flush()
         return result
-    }
-
-    /// `@@ -12,7 +12,9 @@` → (12, 12).
-    static func hunkStarts(_ header: String) -> (old: Int, new: Int) {
-        let parts = header.split(separator: " ")
-        func start(_ prefix: Character) -> Int {
-            guard let token = parts.first(where: { $0.first == prefix }) else { return 0 }
-            return Int(token.dropFirst().split(separator: ",").first ?? "") ?? 0
-        }
-        return (start("-"), start("+"))
     }
 }

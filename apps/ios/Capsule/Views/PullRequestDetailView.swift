@@ -140,18 +140,14 @@ struct PullRequestDetailView: View {
                             PatchLines(file: patch)
                                 .background(Color.screen)
                                 .navigationTitle((file.path as NSString).lastPathComponent)
+                                .navigationSubtitle((file.path as NSString).deletingLastPathComponent)
                                 .navigationBarTitleDisplayMode(.inline)
                         } else {
                             ContentUnavailableView("No patch here", systemImage: "doc", description: Text("This file's change is too large to show on the phone."))
                         }
                     } label: {
-                        HStack {
-                            Text(file.path).font(.footnote.monospaced()).foregroundStyle(Color.textPrimary).lineLimit(1).truncationMode(.head)
-                            Spacer(minLength: 8)
-                            Text(verbatim: "+\(file.additions)").foregroundStyle(Color.success)
-                            Text(verbatim: "−\(file.deletions)").foregroundStyle(Color.failure)
-                        }
-                        .font(.caption.monospacedDigit())
+                        ChangedFileRow(path: file.path, status: patch.map { $0.status ?? .modified }, added: file.additions, removed: file.deletions,
+                                       detail: (file.path as NSString).deletingLastPathComponent)
                     }
                 }
             }
