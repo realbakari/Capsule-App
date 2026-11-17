@@ -3,7 +3,7 @@ import { Conversation } from "./features/conversation/Conversation";
 import { ChannelsView } from "./features/channels/ChannelsView";
 import { ProjectView } from "./features/project/ProjectView";
 import { RuntimesView } from "./features/harness/RuntimesView";
-import { ApprovalsView, HistoryView, SkillsView } from "./features/library/LibraryViews";
+import { ApprovalsView, SkillsView } from "./features/library/LibraryViews";
 import { UsageView } from "./features/library/UsageView";
 import { BoardView } from "./features/board/BoardView";
 import { SettingsView } from "./features/settings/SettingsView";
@@ -94,7 +94,6 @@ function Shell() {
             {view === "runtimes" && <RuntimesView />}
             {view === "skills" && <SkillsView />}
             {view === "usage" && <UsageView />}
-            {view === "history" && <HistoryView />}
             {view === "approvals" && <ApprovalsView />}
             {view === "settings" && <SettingsView />}
             {view === "board" && <BoardView />}

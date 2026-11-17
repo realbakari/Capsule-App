@@ -17,8 +17,9 @@ async function until(check: () => unknown) {
   }
 }
 function fill(selector: string, value: string) {
-  const input = document.querySelector<HTMLInputElement>(selector)!;
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+  const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
+  const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
@@ -28,6 +29,7 @@ export async function runUiPolishRegressions(host: HTMLElement) {
   const originalTheme = document.documentElement.getAttribute("data-theme");
   const pullRequest: GitPullRequest = { number: 42, title: "Improve file search", url: "https://example.test/pull/42", state: "OPEN", isDraft: false, author: "contributor" };
   let commits = 0;
+  const changed = [{ path: "src/search.ts", code: " M" }];
   let completeCommit: (value: boolean) => void = () => {};
   const commit = () => { commits++; return new Promise<boolean>((resolve) => { completeCommit = resolve; }); };
   try {
@@ -39,13 +41,13 @@ export async function runUiPolishRegressions(host: HTMLElement) {
         for (const width of [320, 560, 900]) {
           root.render(<div style={{ width }} data-review-fixture>
             <PullRequestList items={[pullRequest]} loading={false} onRefresh={() => {}} onSelect={() => {}} />
-            <ReviewCommitForm dirty onCommit={commit} />
+            <ReviewCommitForm files={changed} onCommit={commit} />
           </div>);
           await until(() => document.querySelector<HTMLElement>("[data-review-fixture]")?.style.width === `${width}px`);
           const search = document.querySelector(".pr-search-field")!;
           const sort = document.querySelector(".pr-list-filters select")!;
           assert(Math.abs(search.getBoundingClientRect().height - sort.getBoundingClientRect().height) < 1, "Search and sort heights differ");
-          const input = document.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!;
+          const input = document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!;
           const submit = document.querySelector<HTMLButtonElement>(".review-commit-button")!;
           assert(Math.abs(input.getBoundingClientRect().height - submit.getBoundingClientRect().height) < 1, "Commit button and input heights differ");
           assert(submit.disabled, "Empty commit is enabled");
@@ -70,24 +72,24 @@ export async function runUiPolishRegressions(host: HTMLElement) {
     assert(commits === 1, "Duplicate commit submission escaped the busy guard");
     completeCommit(false);
     await until(() => document.querySelector(".review-commit-note[role=alert]"));
-    assert(document.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!.value === "Keep this draft", "Failed commit discarded its draft");
+    assert(document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!.value === "Keep this draft", "Failed commit discarded its draft");
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await until(() => commits === 2);
     completeCommit(true);
-    await until(() => document.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!.value === "");
+    await until(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!.value === "");
 
     // Re-keying a form isolates a late response from the previous workspace.
-    root.render(<ReviewCommitForm key="first" dirty onCommit={commit} />);
+    root.render(<ReviewCommitForm key="first" files={changed} onCommit={commit} />);
     await until(() => !document.querySelector("[data-review-fixture]"));
     fill('[aria-label="Commit message"]', "First workspace");
     await until(() => !document.querySelector<HTMLButtonElement>(".review-commit-button")!.disabled);
     document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await until(() => commits === 3);
-    root.render(<ReviewCommitForm key="second" dirty onCommit={commit} />);
-    await until(() => document.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!.value === "");
+    root.render(<ReviewCommitForm key="second" files={changed} onCommit={commit} />);
+    await until(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!.value === "");
     fill('[aria-label="Commit message"]', "Second workspace");
     completeCommit(true);
-    await until(() => document.querySelector<HTMLInputElement>('[aria-label="Commit message"]')!.value === "Second workspace");
+    await until(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Commit message"]')!.value === "Second workspace");
 
     let selected = "";
     root.render(<aside className="harness-catalog" style={{ width: 250 }}>

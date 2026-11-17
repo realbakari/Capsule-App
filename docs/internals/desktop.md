@@ -131,21 +131,24 @@ deletion additionally requires typing the channel name. Missing metadata stays u
 
 Shared-channel reads and writes are unavailable to paired previews. Message
 action bars in both channel and thread feeds offer **Run with Capsule** on
-joined channels. Its native dialog selects project/harness and explicitly starts
-a Supervised conversation through the existing runtime route. Route and permission
-details sit behind an expansion before starting. The dialog then shows status,
-Open conversation, Stop run and an editable result preview with explicit Share
-reply to thread. Admission is deduplicated in main, not by the mounted dialog.
+joined channels. Its native dialog selects a project and an agent (listed by
+display name only) and explicitly starts a Supervised conversation through the
+existing runtime route. Permission details sit behind an expansion before
+starting. The dialog then shows the agent's name and a plain status
+(`channelJobStatus` in `ChannelJobs.tsx`: Working, Needs your approval, Done,
+Stopped and so on), Open conversation, Stop and an editable result preview with
+explicit Share reply to thread. User-facing copy says "agent", never "harness"
+or "route". Admission is deduplicated in main, not by the mounted dialog.
 Focus returns to the action on close; stale polls cannot replace an action's
 response. There is no agent provisioning, hosted runtime,
 or implicit repository access from other members. Manual connection-scoped run links
 are not durable; project conversations are.
 
-Both channel and thread composers expose **Connect a Capsule harness**. Its
-native dialog selects project/harness, explains automatic reply publication and
+Both channel and thread composers expose **Connect an agent**. Its
+native dialog (**Channel agent**) selects a project and an agent, explains automatic reply publication and
 Supervised permissions, and requires explicit enablement. The collapsed control
 shows the destination, project, Ask Capsule / Chat only selector, latest active
-run, Open conversation, approval access, Stop run and errors. Ask Capsule sends
+run, Open conversation, approval access, Stop and errors. Ask Capsule sends
 the reserved `@capsule` prefix without notifying unrelated hosted agents.
 Bindings and thread contexts persist; Pause is available in the same control.
 Only the connected identity's new addressed messages execute, including those
@@ -206,6 +209,18 @@ Toasts enter by dropping in 0.5rem and leave by rising 0.25rem over
 it (its timer, a button, Escape, ⌘Z); the leaving copy is `inert` and hidden
 from assistive tech.
 A toast replaced under the same key is an update and does not fade a copy.
+A toast's timer runs only while the window is visible and focused
+(`visibilitychange`, `focus`, `blur`), the pointer and focus are outside the
+stack, and the toast is not expanded; a resumed timer has at least 1.5s left.
+The store (`lib/toasts.tsx`) keeps `visible` (at most `TOAST_LIMIT`, 3) and
+`waiting`. A full stack drops its oldest toast with the least at stake (undo,
+then any action, then an error or standing toast, then plain news); a newcomer
+with less at stake than everything on screen waits and is promoted when a slot
+frees. A toast takes an `action` and an optional `secondaryAction` (drawn as a
+quieter button before it). An error toast has a **Copy error** icon button
+(title and detail). When the title's ellipsis or the detail's three-line clamp
+cuts text, **Show more** expands the toast in place (detail scrolls past half
+the viewport) and **Show less** folds it.
 Slow requests share one `slow` notice that lists every request still waiting,
 named by what the person waits on (`requestLabel`: "the agent", "Git", "the
 conversation", "GitHub", …), never by bridge method. Reads Capsule makes on
@@ -243,18 +258,30 @@ and the renderer the toast half (`features/triage/BackgroundActivity.tsx`),
 each passing its own focus to the same table, so a focused window never gets
 both. The renderer hears of settled runs from run frames, of approvals from the
 pending list, and of long commands from a `long-command` state command main
-sends. Opening a thread dismisses its toast. `DesktopNotices`
+sends. Opening a thread dismisses its toast. When the table draws no toast for
+another thread (in-app notifications off, a settled thread, a background
+window), `BackgroundActivity` writes the same title and detail to its own
+polite `role="status"` live region (`.sr-only`, `data-background-announcer`),
+a fresh node per announcement so a repeat is read again. Snoozed threads and
+the thread on screen are never announced there; a drawn toast speaks through
+its own live region instead, so nothing is read twice. `DesktopNotices`
 (`main/desktop-notices.ts`) holds desktop notifications for `BURST_MS` and
 sends a burst as one (`coalesceNotices`: latest notice per thread, most urgent
 first, click opens the most urgent), closes a thread's older notification when
 a newer one goes out, and closes one once every thread it names has
-`lastViewedAt` after it was sent. The Dock badge and the menu bar extra both
+`lastViewedAt` after it was sent. The menu bar menu is built as data by
+`trayMenuTemplate` (`main/tray-menu.ts`): a status line, up to eight waiting
+threads with project sublabels, New Conversation, Recent (six active threads by
+activity, minus those listed), Show Capsule, a Desktop Companion checkbox,
+Settings… and Quit Capsule; accelerators are shown, not registered. The Dock badge and the menu bar extra both
 read the latest run per thread (`listLatestRunStates`), so an old failed turn
 is not counted as waiting.
 
 The sidebar footer carries no update text. `UpdateButton` (in
 `features/shell/`) is one round icon button at the right end of the footer row,
-before the connection dot, and `updateButtonView` in `lib/updates.ts` maps the
+before the Gateway connection dot (not drawn in direct runtime mode, where
+agents run here and the optional Gateway's state is not theirs; the palette's
+**Connect Gateway** entry is left out there too), and `updateButtonView` in `lib/updates.ts` maps the
 merged update status to its glyph, action and tooltip: idle refresh (spins while
 checking or preparing a restart), download arrow with a dot (available), a
 progress ring (downloading), and a circular arrow with a check badge
@@ -264,7 +291,18 @@ restart keeps its offer and says "Click to retry". Toasts come only from
 `updateOutcomeToast`, for a check, download or restart the user started (an
 error, or "You're up to date"), and from `updateDownloadedToast` when the status
 moves into `ready-to-install`, with a **Release notes** action to
-https://cpcl.dev/updates. The restart confirm names the version. A development
+`releaseNotesUrl(status)`: the merged status's `url`, which main fills with the
+release page for `latest` (`releasePageUrl` beside `UPDATE_REPO`) when the
+GitHub fallback check has not supplied one, else https://cpcl.dev/updates.
+Before `quitAndInstall`, `Updater.install` calls `recordInstall(latest)`, which
+writes `update-install.json` (`{ from, target }`) to userData. The next
+packaged launch reads and deletes it (`takeNotAppliedUpdate`); when `from` is
+still the running version and `target` is not (`notAppliedVersion`), the
+`Updater` starts with `notApplied`, carried on the merged status until another
+install starts. `UpdateButton` shows `updateNotAppliedToast` once with
+**Retry**, the button reads "Capsule X didn’t install. Click to try again." and
+About says the same; Retry checks and then downloads (`retryInstall` in
+`useUpdates`) before the usual restart offer. The restart confirm names the version. A development
 build is `development` on the merged status from the first read (main seeds
 `Updater` as unavailable when it cannot install): the button is
 `aria-disabled`, dimmed, and its tooltip reads "Updates unavailable" with the
@@ -380,10 +418,52 @@ attachment validation still receives the original native path.
   then failures, independently of thread order. A collapsed project also shows
   how many conversations it hides (`.project-hidden-count`).
 - The sidebar titlebar carries a compact Capsule wordmark, the hide control,
-  and Back / Forward over visited conversations (`⌘[` / `⌘]`, also in the
-  palette). Selection changes are recorded by effect in `navigation-history`,
-  bounded to 50 places; a move made by Back or Forward is not recorded as a
-  new place, and archived or deleted conversations are pruned.
+  and Back / Forward over visited places (`⌘[` / `⌘]`, also in the
+  palette; the tooltips name the current keys through `withShortcut`). A place
+  is (project, conversation, view), so Back from Settings or the board lands on
+  the conversation under it. Changes are recorded by effect in
+  `navigation-history`, bounded to 50 places; a move made by Back or Forward is
+  not recorded as a new place, and archived or deleted conversations are
+  pruned. Mouse buttons 3 and 4 (a `mouseup` listener in the workspace) and the
+  macOS three-finger page swipe (`BrowserWindow` `swipe` in main, sent as the
+  `history-back` / `history-forward` state command; left is back) travel the
+  same history. Two-finger swipes stay wheel events for the sidebar swipe.
+- Lists sort by activity, `threadActivityAt` in `lib/sidebar.ts`: the latest
+  run's start or finish from `listLatestRuns`, else the thread's creation.
+  `session.updatedAt` is a record stamp that every rename, pin, title
+  regeneration and setting moves, so nothing orders or labels by it. The row's
+  age, its preview, Recent, By tag, By status, a project's settled tail and the
+  palette all read activity.
+- The sidebar publishes the thread ids it drew, in document order, after every
+  render (`publishSidebarOrder` in `lib/session-cycle.ts`, read from
+  `[data-thread-id]`). `⌃Tab` / `⌃⇧Tab` and `⌘1`–`⌘9` (`go-to-conversation-N`,
+  Control elsewhere) walk that list, so they skip folded projects, closed
+  shelves and rows past Show more. Settings replaces the list with its
+  sections, so the last list drawn stays in force. Holding the primary modifier
+  alone for 200 ms (`useJumpHintsHeld`) shows each of the first nine rows'
+  current binding in place of its age. The model picker numbers its own rows
+  with the same keys while focus is inside it; the workspace skips the jump
+  then, and the hints hide.
+- When the selected thread changes, its project unfolds and its row scrolls
+  into view; folding the project that holds the open thread still sticks.
+  Recent keeps the open thread listed past its cut. Folded projects
+  (`capsule.sidebarFolded`) and each project's Show more depth
+  (`capsule.sidebarShowMore`) persist in guarded localStorage.
+- Sidebar search is a list: `↓` / `↑` move a highlight through the drawn thread
+  rows and then message hits (`useMessageSearch`, shared with the palette:
+  `api.search` after 150 ms, keeping the last results until new ones arrive),
+  `Enter` opens the highlight or the first result, `Esc` clears. A message hit
+  opens its thread through `findInThread`, which selects it and opens
+  `ThreadFind` seeded with the query. Find state carries the thread it belongs
+  to, so selecting another thread closes it without an effect racing the seed.
+- Rename: `F2` on a focused row, double-click, or the menu. Enter during IME
+  composition (`isComposing` / key code 229) does not save. One save runs at a
+  time; the field always closes and keyboard saves return focus to the row.
+  `renameSession` never rejects: an empty title or a failed write becomes a
+  notice and the old title stays. The titlebar field follows the same rules.
+- Unpinning (row glyph, menu or palette, all through `pinSession`) shows an
+  **Unpinned** toast with Undo, which re-pins and restores the previous order
+  with `reorderPinnedSessions` (`restoredPinOrder`).
 - The toolbar is one row: search, the **Group conversations** `MenuSelect`
   as an icon, Add project, and New conversation (a pen icon,
   `NewConversationButton`). New conversation's context menu holds New temporary
@@ -439,23 +519,62 @@ attachment validation still receives the original native path.
   copy items. Copy as Markdown goes through `threadMarkdown`, the same text
   Export writes.
 - Archiving offers a ten-second Undo toast and Cmd/Ctrl-Z outside text inputs
-  and dialogs. History offers a permanent Restore action. Restore preserves
-  messages and runtime identity; paired devices cannot archive or restore.
+  and dialogs. The palette's **Archived conversations…** opens a page of every
+  archived thread (with its project) where choosing one restores it and opens
+  it; there is no separate History view. Restore preserves messages and
+  runtime identity; paired devices cannot archive or restore.
 - Header popovers and model menus clamp to viewport edges and flip above their
   anchor when needed. Resize and scroll recompute placement without moving focus.
 - A settled turn folds every row between its prompt and its last assistant
   message (tool groups and interim progress messages alike) under one
   `TurnTranscript` toggle: "Worked for {d}" or "You stopped after {d}", with the
-  end time right-aligned. The run log and Verification render at the foot of
-  that fold. No details row follows a turn that answered; `RunSummary` "Turn
-  details" stays as its own row only for failed or blocked runs and runs that
-  left no assistant message, and for the live run while it works.
+  end time right-aligned. Verification renders at the foot of that fold. No
+  details row follows a turn that answered; `RunSummary` "Turn details" stays
+  as its own row only for failed or blocked runs and runs that left no
+  assistant message, and for the live run while it works. `RunEventLog`
+  ("What the agent reported") mounts only for a failed or blocked run; a turn
+  that went fine has no event log in the transcript.
+- `turnTranscript` (`lib/turn-timeline.ts`) also yields `note` rows
+  (`WorkNote`, drawn by `WorkNoteRow`): `reasoning` from `thinking` events,
+  one row per uninterrupted stretch, only once the run has settled (the live
+  steps card owns it while running) and never when `reasoningSummary` is
+  `hidden`; it renders as a closed "Thought" row whose body mounts on open.
+  `decision` from the engine's `approval.resolved` (only rows carrying
+  `data.decision`; a runtime's own frame of that type is ignored) and
+  `question.answered`: "Allowed: <action> <target>", "Denied: …", "Not
+  answered", "Answered: <answer>". `compaction` from `compaction` events,
+  consecutive frames merged; it renders as a `CompactionDivider` outside the
+  Worked-for fold.
+- A tool step shows a red `exit N` for a non-zero `details.exitCode`. Output
+  split into `output` and `outputTail` renders head, an italic "… N lines not
+  kept …" marker, then tail, with "Showing the first H and last T lines" under
+  it; Copy copies those three parts. A later output snapshot replaces the
+  earlier head, tail and count together.
 - A message's `.who` caption (time, copy, rate, edit, branch) is hover/focus
-  chrome, always shown on touch; a steer tag stays visible. User prompts taller
-  than 11rem fold behind "Show full message" (`LongPrompt`).
+  chrome, always shown on touch; a steer tag stays visible. Its time and the
+  Worked-for end time use `formatStamp` (time today, "Yesterday 10:42", the
+  short weekday within six days, then a short date with the year only when it
+  differs) in a `<time>` element whose title is `formatFullStamp`. User prompts
+  fold behind "Show full message" (`LongPrompt`) only when the prompt is at
+  least twice the 11rem folded height (`shouldFoldPrompt`), so a fold always
+  hides as much as it shows.
 - A turn whose prompt is `/compact` or `/context-compact` renders as a
   `CompactionDivider` keyed to its run's status, never as a bubble and reply.
-  Agent-initiated compaction is not carried on either route yet.
+  A compaction the agent did inside a turn renders from its `compaction` event
+  as "Context compacted automatically" (or "Compacting context" while a
+  Gateway `phase: "start"` frame is the latest).
+- Code blocks (`CodeBlock`): Copy copies `fenceText` (the source without the
+  fence's closing newline; thread find searches the same text). **Wrap** is a
+  per-block `aria-pressed` toggle setting `data-wrap="false"` (`white-space:
+  pre`, sideways scroll inside the block). **Type in terminal** appears only
+  when `MarkdownBody` gets `onTypeCommand` (MessageBody passes it only when
+  `api.isDesktop === true`) and `terminalCommandFrom` accepts the block: a
+  closed `sh`/`bash`/`zsh`/`fish`/`shell`/`console`/`terminal` fence of one
+  line, at most 1,000 characters, no C0/C1 controls or bidi overrides, with a
+  leading `$ ` dropped. It calls `requestTerminalCommand` and opens the dock,
+  which types the command into a fresh shell without Return.
+  `terminalInput` is a write channel no paired scope holds, so the remote
+  viewer never draws the control.
 - Inline code becomes a file chip only when it ends in a known file extension.
   Branch names, folders and owner/repo pairs stay plain code.
 - Pinned threads sort by `sessions.pin_order` (schema v9) and can be reordered
@@ -469,11 +588,14 @@ attachment validation still receives the original native path.
   the running turn in Conversation details cover it. Workspace controls live
   in **Conversation details** (`SessionDetails` in `SurfaceBar.tsx`): the
   folder row with Reveal in Finder and Open in Terminal, the Open in split
-  button (see Open in below), the branch (`BranchRow`: a menu of local
-  branches that checks out through the same `checkoutBranch` the composer
-  used before the first message, with a filter past eight branches; a
-  read-only paired viewer sees the name only), `ProjectActionsControl` and
-  `CommitControl` as rows, and Initialize Git. Their menus open from inside the popover;
+  button (see Open in below), the branch (`BranchRow`: a filterable menu of
+  local branches, then `GitStatus.remoteBranches` under **Remote**, which
+  `checkoutBranch` turns into a local tracking branch with `checkout --track`,
+  and a **Create branch <prefixed name>** row through `gitCreateBranch`; a
+  branch in `checkedOutElsewhere` opens the thread whose folder is that
+  worktree, or is disabled naming the folder; any paired device sees the name
+  only, since every branch change is a write channel), `ProjectActionsControl`
+  and `CommitControl` as rows, and Initialize Git. Their menus open from inside the popover;
   `HeaderPopover` treats a popover or dialog opened after it as its own, so
   clicking there does not close it, and Escape closes only the topmost layer.
   A paired browser sees the details but not these rows.
@@ -621,13 +743,14 @@ write channels). The git work is in `@capsule/filesystem` `apply-to-local.ts`.
 
 The titlebar's `SurfaceBar` chooses what the panel shows, one surface at a
 time; there are no tabs. Left to right: **Conversation details** (a
-`HeaderPopover`: environment, folder and branch, context used, changes with
+`HeaderPopover`: folder and branch (a paired device also says it is reading
+this computer), context used once the agent reports it, changes with
 Review, and `BackgroundTasks`: the running turn and running project actions,
 each with its elapsed time, a stop button, and, for actions, the last twelve
 lines of output when expanded; it polls action runs only while open), the **terminal** toggle for the bottom dock (left off a paired viewer, which has no shell), then
 **Review**, **Browser**, **Simulator** and **Files**, and **More** with
-**Agents**, **Side chat**, any surface the bar left out, and Keep computer
-awake. A control that cannot apply in the current state is not drawn on the
+**Agents**, **Compare** (a comparison thread only) and any surface the bar
+left out. Keep computer awake lives in Settings only. A control that cannot apply in the current state is not drawn on the
 bar: `Surface.inBar` is either always or a predicate over `SurfaceState`, and
 `onBar` also keeps the surface on show. **Review** leaves the bar for a
 folder known not to be a repository. **Simulator** (a Mac desktop only)
@@ -637,16 +760,20 @@ over the top-level names Files already lists: `*.xcodeproj`,
 `eas.json`) or a simulator is attached to the thread
 (`capsule.simulator.attached:<threadId>`); otherwise it is in More. Clicking
 the surface that is showing closes the panel. `surfaces.ts` is the one table
-of surfaces (label, icon, shortcut, bar or More, and `blockedBy`); a surface
+of surfaces (label, icon, keymap command, bar or More, and `blockedBy`); a surface
 that cannot open is disabled with its reason as the tooltip. The workspace's
 `inspectorTab` is the only record of the surface; the panel derives it.
 
 Each surface has one header row: its title (Files with the open path, Git with
-the branch, Browser with the URL, Agents, Side chat) or its own controls, then
+the branch, Browser with the URL, Agents) or its own controls, then
 the tree toggle for Files, maximize and close. A surface portals controls into
 that row through `InspectorHeadSlot`; the simulator puts its Edit / Device /
 View menus there. Opening the panel with no surface chosen (`⌘\` on a fresh
-window) shows the chooser cards.
+window) shows the chooser cards under **Open a panel**. The chooser offers only
+the surfaces that apply (`applies` in `surfaces.ts`): one the bar draws
+conditionally appears only when its condition holds, so a folder that is not a
+repository has no Review card, a web project no Simulator card, and Compare
+needs a comparison thread.
 - **Files** is a split: preview on the left, expandable tree on the right. Folders expand **in place**. There is no navigate-into-directory / `← ..` stack and no `dir` current-path state.
   **Follow agent** (`settings.followAgent`, off by default; the header's
   pointer toggle, Settings › Appearance and the palette) runs
@@ -670,6 +797,44 @@ window) shows the chooser cards.
   Leaving Files, closing its tab or unmounting the inspector invalidates pending
   preview requests so their completion cannot reopen the panel.
 - Click a file to preview it. Images render as `data:` URLs (`img-src 'self' data:`). Text is highlighted and can be edited with conflict-aware save. Binary files show a notice. Mention / Open / Edit live on the preview bar.
+- **Row menu.** Right-click a tree row, or press Shift-F10 or the context-menu
+  key on a focused one. The items come from one table, `ROW_ACTIONS` in
+  `features/shell/file-row-actions.ts`, filtered by row kind and host:
+  Open (preview; files only), Mention in composer, Open in *favourite* (or
+  Open with default app), Reveal in Finder / File Explorer / file manager by
+  `api.platform`, Copy path, Copy relative path (relative to the folder the
+  tree shows). `useFileRowActions` runs them through the workspace as it is at
+  the moment of the click and returns one stable object, so the memoized tree
+  does not redraw on workspace updates. A pointer gets the native menu
+  (`showNativeContextMenu`, `ActionMenu` as the fallback); the keyboard gets
+  `ActionMenu` anchored under the row and focused, and Escape returns focus to
+  the row. The row is marked `data-menu-open` while its menu is up.
+  Open in calls `openInApp` with `settings.openInFavorite` (or `default`)
+  directly, not through `useOpenIn`, so using it never changes the favourite.
+  Reveal is the write channel `revealInFolder(projectId, sessionId?, path?)`:
+  the engine's `resolveOpenTarget` containment, then `shell.showItemInFolder`.
+  A paired viewer has neither item; Open, Mention and the copies stay.
+- **Drag to the composer.** Rows are draggable. `dragstart` (delegated on the
+  list) writes `application/x-capsule-path` as `{ root, path }` plus the path as
+  `text/plain` for other targets. The composer accepts that type on dragover
+  and, on drop, mentions the row through `mentionFile`, with the same
+  `fileRowMention` rule as the menu and the preview bar's Mention: a row in an
+  extra folder is mentioned under that folder's name.
+- Text previews render through `CodeLines` (`features/shell/CodeLines.tsx`,
+  tokens from `highlightLines`, which cuts a multi-line token at each break).
+  Each source line is an inline span that ends in its own `\n`, so the code
+  element's text is exactly the file's text: selection offsets, `rangeForLine`
+  and copy never see the numbers. The number is a `::before` from `data-line`,
+  absolutely placed at its static position and pulled into the block's left
+  padding, so it takes no width in the flow and a wrapped line continues under
+  its code. A final newline does not draw an empty numbered line.
+- A requested `path:line` (`requestedFile.path`, parsed with
+  `splitPathAndPosition`) becomes the preview's `line`: the band behind that
+  line is measured from the rendered range and scrolled to once per request
+  object, after the band for that request exists, so a second request for the
+  same file re-scrolls. The gutter number is marked with `data-target`. A line
+  past the text (`lineSpan` fails) draws no band and shows a note that says
+  whether the file ended or the preview was truncated.
 - Hidden tree names: only `.git` and `.DS_Store` (`sortTreeEntries`). Ignored
   entries are listed and dimmed instead. `listFiles` goes through
   `FilesystemAdapter.listForTree`, which asks `git check-ignore --stdin -z`
@@ -711,14 +876,51 @@ window) shows the chooser cards.
   file narrows it to that file with an **All files** chip; each changed-file
   row shows `+added −removed` and one status letter from `changeStatus`
   (`??` reads as U, a conflict as !), with staged or not in its title. The
-  branch shows only in the panel breadcrumb; the action row under it (Push,
-  Pull request / Merge PR) is left off a paired viewer. States: a skeleton
+  branch shows only in the panel breadcrumb; the action row under it
+  (`ReviewGitActions`: Pull or Rebase onto when behind or diverged, Push /
+  Publish, Pull request / Merge PR) is left off a paired viewer. States: a skeleton
   while loading, an error sentence with **Try again**, "no earlier
   checkpoint" for a first turn, and empty per scope ("No uncommitted changes",
   "No changes besides whitespace", "This turn changed no files"). Turn scope's
-  read-only wording lives in its banner only; Branch keeps its own note.
+  read-only wording lives in its banner only; Branch and Commit keep their
+  own note. Branch and Commit add an **against** base select; files the read
+  left out are listed under "N files not shown" (see Review below).
 - **Review** is git status, stage / discard / commit, diff, push, open-PR
-  discovery, and PR creation via local `git` + `gh` when present. No GitHub
+  discovery, and PR creation via local `git` + `gh` when present.
+- **Commit, push, pull.** `gitCommit` takes a `GitCommitScope`: `{ staged: true }`
+  commits the index as it is and refuses when nothing is staged (never
+  `add -A`); `{ paths }` runs `add -A -- paths` then `commit --only -- paths`,
+  resets those paths to HEAD after a hook's `git add` reached only the
+  temporary index, and unstages what it added if the commit fails. The header
+  `CommitControl` uses `commitPlan`: staged → **Commit N staged files**, else a
+  checklist (tracked, then **Untracked**), all ticked. `ReviewCommitForm` takes
+  the staged index or every listed file and says which. Both messages are
+  textareas (first line subject, ⌘Return commits). Commits wait
+  `COMMIT_TIMEOUT` (10 minutes) and pushes and pulls `REMOTE_TIMEOUT`; the menu
+  labels the wait from `GitStatus.hooks` (**Running commit hooks…**), and a
+  hook's failure returns its output (URLs redacted on push), shown pre-wrapped
+  in the menu. `syncState` reduces `upstream / ahead / behind / pushRemote` to
+  one of detached, no-remote, publish, synced, ahead, behind, diverged; Push
+  is disabled with `pushBlocked`'s reason, **Publish branch** pushes `-u` to
+  the resolved remote (`%(push:remotename)`, else the only remote, else
+  origin), and an upstream counts only when it is the same-named remote
+  branch. `useGitActions` guards push, commit-and-push and PR creation on
+  `defaultBranch` with the confirm dialog (push there, or create
+  `suggestBranch(prefix, message)` and use it; a PR always moves); the engine
+  refuses those without `toDefaultBranch` too. The PR body lists the subjects
+  of `commitsSince(<pushRemote>/<default>)`. `gitPull` is `--ff-only` unless
+  the menu offers **Rebase onto** for a diverged branch; a conflicting rebase
+  is aborted. `gitFetch` is a write channel the desktop renderer calls on
+  project load and when the menu opens; main throttles it per remote (two
+  minutes, ten after a failure), runs it with no prompts and
+  `--no-write-fetch-head`, and the renderer re-reads status only when it ran.
+  The palette's git rows come from `gitPaletteRows` (`lib/git-palette.ts`), a
+  table of row, action and disabled reason (desktop only, no project, not a
+  repository, then the sync state's own reason). Push and Create pull request
+  go through `useGitActions`, so the default-branch question applies; Pull and
+  Rebase call `gitPull`; **Commit…** and **Switch/Create branch…** fire
+  `OPEN_GIT_MENU_EVENT`, which `SurfaceBar` answers by opening Conversation
+  details with `CommitControl` or `BranchRow` already open. No GitHub
   OAuth. Selecting a pull request keeps the reader in Capsule and opens its
   **Summary / Timeline / Code** views. Summary contains review metadata and the
   Markdown description, Timeline interleaves commits, comments, and reviews,
@@ -844,6 +1046,13 @@ window) shows the chooser cards.
   strips preload, disables Node integration, requires context isolation + sandbox,
   and rejects non-HTTP(S) top-level navigation. The landing page keeps recently
   used addresses in renderer-local storage above live servers.
+  Each recent address has a remove button (shown on hover or focus) that
+  forgets only that entry (`removeBrowserRecent`). A main-frame load failure
+  is described by `describeLoadFailure`, which names the host and maps common
+  network codes (refused, unresolved, offline, timed out, reset, unreachable,
+  certificate, SSL, redirect loop) to plain words, keeping an unknown code in
+  brackets; the banner's action is Reload. Other failures pass through
+  `formatUserError`.
   Committed main-frame navigation updates the address and external-open target
   without resetting guest `src`. Main forces `persist:capsule-browser` on guest
   attachment, tracks guest ownership, and limits clear-data IPC to owned guests.
@@ -935,7 +1144,7 @@ window) shows the chooser cards.
   `attachSimulator(threadId, udid)` so main knows which device that thread's
   agent may use; the renderer repeats the call on mount so a restart keeps
   the grant. Nothing streams and no touch bridge starts before attach.
-  **Detach simulator** (Tools drawer) clears both.
+  **Detach simulator** (the Device menu and the Tools drawer) clears both.
   Layout: the pane is keyed by thread in the inspector. Its header is the
   device picker, **Edit / Device / View** menus and four zoom buttons; the
   inspector's breadcrumb row is not shown for this surface. `simulator-geometry`
@@ -953,6 +1162,13 @@ window) shows the chooser cards.
   not touched. Keys typed into the focused screen are batched for 120 ms into
   one `text` action; Return and Delete are `key` actions. Notices and the
   URL, type and apps rows sit in a dock at the top of the stage.
+  Pausing the live screen shows a "The live screen is paused." notice with
+  Resume in that dock. Device states are shown in plain words
+  (`simulatorStateLabel`: Running, Starting, Shut down, Shutting down). The
+  device picker closes on an outside click or Escape. A failed first
+  inventory read shows a Retry. The Tools drawer labels privacy services and
+  Dynamic Type steps in words rather than `simctl` values, and closes on
+  Escape.
   `SimulatorTools` is the drawer: appearance, Dynamic Type step and increase
   contrast (`simctl ui`), rotation (bridge `orientation`, which also updates
   the session's point size), status bar clean/clear (`simctl status_bar`),
@@ -979,7 +1195,6 @@ window) shows the chooser cards.
   Navigating flushes pending changes to that owner; late preview/listing reads
   are rejected after selection changes. Old save replies do not update a new
   document's revision or UI.
-- **Side chat** lists ACP harnesses and live sessions (spawn / cancel / close).
 
 Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):
 
@@ -987,7 +1202,6 @@ Inspector-only shortcuts (ignored while typing, do not steal global `⌘P`):
 |--------|------|
 | Review | `⇧⌘D` |
 | Commands | `⌃\`` |
-| Side chat | `⌥⌘S` |
 | Close / toggle inspector | `⌘\` |
 
 A panel crash is isolated by `ViewErrorBoundary`. Retry remounts the panel. A
@@ -1014,15 +1228,74 @@ How the conversation behaves after the November review:
   transcript. The resting state toggled by scrolling has no padding
   transition.
 - **Latest.** The pill floats from a zero-height anchor above the composer.
-  In a detached history window it calls `returnToLatest`.
+  In a detached history window it calls `returnToLatest`. It prevents
+  default on `pointerdown`, so pressing it leaves focus (and the draft's
+  caret) where it was; it stays a tab stop. With several requests waiting it
+  reads "N requests waiting".
+- **Disclosures hold their place.** `VirtualTurns` listens in the capture
+  phase for clicks on `[aria-expanded]` (not `aria-haspopup`) and `summary`
+  anywhere in the scroller, records the control's offset, and calls
+  `onDisclosure`, which ends following (`setStick(false)`). Every later
+  layout pass, and the row ResizeObserver before paint, scrolls by however far
+  the control moved, ahead of following and the reading anchor; only a jump
+  (`focus`) outranks it. The hold ends on the reader's own wheel, touch,
+  pointer or key input, like `landing`. No disclosure component carries its
+  own scroll code. A correction that leaves the view within reach of the end
+  can rejoin following through the normal scroll rule.
+- **A sent turn rises.** A turn appended at the end while following, and
+  still unanswered or running, is the sent turn. `.thread-end-space`, the
+  last child of `.thread`, is sized so the end of the scroll puts that turn's
+  row `TURN_TOP` (48px, the same place a jump lands) below the top, so
+  pinning to the end shows the prompt with the reply growing beneath it and
+  nothing moves until the reply fills the view. The space shrinks as content
+  arrives (rows, the live run summary, request cards: a ResizeObserver on
+  `.thread` refits it) and drops to zero once the turn has run and stopped
+  or has a reply, so a settled thread never ends in a gap. A thread opened
+  on a running turn does not rise; only a turn sent while watching does.
+- **Following is decided at the scroll.** `onScroll` writes the follow
+  decision to the `following` ref before `setStick` renders it, and the
+  resize observers that re-pin to the end (Conversation's on the scroller,
+  `VirtualTurns`' on `.thread`) read that ref. A resize landing between a
+  scroll away and the render, such as a streaming row growing, used to pin
+  the reader back to the end, and the follow rule then read that jump as a
+  return to the latest.
+- **Both ends mounted.** The first and last turns are always mounted, so
+  heading navigation reaches both ends of a virtualized thread, and the sent
+  turn's row is always there to measure.
+- **Page keys.** `composerPageDirection` (`lib/composer-rest.ts`) gives
+  `PageUp`/`PageDown` from the composer field to the transcript unless the
+  field can still scroll that way, a modifier is held, or an IME is
+  composing. `glideScroll` pages by the view height less 40px over 150ms
+  (instant under reduced motion). It is script-driven because a native
+  smooth scroll cannot be cancelled, and the pill must stop a glide that
+  would carry the view away from the end it just jumped to.
+- **Announcer.** `ThreadAnnouncer` is one polite `aria-live` region (no
+  `role="status"`, which some screen readers treat as a status bar).
+  `nextThreadAnnouncement` (`lib/thread-announcement.ts`) speaks only
+  changes: the newest run going from in flight to completed, failed,
+  cancelled or blocked, and requests that newly wait. The first snapshot of
+  a thread is silent, so opening a thread or history loading says nothing.
+  Sentences within 1.5s are joined into one write.
 - **Failed turns.** These offer **Retry** (`retryPrompt`), plus **Open
   Agents** when the error reads as a sign-in failure. A failure after a
   partial reply says "The agent stopped before finishing". A turn
   interrupted by quitting says so, with **Send again**; so does a completed
   turn with no reply.
-- **Approval card.** It matches the question card's raised surface,
-  disables its buttons while a decision is in flight, and on a read-only
+- **Approval card.** Every pending request for this thread's runs gets a
+  card (`pendingApprovals` from the workspace; `ApprovalCards`), stacked
+  0.5rem apart, questions as `QuestionCard`. Each card matches the question
+  card's raised surface, disables its own buttons while its decision is in
+  flight, and on a read-only
   paired device shows "This device can only read" instead of buttons.
+  The **Approvals** view (`ApprovalsView`) renders the same `ApprovalCards`,
+  one group per asking thread under the thread's title, its project and
+  **Open conversation**, so the two places answer alike; `onReply` makes its
+  Deny and reply open the thread (in its own project) before focusing the
+  composer.
+- **Shelf note.** Under the last turn of a settled or snoozed thread,
+  `ShelfNote` (`features/triage/`) says "Settled…" or "Snoozed until <time>"
+  with **Return to active** or **Wake now**; a paired viewer sees the words
+  without the button.
   Stop, Esc-to-stop and queue steering are likewise hidden or disabled on
   paired devices; Edit from here and the turn menu are hidden while a turn
   runs and on paired devices.
@@ -1068,7 +1341,9 @@ target's last message, with the runs they belong to; both does the two.
 **Edit from here** (`rewindSession`) is a conversation restore cut at the
 chosen prompt, to the newest kept run, that also returns the prompt and its
 attachments for the composer; with `restoreFiles` the folder goes to the
-newest kept run that has a checkpoint. All refuse while a run in the thread is
+newest kept run's checkpoint, and the restore refuses when that run has none
+rather than reach past it to an older one, which would also undo it. All
+refuse while a run in the thread is
 live, and the files half keeps the folder guards described under checkpoints
 below.
 
@@ -1149,9 +1424,8 @@ replies as messages and returns it; importing the same session again returns
 the first thread. `ImportSessionsProvider` owns the dialog and a per-project
 listing cache. Entry points: the project menu (**Import sessions…**, disabled
 without a folder), the palette (**Import sessions from Claude Code or
-Codex…**), and an `ImportHint` chip under an empty thread's heading ("Found 12
-Claude Code sessions in this folder. Import…") that renders only when
-unimported sessions exist. The dialog filters by agent, says up front whether
+Codex…**). An empty thread does not advertise importable sessions; the
+listing is read when the dialog opens. The dialog filters by agent, says up front whether
 imports resume or replay and why, and notes missing histories and unsupported
 agents.
 
@@ -1170,19 +1444,94 @@ the queue: `FollowUpService` keeps up to 20 follow-ups and one scheduled resume
 per conversation in the settings table (`followups:<sessionId>`), and sends the
 first follow-up 1.5 s after any run in that conversation ends, whichever thread
 is on screen and with the window closed. `getFollowUps` is a read channel and
-`updateFollowUps` (add, remove, move, schedule, cancel-resume) is a control
-channel; every change emits `follow-ups-updated`. A send that fails puts the
-prompt back first with a `blocked` reason and retries every 30 s, so nothing is
-dropped. `QueuedPrompts` above the composer row lists the queue as compact
-rows, with no explanatory paragraph: Steer (route permitting), move,
-edit-back and remove, and the `blocked` reason inline ("On hold: …"). Its
-region label carries the count. A read-only paired device sees the rows
-without controls, and its placeholder already says it can only read; a
+`updateFollowUps` (add, remove, move, schedule, cancel-resume, replace,
+release) is a control channel; every change emits `follow-ups-updated`. The
+remote bridge passes `release` through and treats `replace` like `add`: a
+paired device may name only files it uploaded, so it can rewrite a queued
+prompt's text but not one that carries this computer's files. A send that
+fails puts the prompt back first with a `blocked` reason and retries every
+30 s, so nothing is dropped.
+
+A run that ends `cancelled`, `failed` (usage limit included) or `blocked` with
+follow-ups waiting sets `held` on the queue ("Paused after the turn was
+stopped." and so on), and `drain` sends nothing while it is set. Only the
+person releases it: `sendMessage(input, "person")`, which the `sendMessage` and
+`startRun` IPC handlers pass and nothing else does, lifts the hold when the
+turn is admitted and puts it back if admission throws; a `release` op (Resume
+queue, a row's **Send now**, Retry now on a limit stop) lifts it and can move one
+prompt to the front. Automations, channels, hook follow-ups and the queue itself
+send as `automatic` and never release it. A due scheduled resume enters the
+queue first, marked `resumeOf`, and goes even while the rest stays held. A
+completed run does not release a hold.
+
+`QueuedPrompts` above the composer row lists the queue as compact
+rows, with no explanatory paragraph: Steer (route permitting, a running turn,
+and text only, since `steerHarness` carries no files or skill), Send now (held
+and idle), move, edit and remove, the `held` reason with **Resume queue**, and
+the `blocked` reason inline ("On hold: …"). Its region label carries the count.
+Edit is in place: `editQueued` sets `queuedEdit` (draft-scoped) holding the
+row's original and the draft it set aside, fills the composer from the row,
+and the composer shows **Editing queued message** with Cancel and an **Update
+queued message** primary that sends a `replace` op keeping the row's id and
+slot. Esc or Cancel restores the set-aside draft, and while editing the draft
+store keeps the set-aside draft rather than the edit. If the row leaves the
+queue before the save, an untouched edit just ends; a changed one stays as the
+draft and the set-aside draft goes to Stash. A read-only paired device sees the
+rows without controls, and its placeholder already says it can only read; a
 control pairing can tidy the queue but not steer. A queue an older build left in
 `capsule.queue:<sessionId>` moves to the engine the first time its thread
 opens. `↑` in an empty or caret-at-start prompt recalls earlier user prompts
 (newest first, steers and repeats skipped); `↓` walks forward and restores
-the original draft; typing ends the walk. `⌘F` (`find-in-thread`, also in the
+the original draft; typing ends the walk. Inside a recalled prompt the arrows
+step history only from its first logical line (`↑`) or last (`↓`); a soft-wrapped
+single line counts as one line.
+
+Composer edits Capsule makes (a menu pick, a recall step, a saved-prompt fill,
+a stash restore) go through `editDraft`, which selects the range and runs
+`document.execCommand("insertText")` (or `delete`) so the field's undo history
+records them; setting a controlled value would empty it. Where the command is
+refused (read-only field, a value React has not committed) it falls back to
+`setDraft`. The renderer regression `composer-keyboard-regressions.tsx` checks
+`execCommand("undo")` after a pick and after a recall in Electron's Chromium.
+
+Composer keys: the textarea carries `aria-autocomplete="list"`,
+`aria-haspopup="listbox"`, `aria-expanded` for the `/`, `@`, `$` menu and
+`enterKeyHint`. `detectTrigger` leaves a `/` word that contains another `/` or
+`\` (a path) and a `$` amount (`$5`, `$10k`, `$1,200.50`) alone. Enter with an
+open menu and nothing to pick (no match, or file results still loading with no
+`@` source matching) sends. `⌘Enter` sends and `⌘⇧Enter` sends and continues
+in a new conversation, in either send-key mode. A coarse pointer, or a narrow
+paired viewer, makes Return insert a line (`enterKeyHint="enter"`); the send
+button and `⌘Enter` send. Esc closes, in order, the stash, the menu and a
+queued edit, then stops the turn; a window `keydown` listener notes when an
+Escape was `defaultPrevented` by anything, and Esc-to-stop waits 600 ms after
+that and ignores `repeat`. A key the keymap already handled
+(`defaultPrevented` at the capture listener) is not handled again by the
+composer. The keymap's composer-context `composer-other-action` (`alt+enter`)
+calls `sendFollowUp("queue" | "steer")`, the opposite of the primary, and
+`steer-first-queued` (`cmd+alt+enter`) steers `queue[0]` or, with no turn
+running, releases it; both reach the composer as `KEY_COMMAND_EVENT`. The
+primary shows a clock for queue and an arrow for steer and send, and its
+tooltip names `composer-other-action`'s effective keys. Drags onto the
+composer are intercepted only when `dataTransfer.types` includes `Files` (or a
+Files-tree row); dragged text reaches the textarea. Send, queue and steer are
+disabled while `useContextResolver().pending` has an unresolved `@` source or
+`!` command, and the tooltip and a notice on Enter name it.
+
+The `/` menu ranks with `rankGrouped` (lib/composer-rank.ts): exact name,
+prefix, word start, substring, letters in order, then description, with each
+group kept together and led by the group holding the best match. `$` uses
+`rankMatches` over installed skills. A direct-route session's
+`availableCommands` join the menu under the agent's name, minus names Capsule
+already uses; one without an input hint runs through `runAgentCommand` on the
+desktop, one with a hint (or on a paired device) is inserted as `/name `. The
+Gateway route reports no list, and `runAgentCommand` says so rather than
+suggesting `/`.
+
+Draft settings: `PromptDraft.settings` (`harness` per agent id, `approval`)
+persists the draft's `draftHarnessConfigs` and `draftApproval` with its text
+while the conversation has no messages, and the draft-key effect restores them,
+so they survive a thread switch and a restart. `⌘F` (`find-in-thread`, also in the
 palette) opens `ThreadFind` above the transcript. `thread-find.ts` turns each
 message into the text of its rendered blocks by walking the same markdown-it
 tokens `MarkdownBody` renders (sharing `markdownRuns`, `tokenTree` and the
@@ -1241,8 +1590,8 @@ latest. Each later remeasure re-aims the smooth scroll instead of assigning
 
 Conversation details shows `+added −removed` from Git status beside
 **Review** when the checkout is dirty; pull requests are created from Commit &
-push or from Review. The icon bar's More menu offers Agents, Side chat and the
-keep-awake-while-running toggle, mirrored in Settings.
+push or from Review. The icon bar's More menu offers Agents and any surface the
+bar left out; keep-awake-while-running is a Settings switch.
 
 The composer is one box: the prompt, then one footer row. Left: attach.
 Right, in order: a **Plan** chip only while plan mode is on; a Permissions
@@ -1330,13 +1679,14 @@ own names and is hidden when Approvals already sets the agent's mode.
 primary button: Send; Queue follow-up or Steer this turn while a turn runs and
 the draft has content (steer when `followUpBehavior` is steer, no attachment or
 skill, and `canSteerTurn`); Stop only while a turn runs and the draft is empty;
-Run command for a `!command`; Compact and send when the context is critical,
-the agent reports a compact command, and the person has not chosen Keep. There
-is no separate steer input. Compact and send is a small state machine in the
-composer: it runs the compact command, waits for that run to start and end,
-then submits the draft; sending by hand or switching thread cancels it. The
-context ring renders only at warn or critical (`contextTone`); at normal usage
-the details popover and `/compact` carry it. The placeholder is
+Run command for a `!command`. There is no separate steer input and no
+compact-before-send mode: the context meter's **Compact conversation** and
+`/compact` are the ways to compact. The context ring renders whenever usage is reported, neutral below warn
+(`contextTone` colours it from there). `.composer-tools` on the dock's left holds
+attach, the Plan chip only while plan mode is on, and the permissions chip only while
+it differs from the default (a new conversation's row always has it); a started conversation's context row shows
+`.composer-branch-status` (branch and changed count, opens Review). The resting
+pill hides `.composer-tools`. The placeholder is
 `composerPlaceholder`: "Ask anything. @ files, $ skills, / commands" when idle,
 "Queue a follow-up" or "Steer this turn" while a turn runs, never a key glyph.
 
@@ -1380,10 +1730,32 @@ nesting rather than recursive tails. Task plans accept an empty replacement;
 unfinished tasks in ended turns are labelled Incomplete, not Running.
 
 Review has one scope select (`ReviewScopeBar`): Uncommitted (HEAD to working
-tree, the default), Staged, Unstaged and Branch (merge base with
-`origin/HEAD`'s branch, else local `main`/`master`, to the working tree;
-untracked files included) from `DIFF_SCOPES` in `@capsule/shared`, then one
-**Turn N** per checkpointed run of the thread, read through `turnDiff`. The
+tree, the default), Staged, Unstaged and Branch (merge base with a chosen
+base, else `origin/HEAD`'s branch, else local `main`/`master`, to the working
+tree; untracked files included) from `DIFF_SCOPES` in `@capsule/shared`, then
+the branch's own commits (Commit scope, `GitDiffOptions.commit`, first parent
+to commit, or the empty tree for a root), then one **Turn N** per checkpointed
+run of the thread, read through `turnDiff`. `gitReviewTargets` (read) returns
+`ReviewTargets`: local and remote-tracking refs, the resolved base, and up to
+100 commits since the merge base (`git log`, newest first). The **against**
+select beside the scope sets the base per project in local storage
+(`capsule.reviewBase.v1`, `setReviewBase`); a base that stops resolving falls
+back to the default branch in `reviewBase` on the engine side. The commit pick
+is per thread for the window's life and falls back to the newest commit.
+
+Every git scope reads through `readReviewPatch` (`packages/filesystem/src/
+review-diff.ts`), which never fails because a change is large. New files join
+the diff as `git add --intent-to-add` entries in a copy of the index under
+`GIT_INDEX_FILE` (mtime copied so racy entries stay racy, split index written
+whole, sparse checkout off), with `--find-renames`, so a file moved outside
+Git pairs with its old path; the real index is never written. New files are
+sized first and taken smallest first: over 1 MB is `too-large`, past 200 files
+or 8 MB of new-file bytes is `limit`. The diff is read through `gitExcerpt`
+with a 16 MB budget; on truncation the patch is cut at the last whole file and
+`--name-only` lists the rest as `limit`. Those come back as
+`ScopedDiff.omitted`, which `OmittedFiles` lists (20, then "N more files not
+shown") with **Show** (a path-scoped read, through `onShowFile`) for `limit`
+and **Open in editor** (`openInApp` with the favourite or default) for both. The
 kind of scope is per project in renderer local storage (`lib/review-scope.ts`);
 the turn picked is per thread for the window's life, falling back to the
 newest checkpointed turn (`reviewSelection`). One renderer, `ReviewDiff`,
@@ -1396,13 +1768,27 @@ on the index and one on the working tree. An Uncommitted hunk is split by line
 overlap into its staged part (old-side lines of the `--cached` diff) and
 unstaged part (new-side lines of the index diff): Keep stages the unstaged
 part, Unstage reverses the staged part, Reject reverses the hunk in the working
-tree and the staged part in the index. A hunk patch never renames or changes a
-mode; a created or deleted file is one whole-file hunk. `gitApplyHunk`
+tree and the staged part in the index. A hunk patch never changes a mode and
+renames only with `hunkPatch(..., { move: true })`: Keep on a file renamed in
+the unstaged diff (old path still in the index) carries `rename from/to`, so
+staging any hunk stages the move; a pure move (no hunks) gets a file-wide Keep
+and, in Staged, an Unstage that reverses the move. Reject never moves. A
+created or deleted file is one whole-file hunk. `gitApplyHunk`
 (write) runs `git apply --check` on every part before applying any and
 reverses the index part if the working tree then refuses, so a stale hunk
 returns git's reason, shown on that hunk, and leaves the repository unchanged.
 Success refreshes the diff without unmounting it and refocuses the hunk at the
-same position. Turn and Branch are read only. Hunk headings are focusable when
+same position. Turn, Branch and Commit are read only. File headers carry
+**Copy path** and **Open in editor** (`FileDiff` `headerActions`, shown on
+hover or focus-within, always on touch); binary files show a Binary chip
+instead of counts. **Hide tests** (`isTestPath`, per thread for the window's
+life) filters files that look like tests. Line notes: `FileDiff`'s gutter
+**+** (`onAddComment`) opens a `NoteEditor` under the line (`lineNote`); notes
+live per thread in `lib/review-comments.ts` for the window's life, with Edit
+and Remove on each and a `NotesTray` that counts them, and **Add to message**
+appends `reviewCommentsBlock` ("Review comments:" then `- path:line — note`)
+to the composer draft through `setDraft` and clears them. A paired viewer gets
+no gutter **+**, no notes tray and no Open in editor. Hunk headings are focusable when
 they carry actions: `j`/`↓`/`↑` move, `k` keep, `u` unstage, `x` reject. The
 command palette has one entry per scope. A paired viewer reads every scope
 (`gitScopedDiff`, `gitCheckHunks` are reads) and sees no hunk actions. Both
@@ -1426,8 +1812,8 @@ blocks send before spawn when the selected route, folder, or CLI login is known
 to be unavailable. `harnessPreflightReason` returns `FOLDER_REQUIRED`,
 `GATEWAY_CONNECTION_REQUIRED`, or `agentReadinessReason(harness)` ("<agent> isn't
 installed.", "isn't signed in.", "can't start."); the preset's diagnostic
-`detail` stays in the Agents view. Doctor and Harnesses are linked from that
-notice. Doctor reports the first failing check's label ("still can't start:
+`detail` stays in the Agents view. **Check agent** (which runs Doctor) and
+**Open Agents** are linked from that notice. Doctor reports the first failing check's label ("still can't start:
 …") or a success toast. A live ACP
 session bypasses the spawn preflight.
 Direct readiness does not require Gateway/acpx. Harnesses and the composer use
@@ -1503,7 +1889,8 @@ stores the current draft; `⌘S` on an empty composer or `/stash` restores or re
 recent entries, and sending clears only the active draft. Stale paths are
 reported by main-process validation when a restored draft is sent.
 
-Usage lives in its own view (`features/library/UsageView.tsx`), ordered by the
+Usage lives in its own view (`features/library/UsageView.tsx`), reached from the
+sidebar rail and the palette's **Usage** entry, ordered by the
 question it answers: **Limits** (`ProviderQuota`), then **Tokens**, then **Your
 results**. Ranges are Today / 7 / 30 / 90 days (default 7, remembered in
 `capsule.usageWindowDays`); the main process counts a range from local
@@ -1516,13 +1903,25 @@ chart's x-axis is real time, `niceCeiling` gives round y ticks, and
 weekly windows taken as seven days). Tokens show four tiles (Today, range
 total, Requests with sessions, Cost **Not reported**), a per-day column chart
 (today in the accent, others de-emphasised, hover tooltip, **Daily figures**
-table as the non-hover path; hidden for Today), ranked bars by agent and by
-token type on one baseline, and a model table capped at fifteen rows plus a
+table as the non-hover path; hidden for Today), ranked bars by agent, by
+project and by token type on one baseline, and a model table capped at fifteen rows plus a
 "N more models" total. While a range loads the previous figures stay, dimmed
 via `aria-busy`. Transcript tokens carry the label "From transcripts on this
-computer"; limits carry "Reported by running agents". Only native Muse reports
-limits today; the Limits card says other agents do not and points to the
-conversation's limit banner. No price table is shipped: prices are not in the
+computer", and a line naming the agents counted (`PROVIDER_LABELS`) and saying
+other agents' transcripts are not read yet; limits carry "Reported by running
+agents". Only native Muse reports limits today; the card's agent name comes from
+the report's `providerId` through `harnessDisplayName`, and with no report it
+says **No limits reported**, which agent reports them, and that other agents do
+not (the footer note shows only beside a report).
+**By project** comes from `UsageSummary.byProject`: each transcript record keeps
+the folder it ran in (Claude's `cwd` per line; Codex's `cwd` from
+`session_meta`/`turn_context`, carried forward like the model), and
+`engine.usageSummary` maps folders to project ids with `projectOfFolders`
+(deepest prefix wins, over project folders, extra folders and every
+conversation's working directory, so worktrees count toward their project).
+Unmatched folders collapse to the `""` key, shown as Other folders; no path
+leaves the main process. `projectRows` names the six largest and folds the rest.
+An older host without `byProject` simply omits the section. No price table is shipped: prices are not in the
 transcripts.
 Transcript discovery honors inherited `CLAUDE_CONFIG_DIR` and `CODEX_HOME`
 before the default home directories. Home-relative paths expand locally;
@@ -1661,7 +2060,9 @@ its renderer, a renderer crash, system sleep, and shutdown cancel them. Read
 status invokes the system speech utility with aggregate attention counts, not
 thread text. Opt-in announcements last for the open tray and are rate-limited.
 Voice IPC validates the companion's top-level sender; it is absent from the
-remote handler map even for write-scoped viewers. Windows reports unsupported
+remote handler map even for write-scoped viewers. The one exception is
+`getPetVoiceStatus`, a capability check that never opens the microphone: the
+desktop window's main frame may call it too, for Settings › General › Voice. Windows reports unsupported
 voice explicitly. Tests use fixture processes, never live microphone capture.
 
 ### Composer dictation
@@ -1786,6 +2187,15 @@ startup smoke test closes a loaded workspace, emits an engine event to a remote
 subscriber, reopens the workspace, then closes it again before normal quit.
 Search ranks exact conversation titles first, then recent activity, consistently
 in the palette and the search API without changing sidebar pin order.
+`rankPalette` matches each query word on its own, in any order, against the
+label (fuzzy) or the start of a keyword word; a thread's keywords are its
+project name. Ties go to the more recent entry (`recency`), and a small boost
+(2 points, halving daily) lifts recent threads among near-equal matches. When
+nothing matches, a second pass forgives one edit per word (two from eight
+letters) through `nearMiss` in shared `fuzzy.ts`. Every Settings catalog row is
+a search-only **Settings** entry that opens the row through `revealSetting`, and
+each project other than the current one has a search-only **New conversation
+in** row.
 
 ### Command palette
 
@@ -1933,6 +2343,14 @@ Finished-file rows open an ephemeral saved-diff preview on hover or focus.
 `TurnOutcome` initially requests only the saved file summary. Hover/focus and
 file selection request the owning checkpoint pair through `turnDiff` with a
 literal relative path, never current repository status or live file contents.
+The pair is the run's checkpoint and the previous checkpointed run's in the
+same folder. Every ending captures one (`captureTurnCheckpoint` runs on
+completion, Stop and Force stop, the output limit, a send that never reached
+the agent, and startup recovery of a turn cut off by a quit), so a stopped turn
+cannot leave the next turn's diff claiming its changes. A run with no earlier
+checkpoint snapshots the folder at admission, overlapped with agent startup and
+awaited before the prompt goes out, at `threadSnapshotRef(session, "base",
+runId)`; `turnDiff` uses that when there is no previous checkpoint.
 The filesystem adapter caps each patch at 512 KiB and metadata commands at
 1 MiB, stops its Git child at the output limit, and keeps complete records only.
 The list is capped at 2,000 files; omitted rows/counts and partial patches are
@@ -2006,13 +2424,15 @@ No WSL agent bridge is provided. See the release verification contract in
 
 ### Verification receipts and workspace ownership
 
-Completed turns and History render the same collapsed `TurnVerification`
-disclosure. It lists saved project actions from the run's project, shows the
+Completed turns render a collapsed `TurnVerification` disclosure only when the
+run's project has a saved action or the run has evidence (or a check in
+progress); otherwise it renders nothing. It lists saved project actions from the run's project, shows the
 command before explicit execution, and supports cancel, rerun, and evidence-only
 recheck only when a receipt exists. **Add check** saves an action on that owning
 project through the existing `updateProject` IPC; it never executes on save.
-The only action is preselected, never automatically run. Cwd, hashes and
-requirement guidance sit inside **How this is checked** (labels for the stored `tests-pass` and `describe-changes` requirements come from `REQUIREMENT_LABELS` in `TurnVerification.tsx`, so older turns read the same). Receipts share the owning
+The only action is preselected, never automatically run. **How this is
+checked** says where checks run and shows the turn's folder; snapshot hashes
+and stored requirement rows are not drawn. Receipts share the owning
 turn's activity expansion with its work log.
 A completed turn with neither a saved reply nor result shows a missing-reply
 notice. ACP activity counts deduplicate updates by run plus tool call id, while
@@ -2096,7 +2516,8 @@ before persistence and publication (8,192 message characters; bounded data
 strings, depth, entries and nodes). This does not truncate authoritative agent
 replies or replace artifacts. Truncation and earlier-history markers are visible;
 recent activity counts must not be presented as whole-run totals. Each turn has
-a lazy, replace-in-place Run log, including failed runs. Event-only file evidence
+a lazy, replace-in-place event log under **What the agent reported**, mounted
+only for failed or blocked runs. Event-only file evidence
 uses the recent page and discloses incompleteness instead of loading entire runs.
 
 Failed sends use draft revisions as well as selection ownership. If typing or
@@ -2185,12 +2606,42 @@ The renderer does not launch process-table commands while typing or rendering.
 ### Project actions
 
 Saved actions live in `projects.project_actions` JSON (schema v8): id, name,
-command, and optional preview URL. `capsule:runProjectAction` starts the command
-through `@capsule/terminal` in the conversation cwd, keeps bounded combined
-output in memory, and exposes explicit list / stop IPC channels. Process groups
-are terminated on Stop, project or conversation deletion, and app shutdown.
-The IPC remains a closed set; there is no renderer-facing generic shell beyond
-the existing project command runner.
+command, and optional preview URL.
+
+Running one is the workspace's `runProjectAction(action)`, the only path: the
+Conversation details split button (`ProjectActionsControl`), the palette's
+**Run project action: …** rows (search-only) and an `action:<name>` key binding
+all call it. It records the action as the project's last
+(`lib/project-actions.ts`, `capsule.lastProjectAction.v1` in local storage, a
+per-device `{ [projectId]: actionId }`), opens the chat view and the terminal
+dock, opens the preview URL if set, and hands the dock a
+`{ kind: "run", command, tab: { key: "<project>:<action>", label: name } }`
+request through `lib/terminal-requests.ts`, the same queue that types a sign-in
+or code-block command (`{ kind: "type" }`). The split button shows the
+remembered action while it still exists, else the first.
+
+The dock writes an action as Control-U, the command, Return, so it runs at once
+over a cleared prompt. It reuses a tab whose `Pane.action` is the request's key,
+whose shell has not exited and whose reported folder (OSC 7, when the shell
+sends it) is still the dock's cwd, the active tab first, but only once
+`capsule:terminalIdle` says the shell holds its terminal: main compares the pty
+shell's pid with its tty's foreground process group (`ps -o tpgid=`); Windows
+always answers busy. Otherwise it opens a tab named after the action, numbered
+`dev 2` beside a busy one; action tabs take no `Terminal N` number. The dock
+cwd is the conversation folder, the same folder the engine resolves for the
+thread. Strict sandbox refuses `terminalStart` and `terminalInput`, so the
+split button and palette rows are disabled with that reason. A paired viewer
+gets no dock, Conversation details hides the action row there, the palette rows
+say **Available in the desktop app**, and `runProjectAction` refuses with a
+notice; `terminalIdle`, like every terminal channel, is a write.
+
+The headless runner (`startInDirectory`, `engine.runProjectAction`) is left
+for actions marked `runOnWorktreeCreate`, which the engine starts when it
+creates a worktree, with no dock to run in. It keeps bounded combined output in
+memory for **Background tasks** and exposes list / stop IPC channels; process
+groups are terminated on Stop, pause, project or conversation deletion, and app
+shutdown. Checks (`@diagnostics`, turn verification) use `runInDirectory`,
+which captures output for the result.
 
 The header and project screen share an asynchronous action editor. Saving
 disables repeat submissions and keeps the entered values visible on failure;
@@ -2270,20 +2721,30 @@ scrolls to the middle and pulses twice (a steady ring under reduced motion).
 
 | Section | Owns |
 |---------|------|
-| General | Notifications (Notify me, sound; per-kind switches, Dock bounce and badge under Advanced); Chat (send key, follow-ups); Conversations (resume after usage limits, continue after a restart, archive inactive, mark blocked or done); Confirmations; System (launch at login, menu bar, keep awake, download updates; companion and simulator access under Advanced); saved prompts; tags; usage reports |
-| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file, copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview; opacity, dim and blur as one slider per row, then fit for an image; Choose image…, Reset, a one-line desktop-only note for images; over an image, muted and faint text are lifted toward the text colour and transcript text and icons get a soft page-colour halo, except inside sent messages and code; over any backdrop, code blocks and inline code sit on the page colour with a hairline); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, with live type previews |
+| General | Notifications (Notify me, sound; per-kind switches, Dock bounce and badge under Advanced); Chat (send key, follow-ups); Conversations (resume after usage limits, continue after a restart, archive inactive, mark blocked or done); Confirmations; System (launch at login, menu bar, keep awake, download updates; companion and simulator access under Advanced); Voice (`VoiceSettings`: speech-recognition availability from `getPetVoiceStatus`, the dictation chord, and buttons that open the Microphone, Speech Recognition and Keyboard panes through `openDictationSettings`; a paired device sees only `dictationUnavailableReason`); saved prompts; tags; usage reports |
+| Appearance | System / Light / Dark; Themes (a list per appearance with swatches, live preview on hover or arrow-key focus, Escape or leaving reverts, click or Enter chooses; paste a share string, import a file or drop a `.json` on the import row (a Capsule theme or an editor colour theme with `colors`/`tokenColors`, mapped by `editorThemeToCapsule` in `@capsule/shared` and saved as a Capsule theme; dropped files reach main as `{ from: "dropped", text, name }`, never a path), copy a share string, open the themes folder; contrast pairs under 4.5:1 behind a disclosure); Backdrop (None and five scenes with hover preview; opacity, dim and blur as one slider per row, then fit for an image; Choose image…, Reset, a one-line desktop-only note for images; over an image, muted and faint text are lifted toward the text colour and transcript text and icons get a soft page-colour halo, except inside sent messages and code; over any backdrop, code blocks and inline code sit on the page colour with a hairline); per-theme accent / background / foreground (a Customize layer over a non-built-in theme), UI and code fonts, translucent sidebar, contrast, transcript size / width, code text size (`codeTextSize` s/m/l sets `--code-scale` 0.9/1/1.15, multiplied into `.msg-code`, `.diff-view`, `.file-diff-body` and `.file-preview-code`), terminal font size (`terminalFontSize`, one of `TERMINAL_FONT_SIZES` in px, default 12, applied to open xterm panes with a refit), with live type previews |
 | Agents | New conversations (default agent, workspace, permissions, web search; sandbox and where agents run under Advanced); Replies (thinking; output detail under Advanced); Plan mode; profiles; response style; permission rules; installed agents |
-| Gateway | URL, token in Keychain, status with connect / disconnect; connection details, Gateway agents and API-key guidance under Advanced; reading from another device |
+| Gateway | URL, token in Keychain, status with connect / disconnect; connection details and API-key guidance under Advanced (agent readiness lives in the Agents view, not here) |
 | Projects | Inbox folder; create, delete, attach primary folder, choose or reset project icon |
 | Source control | Tooling; worktree location; Diffs (layout, files, whitespace); Pull requests (draft, merge method, watch and fix, where check fixes go, auto-merge, settle merged; watching until merged and PR instructions under Advanced); Commits and branches (branch prefix, force-with-lease; commit instructions under Advanced) |
 | Skills | skills.sh token for the catalog |
 | Shortcuts | keybindings.json — see below |
-| Diagnostics | Customization doctor, process monitor, subsystem versions, export |
+| Devices & access | Remote access (reach, address, pairing link, phone code); Paired devices (one row per pairing, Revoke, Revoke all); connected devices and share links (`ShareSettings`) |
+| Diagnostics | Troubleshooting (versions, Gateway state in words, Copy diagnostics, Recent log), customization doctor, process monitor, local performance |
 | About | App icon squircle, version, copyright, copy version info |
 
-Gateway also owns **Browser access**: off, this computer, or this
-network. It shows the address, a Create link button that mints a single-use
-pairing link, and the list of paired devices with a Revoke beside each. A
+**Devices & access** owns remote access: off, this computer, or this
+network. It shows the address and a Create link button that mints a single-use
+pairing link. When Capsule was launched with `--remote` (or `CAPSULE_REMOTE`),
+`remoteStatus` sets `heldByLaunch`; the reach select then shows the live reach,
+is disabled, and says it holds until quit, because `RemoteAccessLifecycle.follow`
+ignores the setting for that launch. **Paired devices** is its own card: one
+setting row per pairing, named by `deviceLabel` (browser and system read from a
+user agent, which is also what the pairing page now sends; older raw labels are
+read the same way), with access in words (Read only, Conversation control,
+Phone, encrypted), last activity, and expiry when under a week away. Revoke ends
+one; with two or more, Revoke all ends every one after a confirmation, through
+the existing `remoteRevoke` per device. A
 paired device receives `read` by default. An explicitly issued `control` pairing
 can create supervised conversations, send text, stop runs and answer approvals
 once. Control requires loopback or an explicitly configured same-host HTTPS
@@ -2299,25 +2760,31 @@ Below the pairing link, **Phone** has a Pair a phone button. It shows a QR code
 (dark modules on a fixed light tile in both themes) with a live five-minute
 countdown, a Copy link button, and New code. The code pairs the mobile app over
 the pinned TLS listener with `read` + `control`, so it is offered on This network
-too. Paired devices label phone pairings "phone, encrypted". On This computer
+too. Paired devices label phone pairings "Phone, encrypted". On This computer
 the phone listener binds 127.0.0.1 and the code carries that host, so the row's
 hint says only a simulator on this Mac can use it. On This network, when HTTP
 control is unavailable, the Browser link permission hint points to Pair a phone as
 the encrypted way to get control. See [mobile.md](mobile.md).
 
-Harnesses uses a two-pane catalog/detail layout. Installed and ready entries
-sort first; selecting one reveals project dedication, Doctor output, start,
-live sessions, and advanced session options. Project cwd and persistent/one-turn
-mode stay in the compact context bar instead of repeating inside every agent
-card. A live session's ACP-advertised model catalog renders as a selector; a
-manual model-id field remains when no catalog is advertised. Missing or
+Agents uses a two-pane catalog/detail layout. Installed and ready entries sort
+first; a turned-off agent stays listed as "Turned off". Selecting one shows
+store controls, project dedication, **Show this agent**, **Launch options**
+(binary path, extra arguments, environment; open when any is set, and saying
+when the agent runs through the Gateway that they do not apply), Doctor
+output, start, and open sessions with Open and Close. Sessions start
+persistent in the current project's folder; there is no folder bar or
+session-lifetime picker. Model and permissions belong to the composer, so the
+detail repeats neither. **Advanced** holds per-session Refresh status and
+Cancel turn, `CapabilityDetails` ("What Capsule can change on this session")
+and `HarnessSessionDiagnostics`. The empty state is per route: direct says no
+agents were found on this computer, Gateway names the Gateway. Missing or
 signed-out CLIs cannot start until readiness becomes usable.
 
 Harness status is cached by session id, not as a global chat notice. Both the
-composer model picker and Harnesses option controls may refresh that cache;
+composer model picker and Agents' Refresh status may refresh that cache;
 neither renders the raw response in the conversation or changes the draft.
 Raw status remains available in a bounded, collapsed **Session diagnostics**
-disclosure in Harnesses, reset when the selected session changes. Stored full
+disclosure under Agents' Advanced, reset when the selected session changes. Stored full
 ACP status reports are filtered from assistant history at render time without
 deleting records; user-pasted reports and agent explanations are preserved.
 
@@ -2325,27 +2792,68 @@ deleting records; user-pasted reports and agent explanations are preserved.
 
 ## Skills Directory
 
-- **Installed first**: the default tab separates Capsule-managed entries from
-  read-only global skills discovered under `~/.agents/skills`,
-  `~/.codex/skills`, the Claude config directory's `skills`, and
-  `~/.config/opencode/skills`. Discovery recursively reads real `SKILL.md`
-  documents, deduplicates symlinked installs by canonical path, and exposes a
-  manual rescan. Global entries can be attached but not uninstalled by Capsule.
-  Installed rows omit full paths and initially cap long groups at twelve;
-  location remains available in the detail view. Guidance uses the shared
-  Markdown renderer with frontmatter removed, while Source preserves the raw
-  document. An explicit read-only Skills IPC lists and previews files under the
-  selected skill root; canonical-path containment prevents traversal and
-  symlink escapes. The Files tab presents that folder tree and renders Markdown
-  previews in place.
-- **Packed skills and packs**: pre-bundled skills across Web & React, Backend & Database, Testing & Quality, Agent Workflows, and Design & UI. Packs use flat compact rows; repeated CLI commands and included-skill controls live in the detail view.
-- **Browse GitHub**: the directory reads a live catalog from the skill repositories on GitHub — names from the repository listing, descriptions from `SKILL.md` frontmatter. Results use compact rows capped to an initial page, and partial-source errors collapse behind a summary instead of taking over the view. No account is needed. The catalog is cached on disk because unauthenticated GitHub allows 60 requests an hour for the whole machine; a failed refetch serves the last good page with the reason attached rather than an empty list. Refresh forces a refetch. Links route into Capsule's embedded Browser.
+`features/library/SkillsDirectory.tsx`, opened from the palette's **Skills**
+and the app menu (⇧⌘S). Two tabs: **Installed** and **Browse GitHub**. There
+are no packs and no Plugins tab; plugins live in Settings → Plugins, and the
+skills a plugin brings appear in Installed.
+
+- **Installed** is one list with one count (`lib/skill-library.ts`,
+  `skillLibraryRows`): every `status: "installed"` skill from
+  `engine.listSkills`, which reads the global roots (`~/.agents/skills`,
+  `~/.codex/skills`, the Claude config directory's `skills`,
+  `~/.config/opencode/skills`), the conversation folder's `.claude/skills`
+  and `.agents/skills`, plugin skill folders, and the catalog installs stored
+  in the database. Discovery reads real `SKILL.md` documents and deduplicates
+  symlinked installs by canonical path. Sorted by name; a query ranks with
+  the composer's `rankMatches`. A row is one button (name, description) that
+  opens the detail; it shows `skillSource` only when another installed skill
+  has the same name, and a check when it is the draft's attached skill. Rows
+  never truncate the name for a label. Up and Down move between rows, Down
+  from the search field enters the list. The refresh icon beside the tabs
+  re-runs `refresh()`, which rescans the folders.
+- **Detail** is a dialog that takes focus, closes on Escape and returns focus
+  to the row. The header names the source and, for a skill on disk, its
+  folder. Tabs: Instructions (shared Markdown renderer, frontmatter removed),
+  SKILL.md (raw), Files (installed only; read-only Skills IPC lists and
+  previews files under the selected skill root, canonical-path containment
+  prevents traversal and symlink escapes). Actions: **Attach to message**
+  (sets the draft skill and returns to chat) or **Remove from message** when
+  it is already attached; **Uninstall** only for a catalog install;
+  **Install** and **Install and attach** for a catalog entry.
+- **Browse GitHub**: a live catalog from the skill repositories on GitHub;
+  names from the repository listing, descriptions from `SKILL.md`
+  frontmatter, the repository beside each name. Each row opens the detail
+  and has one **Install** (or an Installed mark). Partial-source errors
+  collapse behind a summary. No account is needed. The catalog is cached on
+  disk because unauthenticated GitHub allows 60 requests an hour for the
+  whole machine; a failed refetch serves the last good page with the reason
+  attached. The refresh icon beside the tabs forces a refetch and shows the
+  fetch time. Links route into Capsule's embedded Browser.
 - Catalog persistence uses atomic replacement. Persisted pages are validated as
   unknown input before restoration or stale fallback; malformed pages are misses,
   not startup failures.
 - **skills.sh**: optional. Every skills.sh endpoint answers 401 without a Vercel OIDC token, so the catalog reads GitHub unless a token is set in Settings → Skills. With one, skills.sh results merge in ahead of the GitHub ones and carry install counts.
-- **Installing** fetches the skill's `SKILL.md` and stores it. A skill without that text is refused rather than saved, because a turn injects the active skill as `[Active Skill: name]` followed by its content — a skill stored without content attaches and contributes nothing.
-- **Composer attachment**: type `$skill` in the composer to attach procedural guidance to a run.
+- **Installing** fetches the skill's `SKILL.md` and stores it. A skill without that text is refused rather than saved. Catalog ids are always `owner/repo/name`.
+- **Paired device**: the list, detail and attach work; Browse shows that
+  installing happens on the host and does not fetch (`searchSkillCatalog`
+  and `fetchSkillDetail` are write-classified); Install and Uninstall are
+  disabled with that reason.
+
+### How an attached skill reaches the agent
+
+Only an explicit `skillId` on the turn attaches a skill; no mode selects one.
+`engine.sendMessage` appends `[Active Skill: name]`, then `Skill folder:
+<dir>` for a skill on disk, then the `SKILL.md` text, to the prompt it sends.
+That one string goes to `direct.send` on the direct route and to
+`runtime.sendMessage` on the Gateway route, so every harness gets the same
+text. It is not the agent's own skill mechanism: supporting files are not
+uploaded, and a Gateway agent on another machine cannot open the folder it
+is told about.
+
+On start, `pruneStoredSkills` deletes stored rows that cannot be attached:
+ids without a `/` (the bundled sample skills earlier versions seeded) and rows
+without instructions (the Gateway plugin list earlier versions copied in).
+The Gateway's `plugins.list` is no longer read as skills.
 
 Permissions are Capsule-native and mapped onto Gateway acpx (see [harness.md](harness.md)):
 
@@ -2423,7 +2931,8 @@ command palette (`palette`).
 | Stop the running turn (`stop-turn`; a notice when nothing runs or the device only reads) | `⌘.` | rebindable |
 | Focus the composer (`focus-composer`; bare key, so never fires while typing in a field) | `⇧Esc` | rebindable |
 | Choose model / permissions / effort | `⇧⌘M` / `⇧⌘P` / `⇧⌘E` | rebindable |
-| Next / previous conversation | `⌃Tab` / `⌃⇧Tab` (written `ctrl+tab`) | rebindable |
+| Next / previous conversation in the sidebar's drawn order | `⌃Tab` / `⌃⇧Tab` (written `ctrl+tab`) | rebindable |
+| Go to sidebar row 1–9 (`go-to-conversation-1` … `-9`) | `⌘1`–`⌘9` (written `cmd+1`; Control elsewhere) | rebindable |
 | Stash prompt | `⌘S` | composer-local |
 | Send | Enter or `⌘Enter` per Settings | |
 
@@ -2469,18 +2978,25 @@ command.
 
 The contract is `@capsule/shared/agent-setup.ts`; main's halves are
 `main/agent-store.ts` (over `@capsule/harness` store) and
-`main/agent-sign-in.ts`. All seven channels are write channels.
+`main/agent-sign-in.ts`. All eight channels are write channels.
 
 **Store controls** (`features/harness/AgentStoreControls.tsx`) render one
 `StoreRow` union per preset (`agent-store-model.ts`): none, user (a copy on
-PATH: "Installed by you at …", no actions), unavailable (the reason as text),
+PATH, or the agent's binary path override: "Installed by you · vX" (the path is in its tooltip and the agent header), and
+when it is behind either **Update to vX** behind a confirm that quotes the
+command, or the command with a copy button when Capsule cannot run it),
+unavailable (the reason as text),
 offer (**Install** with version and "from the ACP registry" or "from npm"),
 installed (**Update to vX** when newer, **Remove** behind a confirm), busy
 (phase and bytes from `agentInstallProgress`) and failed. One store per window
 (`agent-store.ts`) holds entries and progress, so an install started from the
 composer also shows in Agents and first run. Agents lists featured presets even
 when they are not installed. "How to install" shows only when the store cannot
-install that agent.
+install that agent. `pendingUpdates` lists every agent that is behind (one per
+copy, turned-off agents skipped); `AgentUpdatesPill` in the sidebar footer shows
+an agent icon with a count badge (accessible name "Update N agents") once there are any, ten seconds after launch at the earliest
+(its first list reaches the network), and its confirm names each update and
+runs the ones Capsule can run, in turn. It is not drawn on a paired device.
 
 **Sign-in dialog** (`SignInDialog.tsx`) is one `Phase` union: loading, choose,
 waiting (an `agent` method running ACP `authenticate`; "Finish signing in in
@@ -2500,7 +3016,17 @@ Close still works.
 `settings.firstRunDone` is false, there are no projects, and the window is the
 desktop app. It is one page, not a wizard: **Agent** (featured presets with
 store controls, Sign in and Check again) and **Folder** (Open a folder, Clone a
-repository, or the chosen folder with Choose another). Only a project with a
+repository, or the chosen folder with Choose another). Above the folder choices,
+`suggestProjects` (engine, `core/project-suggestions.ts`) lists folders with at
+least three sessions in the last 30 days in the Claude Code and Codex histories
+that import reads, grouped by repository root (a linked worktree counts for its
+main repository), excluding existing projects, home, temporary folders and
+Capsule's own data and worktrees. Only file names, times and each session's
+recorded `cwd` are read. All are chosen; **Add N projects** creates each, and
+**Bring in their recent conversations** imports up to ten sessions per project
+from the last 30 days. `suggestProjects` is not a read channel, since it names
+host folders beyond the project list. An agent installed in a terminal appears
+without Check again through `recheckMissingBinaries` (see harness.md). Only a project with a
 folder counts; the Inbox does not. **Start a conversation** needs a folder and
 nothing else. A missing agent is finished from the composer's setup notice, so
 it never gates the first message. `firstRunAgent` (`setup-progress.ts`) picks
@@ -2555,8 +3081,7 @@ scoped and persisted with draft/stash attachments, not duplicate `$name` prose.
 File selection validates the exact path in the thread folder through the existing
 attachment channel. Debounced search rejects stale responses; no new IPC is added.
 
-Inspector **Agents** is distinct from **Side chat** (now the `chat` tab key).
-Agents and the palette’s Show thread agents entry default to the latest turn's
+Inspector **Agents** and the palette’s Show thread agents entry default to the latest turn's
 events. A selector opens earlier loaded runs through `listRunEventPage`, retaining
 one bounded page with independent loading, error and partial-history states.
 Reads are scoped by project/thread/run and never replace the live event window.
@@ -2747,7 +3272,9 @@ path-shaped tokens there, and maps each match back to a 1-based, end-inclusive
 buffer range, so hovering any row of a wrapped link underlines all of it. A path
 is a link only if it names a file (an extension, or a `:line`) and resolves,
 against the shell's folder, inside `conversationFolderRoots` (shared with Files,
-so the root handed to `openFile` is one Files accepts). The shell's folder is
+so the root handed to `openFile` is one Files accepts). A click hands
+`openFile` the path with its `:line:column` suffix (`fileReference`), the form
+Files reads a line from; content-search hits do the same with their line. The shell's folder is
 the dock's cwd until the shell reports another through OSC 7. Local hosts go to
 the thread's Browser via `setBrowserUrl` + `openInspector("browser")`; other
 URLs, and `⌘`-click on any URL, go through `window.open`, which main's window
@@ -2793,7 +3320,7 @@ tool activity. Older agents keep the fallback boundaries. Reported model lists
 accept flat or grouped options, retaining at most 32 choices per selector.
 
 Workspace refresh reads one latest-run summary per visible thread. Selected
-conversations and History use `listRunPage`: keyset pagination by creation time
+conversations use `listRunPage`: keyset pagination by creation time
 and ID, 100 rows by default and at most 200. Result bodies are omitted and
 `hasResult` preserves answer presence without retaining whole histories. The
 new IPC channels are explicitly read-only for paired viewers. Full run details
@@ -2871,9 +3398,9 @@ section targets, disclosures, the clipboard paths, the tour's keyboard
 handling, guide filtering, that illustrations are labelled images with nothing
 focusable, and that no site disclosure is a bare `<summary>`.
 
-# Browser access and usage reports
+# Remote access and usage reports
 
-Settings → Gateway → Browser access serves the existing renderer. Read-only is
+Settings → Devices & access → Remote access serves the existing renderer. Read-only is
 the default pairing permission. Conversation control adds new supervised/local
 threads in existing projects, text prompts, stopping runs and once-only approval
 decisions. The permission explanation warns that agents can edit files and run
@@ -2895,8 +3422,8 @@ pairing/control. See [implementation](web-access-and-analytics.md) and
 ## Shortcuts sheet and new chords
 
 `lib/keybindings.ts` stays the one table: it gained Open Review (⇧⌘D), Open
-Browser (⇧⌘B), next and previous conversation (⌃Tab, ⌃⇧Tab, ordered by
-`lib/session-cycle.ts`) and Keyboard shortcuts (⌘/). Shortcuts owned by a
+Browser (⇧⌘B), next and previous conversation (⌃Tab, ⌃⇧Tab, in the order the
+sidebar drew, from `lib/session-cycle.ts`) and Keyboard shortcuts (⌘/). Shortcuts owned by a
 surface rather than the registry are listed in `FIXED_SHORTCUTS` so
 `ShortcutsSheet` can show them. The sheet opens from ⌘/ or the palette through
 `SHOW_SHORTCUTS_EVENT`, and uses `useModalFocus` like the other dialogs.
@@ -2929,7 +3456,7 @@ files over 200 lines.
 
 The user-facing name for the agent catalog and its harness records is
 **Agents**; "harness" stays in code. Each panel surface's header carries its own
-name (Review, Agents, Side chat, Open a surface) and the body starts with
+name (Review, Agents, Open a panel) and the body starts with
 content. Settings pages show the section name once, and **Restore {Section}
 defaults** says what it resets; Shortcuts can restore too, since its section
 now owns `keybindings`. Settings search matches section names and the words
@@ -2952,7 +3479,7 @@ time, and Approval and Failed carry icons.
 ## Launcher keys and Settings navigation
 
 Each surface in `surfaces.ts` has a one-letter `key` (R Review, B Browser, M
-Simulator, F Files, A Agents, S Side chat). While the panel's launcher shows,
+Simulator, F Files, A Agents, C Compare). While the panel's launcher shows,
 pressing it opens that surface unless the surface is blocked or the key was
 typed into a field; the card shows the letter, with the global shortcut in its
 tooltip. Settings sections carry an icon and sit under group headings (Runtime,
@@ -3206,11 +3733,12 @@ and the chips read that table rather than keeping their own lists.
   one line, an expiry pill group (1 hour, 1 day, 7 days, Never; default 1 day),
   **Create link** (copies and shows the URL once with **Copy link**), and the
   thread's active links with **Revoke**. With browser access off it shows a
-  notice with **Turn on for this computer** (sets reach to loopback) and a
-  link to settings, and no Create button.
-- **Settings › Gateway › Browser access** gains **Connected now** (device,
-  thread it is viewing, since) and **Share links** (thread, expiry, Revoke)
-  under the paired devices.
+  notice with **Turn on for this computer** (sets reach to loopback) and
+  **Remote access settings**, which opens Settings › Devices & access at that row,
+  and no Create button.
+- **Settings › Devices & access › Paired devices** gains **Connected now**
+  (device, thread it is viewing, since) and **Share links** (thread, expiry,
+  Revoke) under the paired devices.
 - **Presence.** A pill after the thread name in the title bar: "Also open on
   iPhone", "Open from a share link" or "N viewers", with each device and its
   connect time in the tooltip. Hidden when no remote device is on the thread,
@@ -3251,8 +3779,8 @@ Git project.
   offered only when the selected thread has a `groupId`, with the one header
   row (maximize, close) every surface has. Summary: prompt (3 lines), agent
   count and working count, "Kept <agent>", and a **Candidates / Same file**
-  switch. One card per candidate: agent glyph, model or "default model", route
-  (Direct / Gateway), phase badge with elapsed time (live while working),
+  switch. One card per candidate: agent glyph, model or "Default model" (the
+  route is not drawn: it does not change what a candidate is judged on), phase badge with elapsed time (live while working),
   Changes (files, +/− from the Branch diff scope), Checks (verification state),
   Usage (reported tokens and cost, or "Not reported"), the reply excerpt or the
   failure reason, then **Open conversation**, **View diff** (Review on that worktree
@@ -3731,7 +4259,8 @@ matcher, on or off, command or URL, file, and its last run. The palette has
 **Open hooks settings**. A blocked prompt reaches the composer as the
 send's error, so the notice above the thread reads **Blocked by hook:** and
 the draft is restored. Work-log lines `approval.auto`, `hook.context` and
-`hook.follow-up` show in the turn's Run log.
+`hook.follow-up` are recorded on the run and show under **What the agent
+reported** when the turn fails or is blocked.
 
 ## Themes and the conversation backdrop
 
@@ -3808,7 +4337,9 @@ device with conversation control can start a thread from a profile.
 **Status line.** `features/status-line/StatusLine.tsx` sits at the end of
 the composer's workspace row (`.composer-context`), right-aligned and
 shrinking before the folder and branch controls. With `statusLine.items` it
-shows each chosen item with a value, separated by dots, with warn and
+shows each chosen item with a value, separated by dots (the agent item adds
+"Gateway" only for a Gateway thread; the latest turn is in words, not its raw
+status, which the command still reads), with warn and
 critical tones for context and limits over 75% and 90% and a failing PR or
 run. With a command it shows the command's latest output for the thread:
 named ANSI colours map to the theme's red, green, yellow, blue and text
@@ -3828,10 +4359,20 @@ an expansion. The palette has **Status line**.
 AutomationsSettings.tsx`, under Code in the nav) lists each automation:
 name, source chip, command if any, an On/Paused switch, **Run now**, the
 schedule in words, next run, Inbox for the user's own, the prompt in two
-lines, the last run with **Open thread**, a skipped note, and a **Missed
-while closed: N** notice with **Run now** and **Dismiss**. Above the list a
-template select with **Add to your settings** and **Add to <project>**, and
-**Open settings.json**. The empty state shows an example; automations
+lines, the last run with **Open thread**, a skipped note, a **Missed
+while closed: N** notice with **Run now** and **Dismiss**, and **Edit**, which
+opens the file the entry is in (not for a plugin's). Above the list,
+**New automation** and **Open settings.json**. New automation opens an inline
+form: name, message (a `/command` works), when (weekdays, every day, every
+week on a day, at a time; every hour; every 5 to 30 minutes), where threads go
+(Inbox, or the open project's local file) and, in a Git project, its own
+worktree. `scheduleRule` in `@capsule/shared` builds the RRULE and the form
+reads it back with `describeRRule` and the first run. `automationFromDraft`
+validates it in the form and again in `Engine.createAutomation`, which writes
+it on through `addAutomation`; nothing opens a file. Schedules the form does not
+offer, and profiles, are written by hand: **Write one by hand** (collapsed)
+holds the example. The card has no heading of its own; the page names it. The
+empty state points at New automation; automations
 waiting for trust are listed in an open expansion; **How automations run**
 is collapsed. The palette has **Automations** and **Run automation <name>**.
 
@@ -3840,14 +4381,14 @@ its title: a clock and "Automation", with "Automation: <name>" on hover.
 Until the desktop opens it, the row is bold with a dot.
 
 On a paired device the line, the list and the marks are visible; the
-switches, Run now, Dismiss, the templates and the status line fields are
+switches, Run now, Dismiss, New automation and the status line fields are
 disabled, since each is a write channel.
 
 
 ## Plugins
 
-Settings → Plugins (under Code, after Automations) and a **Plugins** tab in
-the skills library show the same panel (`features/plugins/PluginsPanel.tsx`):
+Settings → Plugins (under Code, after Automations) shows the panel
+(`features/plugins/PluginsPanel.tsx`):
 **Install from folder…**, **Install from zip…**, **Load folder for
 development…** and **Validate plugin folder…**, a Git address field with
 **Inspect**, then the installed list. Each row has the name, version, a

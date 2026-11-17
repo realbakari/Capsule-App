@@ -141,7 +141,7 @@ packages/
   projects            Project records
   sessions            Conversation records
   agents              Agent presentation models
-  skills              Skill catalog & packs (skills.sh API client, packed procedural instructions)
+  skills              Skill discovery on disk and the GitHub / skills.sh catalog clients
   tools               Tool descriptors
   runs                Run + progress helpers
   policies            Allow / approval / block

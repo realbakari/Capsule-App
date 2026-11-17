@@ -22,6 +22,7 @@ export type ActionMenuIcon =
   | "history"
   | "merge"
   | "link"
+  | "external"
   | "pause"
   | "play"
   | "tag"

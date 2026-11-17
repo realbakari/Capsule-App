@@ -872,7 +872,8 @@
   padding: 0 0.15rem;
   border-radius: var(--radius-full);
   background: var(--yellow);
-  color: #111;
+  /* The page colour reads on the yellow in both themes: dark on light yellow, light on dark yellow. */
+  color: var(--base);
   font-size: var(--text-3xs);
   font-weight: 700;
   line-height: 0.85rem;
@@ -1423,7 +1424,7 @@
   color: var(--code-text);
   border-radius: var(--radius-md);
   font-family: var(--mono);
-  font-size: max(0.8125rem, 0.9em);
+  font-size: calc(max(0.8125rem, 0.9em) * var(--code-scale, 1));
   line-height: 1.65;
   /* Wrap rather than scroll: a reply is read in a narrow column, and having to
      scroll right to see the end of a command is worse than a wrapped line.
@@ -1431,6 +1432,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   tab-size: 2;
+}
+/* Wrap off: long lines keep their shape and the block scrolls sideways. */
+.msg-code[data-wrap="false"] {
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
 }
 
 /* Semantic syntax colours, shared by chat, file previews and diffs. */
@@ -1659,9 +1666,9 @@
   min-height: 2.35rem;
 }
 .composer.composer--resting .composer-controls,
+.composer.composer--resting .composer-tools,
 .composer.composer--resting .composer-attach,
 .composer.composer--resting .context-meter-wrapper,
-.composer.composer--resting .composer-compact-toggle,
 .composer.composer--resting .composer-preflight,
 .composer.composer--resting .capability-hint,
 .composer.composer--resting .composer-stash,
@@ -2073,6 +2080,23 @@ textarea.composer-field--resting {
   margin-left: auto;
 }
 .composer-attach { flex-shrink: 0; }
+/* Attach, plus Plan or approvals only while they differ from the usual. */
+.composer-tools { display: flex; align-items: center; gap: 0.125rem; min-width: 0; flex-shrink: 1; }
+.composer-tools .permissions-trigger { font-size: var(--text-ui); font-weight: 500; min-width: 0; }
+.composer-tools .permissions-trigger > span { overflow: hidden; text-overflow: ellipsis; }
+/* A narrow dock keeps the icons; the words move to the tooltips. */
+@container composer-row (max-width: 30rem) {
+  .composer-tools .permissions-trigger > span { display: none; }
+}
+/* The glass answers focus: its edge firms up while the field is in use. */
+.composer-glass:focus-within::after { border-color: var(--border-strong); }
+/* Under a started conversation: the branch it works on, and what has changed there. */
+.composer-branch-status { display: inline-flex; align-items: center; gap: 0.35rem; min-width: 0; max-width: 22rem; height: 1.5rem; padding: 0 0.4rem; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-faint); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.composer-branch-status:hover { background: var(--bg-hover); color: var(--text-muted); }
+.composer-branch-status:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+.composer-branch-status svg { flex: none; }
+.composer-branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-branch-changes { flex: none; padding-left: 0.35rem; border-left: 1px solid var(--border-color); color: var(--text-muted); }
 .composer-controls > .agent-model-select { flex-shrink: 1; }
 .menu-select {
   position: relative;
@@ -2679,8 +2703,22 @@ select:focus,
   margin: 1rem auto;
   max-width: var(--chat-max);
 }
+/* Several requests stack as one column of cards, a tight gap apart. */
+.conversation-requests { display: flex; flex-direction: column; gap: 0.5rem; margin: 1rem 0; }
+.conversation-requests > .conversation-approval,
+.conversation-requests > .question-card { margin: 0 auto; width: 100%; box-sizing: border-box; }
+/* Room after a just-sent turn, sized by the transcript so its prompt can sit near the top. */
+.thread-end-space { flex-shrink: 0; }
 .conversation-approval-ask { margin: 0 0 0.375rem; }
 .conversation-approval-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The Approvals view: one group per asking conversation, its name above its cards. */
+.approvals-page { max-width: var(--chat-max); margin: 0 auto; }
+.approvals-thread + .approvals-thread { margin-top: 1.5rem; }
+.approvals-thread-head { display: flex; align-items: center; gap: 0.75rem; justify-content: space-between; }
+.approvals-thread-name { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.approvals-thread-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.approvals-thread-name .faint { flex-shrink: 0; font-size: var(--text-xs); }
+.approvals-thread .conversation-requests { margin: 0.5rem 0 0; }
 .actions {
   display: flex;
   align-items: center;
@@ -2758,20 +2796,6 @@ select:focus,
   gap: 0.35rem;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 .panel-chrome-actions {
   display: flex;
   align-items: center;
@@ -2779,7 +2803,6 @@ select:focus,
   flex-shrink: 0;
   margin-left: 0.4rem;
 }
-
 
 .panel-breadcrumb {
   display: flex;
@@ -3115,6 +3138,12 @@ select:focus,
 .panel-tree-item.active {
   background: var(--bg-active);
   color: var(--text);
+}
+/* The row a context menu is open for. */
+.panel-tree-item[data-menu-open] {
+  background: var(--bg-hover);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 .panel-tree-item:focus-visible {
   outline: var(--focus-ring);
@@ -3539,8 +3568,6 @@ select:focus,
   white-space: nowrap;
 }
 
-
-
 .panel-browser-pane {
   flex: 1;
   display: flex;
@@ -3960,11 +3987,13 @@ select:focus,
 }
 .commit-form {
   display: flex;
-  align-items: stretch;
+  /* One line at rest beside the button; a body below the subject grows only the message. */
+  align-items: flex-end;
   gap: 0.5rem;
   margin-top: 0.65rem;
 }
-.commit-form input[type="text"] {
+.commit-form input[type="text"],
+.commit-form textarea {
   flex: 1;
   min-width: 0;
   min-height: 2.25rem;
@@ -3972,6 +4001,7 @@ select:focus,
   line-height: 1.35;
   background: var(--surface-0);
 }
+.commit-form textarea { box-sizing: border-box; max-height: 9rem; resize: none; field-sizing: content; font-family: inherit; }
 .review-commit-button {
   flex-shrink: 0;
   min-height: 2.25rem;
@@ -3988,9 +4018,7 @@ select:focus,
 .review-commit-button:disabled { background: var(--surface-1); border-color: var(--border-color); color: var(--text-faint); cursor: default; }
 .review-commit-note { margin: .4rem 0 .65rem; font-size: var(--text-xs); color: var(--text-muted); }
 .review-commit-note[role="alert"] { color: var(--red); }
-.commit-form input:focus-visible, .review-commit-button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-
-
+.commit-form input:focus-visible, .commit-form textarea:focus-visible, .review-commit-button:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
 .inspector-tabs button {
   flex: 1;
@@ -4012,7 +4040,7 @@ select:focus,
 }
 .diff-view {
   margin: 0;
-  font: 0.8125rem/1.65 var(--mono);
+  font: calc(0.8125rem * var(--code-scale, 1))/1.65 var(--mono);
   color: var(--code-text);
   background: var(--code-bg);
   display: grid;
@@ -4152,7 +4180,7 @@ select:focus,
 .file-preview-code {
   margin: 0;
   padding: 0.75rem;
-  font-size: var(--text-xs);
+  font-size: calc(var(--text-xs) * var(--code-scale, 1));
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -4163,7 +4191,36 @@ select:focus,
   min-height: 14rem;
   max-height: none;
   overflow: auto;
+  position: relative;
 }
+/* The line a transcript reference pointed at. Behind the text, edge to edge. */
+.file-preview-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: var(--bg-active);
+  box-shadow: inset 2px 0 0 var(--text-muted);
+  pointer-events: none;
+}
+.file-preview-code > code { position: relative; }
+/* The gutter sits in the block's left padding. Each number is pulled out of
+   the text flow, so a wrapped line continues under its code, not its number. */
+.code-lines {
+  display: block;
+  padding-left: calc(var(--line-digits) * 1ch + 1rem);
+}
+.code-line::before {
+  content: attr(data-line);
+  position: absolute;
+  width: calc(var(--line-digits) * 1ch);
+  margin-left: calc(-1 * (var(--line-digits) * 1ch + 1rem));
+  text-align: right;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  pointer-events: none;
+}
+.code-line[data-target]::before { color: var(--text); }
 .inspector .kv {
   display: flex;
   justify-content: space-between;
@@ -5048,7 +5105,6 @@ label.field input {
   opacity: 0.45;
 }
 
-
 /* Changed-files card: the turn's outcome on disk, summarised. */
 .changed-files {
   margin: 0.5rem 0;
@@ -5829,9 +5885,33 @@ div.changed-files-head { cursor: default; }
 
 .skills-tabs {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid var(--border-color);
-  overflow-x: auto;
+}
+
+.skills-tabs [role="tablist"] {
+  display: flex;
+  gap: 1rem;
+}
+
+.skills-tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  color: var(--text-faint);
+}
+
+.skills-tab-action:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.skills-tab-action .spin {
+  animation: icon-spin 0.9s linear infinite;
 }
 
 .skills-tab {
@@ -5869,37 +5949,6 @@ div.changed-files-head { cursor: default; }
   border-radius: var(--radius-full);
 }
 
-.skills-title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.skills-stats-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
-  padding: 0.25rem 0.625rem;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--text);
-}
-
-.skills-spark-icon {
-  color: var(--yellow, #f1c40f);
-}
-
-.skills-tag-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  padding-bottom: 0.25rem;
-}
-
 .tag-chip {
   background: color-mix(in srgb, var(--text) 4%, transparent);
   border: 1px solid var(--border-color);
@@ -5923,217 +5972,8 @@ div.changed-files-head { cursor: default; }
   font-weight: 600;
 }
 
-.packs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
-  gap: 0.65rem;
-}
-
-.pack-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 0.9rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.pack-card-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.pack-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--text-xs);
-}
-
-.pack-badge {
-  background: color-mix(in srgb, var(--text) 10%, transparent);
-  padding: 0.125rem 0.5rem;
-  border-radius: var(--radius-full);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.pack-author {
-  color: var(--text-muted);
-}
-
-.pack-skill-count {
-  margin-left: auto;
-  color: var(--text-faint);
-}
-
-.pack-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.pack-desc {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.45;
-}
-
-.pack-skills-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-
-.pack-skills-heading {
-  font-size: var(--text-xs);
-  color: var(--text-faint);
-}
-
-.pack-skills-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.pack-skill-pill {
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-  border: 1px solid var(--border-color);
-  color: var(--text);
-  font-size: var(--text-xs);
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
-}
-
-.pack-skill-pill:hover {
-  background: var(--bg-active);
-  border-color: var(--border-strong);
-}
-
-.pack-card-cli-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 0.375rem 0.625rem;
-  gap: 0.5rem;
-}
-
-.pack-cmd-copy {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-xs);
-  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
-}
-
-.pack-cmd-copy:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-}
-
-.pack-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border-top: 1px solid var(--border-color);
-  padding-top: 0.875rem;
-}
-
-.pack-cmd {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: 0.65rem;
-}
-
-.skill-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 0.85rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 1rem;
-  transition: border-color 0.15s ease;
-}
-
-.skill-card.attached {
-  border-color: color-mix(in srgb, var(--text) 35%, transparent);
-}
-
-.skill-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.skill-card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.skill-title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.375rem;
-}
-
-.skill-name {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0;
-}
-
 .skill-version {
   font-size: var(--text-xs);
-  color: var(--text-faint);
-}
-
-.skill-pack-tag {
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  padding: 0.125rem 0.375rem;
-  border-radius: var(--radius-xs);
-  display: inline-block;
-  margin-top: 0.25rem;
-}
-
-.skill-badges {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-}
-
-.skill-installs {
-  font-size: var(--text-2xs);
   color: var(--text-faint);
 }
 
@@ -6147,47 +5987,6 @@ div.changed-files-head { cursor: default; }
 
 .skill-status-badge.installed {
   background: rgba(46, 204, 113, 0.12);
-  color: var(--green);
-}
-
-.skill-desc {
-  font-size: var(--text-ui);
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.skill-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.skill-tag {
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-}
-
-.skill-card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  border-top: 1px solid var(--border-color);
-  padding-top: 0.75rem;
-}
-
-.skill-card-actions .active-attached {
-  background: color-mix(in srgb, var(--text) 20%, transparent);
-  color: var(--text);
-}
-
-.skill-card-actions .installed {
-  background: rgba(46, 204, 113, 0.15);
   color: var(--green);
 }
 
@@ -6207,287 +6006,175 @@ div.changed-files-head { cursor: default; }
   font-size: var(--text-sm);
 }
 
-.installed-skills {
-  display: grid;
-  gap: 0.7rem;
-}
-
-.installed-skills-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-height: 2.25rem;
-}
-
-.installed-skills-toolbar p {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-}
-
-.installed-skills-toolbar .ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-
-.installed-skill-group {
-  min-width: 0;
-}
-
-.installed-skill-group > header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.65rem 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.installed-skill-group h3 {
-  margin: 0;
-  color: var(--text);
-  font-size: var(--text-ui);
-  font-weight: 600;
-}
-
-.installed-skill-group header p {
-  max-width: 46rem;
-  margin: 0.2rem 0 0;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-  line-height: 1.45;
-}
-
-.installed-skill-group header > span {
-  min-width: 1.6rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: var(--radius-full);
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  text-align: center;
-}
-
-.installed-skills-empty {
-  margin: 0;
-  padding: 1rem 0;
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-}
-
 .installed-skill-list {
   display: grid;
+  grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr) auto auto;
+  min-width: 0;
 }
 
+/* One row per skill: the name reads first and is never cut for a label.
+   Rows share the list's columns so every description starts on one line. */
 .installed-skill-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.75rem;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  gap: 0.9rem;
+  width: 100%;
   min-width: 0;
-  padding: 0.15rem 0;
+  padding: 0.55rem 0.5rem;
+  border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border-color) 64%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.installed-skill-list > .skills-empty {
+  grid-column: 1 / -1;
 }
 
 .installed-skill-row:last-child {
   border-bottom: 0;
 }
 
-.installed-skill-main {
-  display: grid;
-  grid-template-columns: minmax(8rem, 0.6fr) minmax(10rem, 1fr);
-  align-items: center;
-  gap: 0.3rem 0.8rem;
-  min-width: 0;
-  padding: 0.5rem 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
 .installed-skill-row:hover {
   background: var(--bg-hover);
 }
 
-.installed-skill-name {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  min-width: 0;
+.installed-skill-row:focus-visible,
+.skill-catalog-main:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--text-muted));
+  outline-offset: -2px;
 }
 
-.installed-skill-name b,
-.installed-skill-name i,
-.installed-skill-description {
+.installed-skill-name {
+  grid-column: 1;
+  max-width: 20rem;
   overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-ui);
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.installed-skill-name b {
-  color: var(--text);
-  font-size: var(--text-xs);
-}
-
-.installed-skill-name i {
-  color: var(--text-faint);
-  font-size: var(--text-3xs);
-  font-style: normal;
-}
-
 .installed-skill-description {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installed-skill-source {
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.installed-skill-attached {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.skill-catalog-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--control-radius);
+  background: transparent;
   color: var(--text-muted);
   font-size: var(--text-2xs);
 }
 
-.installed-skill-attach {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.35rem 0.45rem;
-  border: 0;
-  border-radius: var(--control-radius);
-  background: transparent;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-}
-
-.installed-skill-attach:hover,
-.installed-skill-attach.attached {
+.skill-catalog-install:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text);
 }
 
-.installed-skills-more {
-  width: 100%;
-  padding: 0.55rem 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-color);
-  background: transparent;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-  text-align: left;
+.skill-catalog-install:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
-.installed-skills-more:hover {
-  color: var(--text);
-}
-
-.skills-compact-section {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.skills-section-intro {
-  min-height: 2.25rem;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.skills-section-intro p {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-}
-
-.skill-pack-list,
 .skill-catalog-list {
   display: grid;
+  grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr) minmax(0, max-content) auto;
   min-width: 0;
 }
 
-.skill-pack-row,
+.skill-catalog-list > :not(.skill-catalog-row) {
+  grid-column: 1 / -1;
+}
+
+/* Same columns as the Installed list; the repository sits after the
+   description so it never shortens the name. */
 .skill-catalog-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 0.75rem;
+  column-gap: 0.9rem;
   min-width: 0;
-  padding: 0.15rem 0;
+  padding-right: 0.5rem;
   border-bottom: 1px solid color-mix(in srgb, var(--border-color) 64%, transparent);
 }
 
-.skill-pack-row:hover,
 .skill-catalog-row:hover {
   background: var(--bg-hover);
 }
 
-.skill-pack-main,
 .skill-catalog-main {
+  display: grid;
+  grid-column: 1 / 4;
+  grid-template-columns: subgrid;
+  align-items: baseline;
   min-width: 0;
+  padding: 0.55rem 0 0.55rem 0.5rem;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   text-align: left;
 }
 
-.skill-pack-main {
-  display: grid;
-  grid-template-columns: minmax(10rem, 0.55fr) minmax(13rem, 1fr) minmax(9rem, 0.7fr);
-  align-items: center;
-  gap: 0.8rem;
-  padding: 0.55rem 0;
-}
-
-.skill-pack-name,
 .skill-catalog-name {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  min-width: 0;
-}
-
-.skill-pack-name b,
-.skill-catalog-name b {
+  max-width: 20rem;
   overflow: hidden;
   color: var(--text);
-  font-size: var(--text-xs);
+  font-size: var(--text-ui);
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.skill-pack-name i,
-.skill-catalog-name i {
-  overflow: hidden;
-  color: var(--text-faint);
-  font-size: var(--text-3xs);
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-pack-description,
-.skill-pack-summary,
 .skill-catalog-description,
 .skill-catalog-metric {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.skill-pack-description,
 .skill-catalog-description {
   color: var(--text-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 
-.skill-pack-summary,
 .skill-catalog-metric {
+  max-width: 14rem;
   color: var(--text-faint);
-  font-size: var(--text-3xs);
-}
-
-.skill-catalog-main {
-  display: grid;
-  grid-template-columns: minmax(10rem, 0.55fr) minmax(13rem, 1fr) auto;
-  align-items: center;
-  gap: 0.8rem;
-  padding: 0.55rem 0;
+  font-size: var(--text-2xs);
 }
 
 .skill-catalog-description.missing {
@@ -6519,11 +6206,6 @@ div.changed-files-head { cursor: default; }
   line-height: 1.45;
 }
 
-.installed-skill-attach:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
 @media (max-width: 720px) {
   .skills-header {
     align-items: stretch;
@@ -6533,23 +6215,32 @@ div.changed-files-head { cursor: default; }
   .skills-search-bar {
     width: 100%;
   }
-  .installed-skills-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .installed-skill-main {
+  .installed-skill-list {
     grid-template-columns: minmax(0, 1fr);
   }
-  .skill-pack-main,
+  .installed-skill-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.2rem 0.6rem;
+  }
+  .installed-skill-description {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .skill-catalog-list {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
   .skill-catalog-main {
+    grid-column: 1;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.2rem;
+    gap: 0.15rem;
+  }
+  .skill-catalog-main > * {
+    grid-column: 1;
   }
 }
 
 /* ==========================================================================
-   Skill & Pack Inspector Modals
+   Skill detail
    ========================================================================== */
 
 .skill-inspect-overlay {
@@ -6577,6 +6268,10 @@ div.changed-files-head { cursor: default; }
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
 }
 
+.skill-inspect-modal:focus {
+  outline: none;
+}
+
 .skill-inspect-header {
   display: flex;
   align-items: flex-start;
@@ -6598,9 +6293,25 @@ div.changed-files-head { cursor: default; }
 }
 
 .skill-modal-meta {
-  font-size: var(--text-ui);
-  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.75rem;
+  min-width: 0;
   margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.skill-inspect-header > div {
+  min-width: 0;
+}
+
+.skill-modal-meta .mono {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skill-modal-subnav {
@@ -6707,42 +6418,6 @@ div.changed-files-head { cursor: default; }
   border: 1px solid var(--border-color);
   border-radius: var(--control-radius);
   overflow: hidden;
-}
-
-.skill-folder-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-hover);
-}
-
-.skill-folder-heading > div {
-  display: grid;
-  min-width: 0;
-  gap: 0.15rem;
-}
-
-.skill-folder-heading b {
-  color: var(--text);
-  font-size: var(--text-xs);
-}
-
-.skill-folder-heading span {
-  overflow: hidden;
-  color: var(--text-faint);
-  font-size: var(--text-3xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-folder-readonly {
-  flex-shrink: 0;
-  padding: 0.1rem 0.35rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-full);
 }
 
 .skill-folder-error {
@@ -6880,12 +6555,6 @@ div.changed-files-head { cursor: default; }
   }
 }
 
-.skill-cli-view {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
 .danger-text {
   color: var(--red) !important;
 }
@@ -6894,61 +6563,20 @@ div.changed-files-head { cursor: default; }
   background: rgba(255, 107, 107, 0.15) !important;
 }
 
-.pack-detail-desc {
-  font-size: 0.9375rem;
-  color: var(--text);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.pack-included-skills h4,
-.pack-cli-section h4 {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  margin: 0 0 0.5rem;
-  color: var(--text-muted);
-}
-
-.pack-modal-skills-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.pack-modal-skill-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 0.75rem 1rem;
-  gap: 1rem;
-}
-
-.pack-modal-skill-main b {
-  font-size: var(--text-sm);
-  color: var(--text);
-}
-
-.pack-modal-skill-main p {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  margin: 0.125rem 0 0;
-}
-
-.pack-modal-skill-name {
-  display: flex;
-  align-items: baseline;
-  gap: 0.375rem;
-}
-
 .skill-inspect-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   padding: 1rem 1.5rem;
   border-top: 1px solid var(--border-color);
+}
+
+.skill-inspect-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: 1.45;
 }
 
 .skill-inspect-actions {
@@ -7170,6 +6798,20 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
   color: var(--text-faint);
   font-size: var(--text-2xs);
 }
+p.commit-menu-note { margin: 0; }
+.commit-menu { width: min(24rem, calc(100vw - 1rem)); }
+textarea.commit-menu-message { min-height: 2.75rem; max-height: 10rem; resize: vertical; field-sizing: content; font-family: inherit; line-height: 1.4; }
+.commit-menu-files { max-height: 12rem; overflow: auto; margin-bottom: 0.25rem; padding: 0.15rem 0 0.3rem; border-block: 1px solid var(--border-color); }
+.commit-menu-files-head { display: flex; align-items: center; justify-content: space-between; padding: 0.1rem 0 0.1rem 0.65rem; color: var(--text-faint); font-size: var(--text-2xs); }
+.commit-menu .commit-menu-files-head button { min-height: 0; padding: 0.2rem 0.4rem; color: var(--text-muted); font-size: var(--text-2xs); }
+.commit-menu-files h5 { margin: 0.35rem 0.65rem 0.1rem; color: var(--text-faint); font-size: var(--text-2xs); font-weight: 600; }
+.commit-menu-file { display: flex; align-items: center; gap: 0.45rem; min-width: 0; padding: 0.2rem 0.65rem; border-radius: var(--radius-sm); font-size: var(--text-xs); cursor: pointer; }
+.commit-menu-file:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.commit-menu-file input { flex-shrink: 0; margin: 0; }
+.commit-menu-file .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-menu-status { margin: 0; padding: 0.4rem 0.65rem; color: var(--text-muted); font-size: var(--text-2xs); }
+/* Hook output keeps its lines: a lint report squeezed into one paragraph cannot be read. */
+.commit-menu-error { margin: 0.25rem 0 0; padding: 0.4rem 0.65rem; max-height: 10rem; overflow: auto; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red); font-size: var(--text-2xs); white-space: pre-wrap; }
 
 .project-actions-menu {
   width: min(25rem, calc(100vw - 2rem));
@@ -7197,21 +6839,6 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
 .project-action-run b,
 .project-action-run small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-action-run small { color: var(--text-faint); font-size: var(--text-3xs); font-family: var(--mono); }
-.project-action-state { color: var(--text-faint); font-size: var(--text-3xs); text-transform: capitalize; }
-.project-action-state.running { color: var(--green); }
-.project-action-state.failed { color: var(--red); }
-.project-action-output {
-  grid-column: 1 / -1;
-  max-height: 8rem;
-  margin: 0.1rem 0.4rem 0.45rem;
-  padding: 0.45rem;
-  overflow: auto;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--text-muted);
-  font-size: var(--text-3xs);
-  white-space: pre-wrap;
-}
 
 /* A settings section is a heading, then its rows in one rounded box with
    hairlines between them. Text, lists and pickers between rows stay outside
@@ -7302,9 +6929,6 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
   .composer-controls { flex: 1; }
 }
 /* Compact or Keep, beside Send, only while the context is nearly full. */
-.composer-compact-toggle { height: 1.75rem; padding: 0 0.5rem; border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--text-muted); font-size: var(--text-ui); font-weight: 500; }
-.composer-compact-toggle:hover { background: var(--bg-hover); color: var(--text); }
-.composer-compact-toggle[aria-pressed="true"] { border-color: var(--border-strong); background: var(--surface-1); color: var(--text); }
 
 .context-meter-wrapper {
   position: relative;
@@ -7741,7 +7365,6 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
   border-color: rgba(255, 69, 58, 0.3);
 }
 
-
 /* ==========================================================================
    File Mentions (Clickable Inline Code)
    Identical to regular inline code, with a pointer cursor on hover.
@@ -7762,41 +7385,18 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
    Harness Provider Cards (Settings → Agents)
    ========================================================================== */
 
-
-@media (min-width: 640px) {
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Landing card pieces reused from the old full-page layout. */
 /* Landing: the app mark, and the two plain paragraphs that replaced the
    feature-card grid. Colours come from tokens so the page follows the same
    theme as the app rather than carrying its own hardcoded palette. */
-
 
 /* ── Web landing ───────────────────────────────────────────────────────────
    A teaser card over the running app, and a modal behind one click. The app
    itself is the pitch, so the persistent overlay stays as small as it can be
    and never covers the composer. */
 
-
 /* Narrow viewports get the panel as the page: the desktop shell has no
    meaningful phone layout, and showing a broken one sells nothing. */
-
-.skills-notice-warn {
-  border-color: color-mix(in srgb, var(--yellow) 40%, transparent);
-  color: var(--yellow);
-}
 .skill-source-link {
   text-decoration: none;
 }
@@ -7819,39 +7419,17 @@ body:has(> #root .palette-backdrop > [role="alertdialog"]) > :is(.header-popover
   overflow-x: auto;
   white-space: pre;
 }
-
-.skills-source-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.35rem 0 0.5rem;
-  font-size: var(--text-xs);
-  color: var(--subtext-1);
-}
 .skills-source-state {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
-}
-.skills-source-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.skills-source-dot.on {
-  background: var(--green, #6aa84f);
-}
-.skills-source-dot.off {
-  background: var(--text-faint);
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
 }
 
 /* Landing: the harnesses Capsule drives, with the CLI it spawns. A grid says
    the bring-your-own-subscription premise faster than a paragraph does. */
-@media (max-width: 460px) {
-}
 
 /* Live typography samples in Appearance. */
 .type-preview {
@@ -8547,49 +8125,6 @@ button.shortcut-keys.capturing {
   width: min(72rem, 100%);
 }
 
-/* Skills tag filters. Ranked and capped, so this is one row rather than six. */
-.skills-tag-filters .tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.tag-chip .tag-count {
-  font-size: var(--text-3xs);
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-.tag-chip.active .tag-count {
-  color: inherit;
-  opacity: 0.7;
-}
-.tag-chip.tag-more {
-  color: var(--text-faint);
-}
-
-/* Card actions. Two solid accent buttons per card, repeated down a grid, made
-   the page read as a wall of blue; the destination is the skill, not the
-   button. The primary action keeps the accent as a text colour and a hairline,
-   and only the attached state fills. */
-.skill-card-actions .chip.send {
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  color: var(--accent);
-  font-weight: 550;
-}
-.skill-card-actions .chip.send:hover {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-.skill-card-actions .chip.active-attached {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: 1px solid transparent;
-}
-.skill-card-actions .chip.installed {
-  background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-faint);
-}
-
 /* The page header was a title, two lines of prose and a full-width field
    before any skill. */
 .skills-header h2 {
@@ -8820,39 +8355,6 @@ button.shortcut-keys.capturing {
 }
 
 /* Harnesses screen: a stable catalog and one selected detail surface. */
-.harness-context-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 0.75rem 0;
-  padding: 0.65rem 0;
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
-}
-.harness-context-folder {
-  display: grid;
-  min-width: 0;
-  gap: 0.18rem;
-}
-.harness-context-folder > span {
-  color: var(--text-faint);
-  font-size: var(--text-2xs);
-}
-.harness-context-folder strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: 500;
-}
-.harness-context-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-shrink: 0;
-}
 .harness-workspace {
   display: grid;
   grid-template-columns: minmax(12.5rem, 0.75fr) minmax(0, 1.5fr);
@@ -8995,43 +8497,20 @@ button.shortcut-keys.capturing {
 .harness-session-row .actions { margin-top: 0; }
 .harness-session-row .ghost,
 .harness-session-row .danger { min-width: auto; padding: 0 0.5rem; }
+.harness-advanced { margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem; color: var(--text-muted); font-size: var(--text-xs); }
+.harness-advanced > summary { cursor: pointer; }
+.harness-session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.harness-launch { margin-top: 0.5rem; color: var(--text-muted); font-size: var(--text-xs); }
+.harness-launch > summary { cursor: pointer; }
+.harness-launch-note { margin: 0.4rem 0 0; }
+.harness-launch :is(input, textarea) { width: 100%; min-width: 0; }
 .harness-empty {
   display: grid;
   place-items: center;
   color: var(--text-faint);
   font-size: var(--text-xs);
 }
-.harness-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 0.6rem;
-  margin-top: 0.75rem;
-}
-.harness-options label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-.harness-options label > span {
-  font-size: var(--text-2xs);
-  color: var(--text-faint);
-}
-.harness-options input,
-.harness-options select {
-  min-width: 0;
-  width: 100%;
-}
-.harness-options label > small {
-  min-height: 2.1em;
-  font-size: var(--text-3xs);
-  line-height: 1.35;
-}
-.harness-workspace + details.card { margin-top: 0; }
 @media (max-width: 820px) {
-  .harness-context-bar,
-  .harness-context-actions { align-items: stretch; }
-  .harness-context-bar { flex-direction: column; }
   .harness-workspace { grid-template-columns: minmax(0, 1fr); }
   .harness-catalog { border-right: 0; border-bottom: 1px solid var(--border-color); }
   .harness-session-row { grid-template-columns: minmax(0, 1fr); }
@@ -9271,6 +8750,7 @@ details.card > summary {
 .notice-dismissable > span {
   flex: 1;
   min-width: 0;
+  white-space: pre-line;
 }
 .notice-dismissable > .icon-btn {
   flex-shrink: 0;
@@ -9592,6 +9072,9 @@ details.card > summary {
 .activity-step-toggle { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto 0.75rem; gap: 0.5rem; align-items: center; width: 100%; padding: 0.45rem 0.35rem; background: transparent; border: 0; border-radius: var(--radius-sm); text-align: left; color: var(--text-muted); font-size: var(--text-ui); }
 .activity-step-toggle:not(.activity-step-static):hover { color: var(--text); background: var(--bg-hover); }
 .activity-step-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-step-meta { display: inline-flex; align-items: center; gap: 0.4rem; }
+.activity-step-exit { color: var(--red); font-family: var(--mono); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.activity-tool-gap { color: var(--text-faint); font-style: italic; }
 .activity-step-toggle .open { transform: rotate(90deg); }
 .activity-step[data-state="Failed"] .inline-activity-state { color: var(--red); }
 .activity-step-body { margin: 0.2rem 0.25rem 0.65rem; min-width: 0; }
@@ -9610,6 +9093,19 @@ details.card > summary {
 .turn-work-toggle .open { transform: rotate(90deg); }
 .turn-work-time { margin-left: auto; color: var(--text-faint); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .turn-work-body { padding-top: 0.75rem; border-top: 1px solid var(--border-color); }
+/* Thoughts, decisions and answers in the work log: one quiet line each. */
+.work-note { min-width: 0; margin: 0.1rem 0; font-size: var(--text-ui); color: var(--text-muted); }
+.work-note-decision, .work-note-toggle { display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0.3rem 0.35rem; }
+.work-note svg { flex: none; }
+.work-note-toggle { width: 100%; border: 0; background: transparent; border-radius: var(--radius-sm); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.work-note-toggle:hover { color: var(--text); background: var(--bg-hover); }
+.work-note-toggle .open { transform: rotate(90deg); }
+.work-note-toggle > svg:last-child { margin-left: auto; }
+.work-note-label { flex: none; color: var(--text-muted); }
+.work-note-subject { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-faint); }
+.work-note-detail { font-size: var(--text-xs); }
+.work-note-decision[data-outcome="denied"] .work-note-label { color: var(--red); }
+.work-note-body { margin: 0.15rem 0 0.5rem 1.85rem; padding-left: 0.65rem; border-left: 2px solid var(--border-color); color: var(--text-muted); font-size: var(--text-ui); max-height: 22rem; overflow: auto; overscroll-behavior: contain; }
 
 /* Public policy pages: one readable column, the site's own type. */
 .policy-page {
@@ -9916,7 +9412,7 @@ a.pr-check:hover { background: var(--bg-hover); }
   min-width: 0;
   overflow-x: auto;
   font-family: var(--mono, ui-monospace, monospace);
-  font-size: var(--text-ui);
+  font-size: calc(var(--text-ui) * var(--code-scale, 1));
   color: var(--code-text);
   background: var(--code-bg);
   line-height: 1.65;
@@ -9980,7 +9476,6 @@ a.pr-check:hover { background: var(--bg-hover); }
 }
 .diff-row--hunk > .diff-gutter,
 .diff-split-row--hunk > .diff-gutter { display: none; }
-
 
 .pr-nodiff { display: flex; flex-direction: column; gap: 0.6rem; }
 
@@ -10544,8 +10039,6 @@ details[open] > summary > .pr-disclosure-caret { transform: none; }
 .capability-details dd { margin: .3rem 0 0; line-height: 1.5; }
 .capability-hint { font-size: var(--text-xs); color: var(--text-muted); margin: .25rem .5rem .6rem; }
 .menu-select-trigger[aria-disabled="true"] { color: var(--text-faint); cursor: help; }
-fieldset.harness-options { padding: 0; margin: 0; border: 0; min-width: 0; }
-fieldset.harness-options:disabled { opacity: .7; }
 .run-activity-state { font-size: var(--text-xs); color: var(--text-muted); padding: .15rem .5rem; border: 1px solid var(--border-color); border-radius: var(--radius-xl); white-space: nowrap; }
 .run-activity-state[data-state="failed"], .run-activity-state[data-state="blocked"] { color: var(--red); }
 .run-summary-lead { flex-wrap: wrap; }
@@ -10701,17 +10194,9 @@ fieldset.harness-options:disabled { opacity: .7; }
 .run-event-log .event-kind { min-width: 0; overflow-wrap: anywhere; }
 .run-event-log .run-log-pages { padding: .5rem 0 0; }
 .run-event-log .run-log-pages button { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: var(--text-xs); padding: .25rem .5rem; }
-.reported-usage { margin: 0 0 .5rem; font-size: var(--text-xs); color: var(--text-muted); }
-.reported-usage > summary { cursor: pointer; padding: .25rem 0; }
-.reported-usage-preview { margin-left: .75rem; font-variant-numeric: tabular-nums; color: var(--text-faint); }
-.reported-usage dl { display: grid; gap: .375rem 1.5rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); margin: .5rem 0; }
-.reported-usage dt { font-size: var(--text-2xs); color: var(--text-faint); }
-.reported-usage dd { margin: .125rem 0 0; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.reported-usage .faint { font-size: var(--text-2xs); margin: .375rem 0 .5rem; }
 @media (max-width: 600px) {
   .run-event-log .event-log > div { grid-template-columns: 4.5rem minmax(0, 1fr); }
   .run-event-log .event-text { grid-column: 1 / -1; }
-  .reported-usage-preview { display: block; margin-left: 1rem; }
 }
 .composer-glass .gateway-recovery { padding: .375rem .5rem; margin: .25rem 0 .5rem; border: 0; border-radius: var(--radius-sm); font-size: var(--text-xs); background: var(--surface-1); }
 .gateway-recovery > span { min-width: 0; }
@@ -10746,9 +10231,6 @@ fieldset.harness-options:disabled { opacity: .7; }
   flex-shrink: 0;
 }
 .remote-session-banner span { min-width: 0; overflow-wrap: anywhere; }
-.archived-conversations { margin-bottom: 1.5rem; }
-.archived-conversations summary { cursor: pointer; padding-block: .5rem; }
-.archived-conversations .row { padding-block: .375rem; gap: 1rem; }
 
 /* ───────────── Simulator surface ───────────── */
 .simulator-pane { background: var(--bg); }
@@ -11060,6 +10542,10 @@ fieldset.harness-options:disabled { opacity: .7; }
 /* Queued follow-ups above the composer controls. */
 .queued-prompts { margin: 0 0 0.375rem; font-size: var(--text-ui); }
 .queued-prompts-blocked { margin: 0 0 0.35rem; color: var(--text-muted); font-size: var(--text-2xs); }
+.queued-prompts-held { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.35rem; color: var(--text-muted); font-size: var(--text-2xs); }
+.queued-prompts-held .ghost, .composer-queued-edit .ghost { height: 1.375rem; padding: 0 0.4rem; font-size: var(--text-xs); }
+.queued-prompt[aria-current="true"] { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.composer-queued-edit { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0 0 0.375rem; color: var(--text-muted); font-size: var(--text-xs); }
 .queued-prompts-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
 .queued-prompt { display: flex; align-items: center; gap: 0.4rem; min-width: 0; min-height: 1.75rem; padding: 0 0.25rem 0 0.5rem; border-radius: var(--control-radius); background: var(--surface-1); }
 .queued-prompt-steer { height: 1.375rem; padding: 0 0.4rem; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-muted); font-size: var(--text-xs); }
@@ -11132,13 +10618,14 @@ fieldset.harness-options:disabled { opacity: .7; }
 .branch-menu .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-menu svg, .branch-menu-spacer { flex-shrink: 0; width: 13px; color: var(--text-muted); }
 .branch-menu-search { margin-bottom: 0.25rem; padding: 0.375rem 0.5rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: var(--text-xs); }
+.branch-menu-heading { margin: 0.4rem 0.65rem 0.1rem; color: var(--text-faint); font-size: var(--text-2xs); font-weight: 600; }
+.branch-menu-where { margin-left: auto; padding-left: 0.5rem; flex-shrink: 0; color: var(--text-faint); font-size: var(--text-2xs); }
 /* A surface's own controls in the panel header: left-aligned, and their menus may drop below the row. */
 .inspector-head-slot { display: flex; align-items: center; min-width: 0; flex: 1; }
 .inspector-head-slot[hidden], .inspector-title[hidden] { display: none; }
 .inspector-head-slot .simulator-menubar { margin-left: -0.55rem; }
 /* Before the simulator has its menus (still loading, or not available here), the row still names the surface. */
 .inspector-head-slot:empty::before { content: "Simulator"; color: var(--text); font-weight: 500; }
-
 
 /*
  * Overlays enter with a short ease-out fade from slightly smaller, and their
@@ -11184,7 +10671,6 @@ fieldset.harness-options:disabled { opacity: .7; }
 .about-modal-overlay {
   animation: fadeIn var(--motion-overlay) var(--motion-ease);
 }
-
 
 /*
  * Menus: one row and one panel, whichever component opens them. Rows are a
@@ -11427,6 +10913,11 @@ fieldset.harness-options:disabled { opacity: .7; }
 .session-details-action > svg:last-child:not(:first-child) { flex-shrink: 0; color: var(--text-faint); }
 .session-details-action:hover, .session-details-action[aria-expanded="true"] { background: var(--bg-hover); }
 .session-details-action:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+/* The last action run, one click away; the rest behind the chevron. */
+.project-action-split { display: flex; align-items: center; gap: 0.1rem; }
+.project-action-split > .session-details-action { flex: 1; width: auto; min-width: 0; margin-right: 0; }
+.project-action-split > .session-details-action:disabled { background: transparent; color: var(--text-faint); }
+.project-action-split > .icon-btn { flex-shrink: 0; width: 1.6rem; height: 1.6rem; }
 .session-details-row-actions { display: inline-flex; gap: 0.1rem; margin-left: auto; flex-shrink: 0; }
 /* The label clips; the buttons beside it must not, or their focus ring is cut off. */
 .session-details-row > .session-details-row-actions { overflow: visible; padding: 2px; margin-right: -2px; }
@@ -11513,6 +11004,11 @@ fieldset.harness-options:disabled { opacity: .7; }
 
 /* Phone pairing code. A fixed light tile so scanners read it in either theme. */
 .remote-phone-pairing { display: grid; gap: 0.5rem; justify-items: start; }
+.troubleshooting-log { margin-top: 0.5rem; padding-inline: 1rem; }
+.troubleshooting-log summary { cursor: pointer; color: var(--text-muted); }
+.troubleshooting-log pre.mono { max-height: 20rem; margin-top: 0.5rem; }
+.remote-devices-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0 1rem 0.6rem; font-size: var(--text-xs); }
+.remote-connections { padding-inline: 1rem; }
 /* The countdown ticks every second; even-width digits keep Copy link still. */
 .remote-phone-expiry { font-variant-numeric: tabular-nums; }
 .remote-qr {
@@ -11521,3 +11017,46 @@ fieldset.harness-options:disabled { opacity: .7; }
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
 }
+
+/* Sidebar search as a list: the arrow-key highlight, and message hits under the threads. */
+.thread-row.search-highlight,
+.sidebar-message-hit.search-highlight {
+  background: var(--bg-active);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.sidebar-message-hits { margin-top: 0.5rem; }
+.sidebar-message-hit {
+  display: grid;
+  gap: 0.1rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-message-hit:hover { background: var(--bg-hover); }
+.sidebar-message-hit:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset-inset); }
+.sidebar-message-excerpt {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* ⌘1–⌘9 while the key is held: the number takes the age's place. */
+.thread-jump-hint {
+  min-width: 1.75rem;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.thread-row:has(.thread-jump-hint) .thread-time { display: none; }
+.thread-row:has(.thread-jump-hint) .thread-meta { opacity: 1; }

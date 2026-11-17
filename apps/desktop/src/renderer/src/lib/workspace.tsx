@@ -1,12 +1,12 @@
 import { applyAppearance } from "./appearance";
 import { CYCLE_FAVORITE_MODEL_EVENT, useFavoriteModels, useTurnMode } from "./turn-mode";
-import { ACT_ON_PLAN_PROMPT, type TurnMode } from "@capsule/shared";
+import { ACT_ON_PLAN_PROMPT, agentEnabled, type TurnMode } from "@capsule/shared";
 import { RequestScope } from "./request-scope";
 import { resolveWorkspaceSelection } from "./workspace-selection";
 import { HarnessStatusCache, harnessStatusIdentity } from "./harness-status-cache";
 import { batchRunFrames, mergeMessagePage, mergeRunEvents, mergeRuns } from "./run-updates";
 import { boundTranscript, retainRunReceipts } from "./transcript-window";
-import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, localTimings, summarizeRun } from "@capsule/shared";
+import { boundRunEvents, compactRunEvent, runEventBytes, LIVE_EVENT_LIMIT, LIVE_EVENT_BYTES, summarizeRun } from "@capsule/shared";
 import { useScopedState } from "./scoped-state";
 import { SteeringDrafts } from "./steering-drafts";
 import { DraftRecovery } from "./draft-recovery";
@@ -41,6 +41,8 @@ import {
   type ChatMessage,
   type FileEntry,
   type GitStatus,
+  type GitCommitScope,
+  type GitPullMode,
   type GitPullRequestStackAction,
   type HarnessDoctorReport,
   type HarnessLiveStatus,
@@ -59,7 +61,6 @@ import {
   type RuntimeStatus,
   type Session,
   type Skill,
-  type SkillPack,
   type SkillCatalogPage,
   type SubsystemStatus,
   type WorkspaceMode,
@@ -67,14 +68,15 @@ import {
   type StartPullRequestInput,
 } from "@capsule/shared";
 
-import { parseKeymapAction, type ConfigDiagnostics, type ConfigSnapshot, type EffectiveBinding, type KeyChord, type SetConfigValueInput } from "@capsule/shared";
+import { jumpCommandIndex, parseKeymapAction, type ConfigDiagnostics, type ConfigSnapshot, type EffectiveBinding, type KeyChord, type SetConfigValueInput } from "@capsule/shared";
 import type { SettingsSectionId } from "../features/settings/settings-search";
 import { TOGGLE_DICTATION_EVENT } from "./dictation";
 import { fromProjectFile, projectSettingsFor } from "./config-view";
 import { effectiveKeymap, INSERT_COMMAND_EVENT, KEY_COMMAND_EVENT } from "./keybindings";
 import { useKeymap } from "./use-keymap";
 import { clearedBackdrop } from "../features/customization/customization-commands";
-import { adjacentSession } from "./session-cycle";
+import { adjacentSession, sidebarOrder } from "./session-cycle";
+import { restoredPinOrder } from "./sidebar";
 import { isNarrow } from "./narrow";
 import { setDisplayPrefs } from "./display-prefs";
 import { openComposerControl, type ComposerControl } from "./composer-controls";
@@ -86,6 +88,8 @@ import { contextUsageFromEvents, type ContextUsage } from "./context-window";
 import { harnessPreflightReason } from "./harness-preflight";
 import { useToasts } from "./toasts";
 import { requestBrowserCommand } from "./browser-commands";
+import { requestTerminalCommand } from "./terminal-requests";
+import { rememberLastAction } from "./project-actions";
 import { BROWSER_FIND_EVENT, FILES_FIND_EVENT } from "./browser-find";
 import { requestLabel, withSlowNotice } from "./slow-requests";
 import {
@@ -104,7 +108,6 @@ export type View =
   | "project"
   | "runtimes"
   | "skills"
-  | "history"
   | "approvals"
   | "usage"
   | "settings"
@@ -117,7 +120,6 @@ export type InspectorTab =
   | "diff"
   | "run"
   | "agents"
-  | "chat"
   | "browser"
   | "simulator"
   | "compare";
@@ -208,7 +210,10 @@ export interface WorkspaceValue {
   events: RunEvent[];
   artifacts: Artifact[];
   approvals: ApprovalRequest[];
+  /** Agents that are turned on. */
   harnesses: HarnessStatus[];
+  /** Every agent, including ones turned off, for the Agents view. */
+  allHarnesses: HarnessStatus[];
   harnessSessions: Session[];
   doctors: Partial<Record<string, HarnessDoctorReport>>;
   harnessStatuses: Partial<Record<string, HarnessLiveStatus>>;
@@ -226,14 +231,16 @@ export interface WorkspaceValue {
   palette: boolean;
   paletteQuery: string;
   newProjectName: string;
-  diagnostics: string;
   notice?: string;
   setNotice: (value: string | undefined) => void;
   steerDraft: string;
   project?: Project;
   session?: Session;
   activeRun?: Run;
+  /** The first request waiting on the user; pendingApprovals holds all of them. */
   pendingApproval?: ApprovalRequest;
+  /** Every approval or question waiting on the user in this workspace's runs. */
+  pendingApprovals: ApprovalRequest[];
   connected: boolean;
   steps: RunActivity[];
   /** How full the harness's context window is, when it has said. */
@@ -276,6 +283,8 @@ export interface WorkspaceValue {
   goBack: () => void;
   goForward: () => void;
   send: () => Promise<boolean>;
+  /** Send the draft into the running turn as a steer, or queue it, whatever Settings says follow-ups do. */
+  sendFollowUp: (how: "steer" | "queue") => Promise<boolean>;
   runAgentCommand: (name: string, input?: string) => Promise<boolean>;
   agentCommandsOpen: boolean;
   setAgentCommandsOpen: (open: boolean) => void;
@@ -297,13 +306,16 @@ export interface WorkspaceValue {
   makePrimaryFolder: (path: string, projectId?: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   deleteProject: (id: string) => void;
-  renameSession: (id: string, title: string) => Promise<void>;
+  /** Resolves false when the title was empty or could not be saved; either way the person is told. */
+  renameSession: (id: string, title: string) => Promise<boolean>;
   deleteSession: (id: string) => void;
   archiveSession: (id: string) => Promise<void>;
   restoreSession: (id: string) => Promise<void>;
   openTerminal: () => Promise<void>;
   initializeGit: () => Promise<void>;
   saveProjectActions: (actions: ProjectAction[]) => Promise<{ saved: true } | { saved: false; error: string }>;
+  /** Runs a project action in the terminal dock and remembers it as this project's one-click action. */
+  runProjectAction: (action: ProjectAction) => void;
   workspaceMode: WorkspaceMode;
   setWorkspaceMode: (mode: WorkspaceMode) => Promise<void>;
   /** Move a not-yet-started worktree thread to another base branch. */
@@ -337,7 +349,6 @@ export interface WorkspaceValue {
     value: string,
     sessionId?: string,
   ) => Promise<void>;
-  exportDiagnostics: () => Promise<void>;
   ready: boolean;
   startupError?: string;
   sidebarCollapsed: boolean;
@@ -379,8 +390,17 @@ export interface WorkspaceValue {
   followUpsBlocked?: string;
   removeQueued: (id: string) => void;
   moveQueued: (id: string, direction: "up" | "down") => void;
-  /** Take a queued follow-up back into the composer. */
+  /** Why the queue waits for the person after a turn that was stopped or did not finish. */
+  followUpsHeld?: string;
+  /** Let a held queue go; with an id, that follow-up goes first. */
+  releaseQueued: (id?: string) => void;
+  /** Open a queued follow-up in the composer to rewrite it where it stands in line. */
   editQueued: (id: string) => void;
+  /** The queued follow-up open in the composer, if any. */
+  queuedEdit?: { id: string };
+  cancelQueuedEdit: () => void;
+  /** Save the composer over the queued follow-up being edited. */
+  saveQueuedEdit: () => Promise<boolean>;
   /** Send a queued follow-up now as a steer, where the route supports it. */
   steerQueued: (id: string) => Promise<void>;
   /** A prompt waiting for a usage limit to lift, then sent through the queue. */
@@ -393,24 +413,31 @@ export interface WorkspaceValue {
   /** The find bar over the current conversation. */
   threadFind: boolean;
   setThreadFind: (open: boolean | ((current: boolean) => boolean)) => void;
+  /** What find starts with when a search hit opened it. */
+  threadFindQuery: string;
+  /** Opens a thread with find seeded, as a message search hit does. */
+  findInThread: (projectId: string, sessionId: string, query: string) => void;
   /** The jump list of this conversation's prompts. */
   promptJump: boolean;
   setPromptJump: (open: boolean | ((current: boolean) => boolean)) => void;
   setContentSearch: (open: boolean) => void;
-  gitCommit: (message: string) => Promise<boolean>;
+  /** Commits the index as staged by default, or the named paths. */
+  gitCommit: (message: string, scope?: GitCommitScope) => Promise<boolean>;
   gitStage: (relative: string) => Promise<void>;
   gitDiscard: (relative: string) => void;
   /** Keep, Reject or Unstage a hunk. Throws git's reason when it no longer applies. */
   gitApplyHunk: (apply: HunkApply) => Promise<void>;
-  gitCreateBranch: (branch: string) => Promise<void>;
-  gitPush: () => Promise<boolean>;
+  gitCreateBranch: (branch: string) => Promise<boolean>;
+  /** Pushing to the default branch needs `toDefaultBranch`, given only after the user confirms it. */
+  gitPush: (options?: { toDefaultBranch?: boolean; }) => Promise<boolean>;
+  gitPull: (mode?: GitPullMode) => Promise<boolean>;
+  /** A throttled background fetch; quiet whatever happens. */
+  gitFetch: () => Promise<void>;
   gitCreatePullRequest: (input?: { title?: string; body?: string; }) => Promise<boolean>;
   gitMergePullRequest: () => Promise<void>;
   gitMergePullRequestStack: (action: GitPullRequestStackAction) => Promise<boolean>;
   gitRebasePullRequestStack: (action: GitPullRequestStackAction) => Promise<boolean>;
-  skillPacks: SkillPack[];
   installSkill: (skill: Skill) => Promise<Skill>;
-  installSkillPack: (packId: string) => Promise<SkillPack>;
   uninstallSkill: (skillId: string) => Promise<void>;
   searchSkillCatalog: (query: string, refresh?: boolean) => Promise<SkillCatalogPage>;
   fetchSkillDetail: (id: string) => Promise<string | undefined>;
@@ -479,7 +506,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const cycleSession = useRef<(step: 1 | -1) => void>(() => undefined);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [skillPacks, setSkillPacks] = useState<SkillPack[]>([]);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [projectId, setProjectId] = useState<string | undefined>(() => {
@@ -497,16 +523,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   });
   /*
-   * Back and Forward over visited conversations. Selection changes are
-   * recorded by effect, so every way of choosing a thread counts; a move made
-   * by Back or Forward itself is marked so it is not recorded as a new place.
+   * Back and Forward over visited places: a conversation and the view it was
+   * shown in, so Back from Settings or the board returns to the thread under
+   * it. Changes are recorded by effect, so every way of moving counts; a move
+   * made by Back or Forward itself is marked so it is not recorded again.
    */
   const [navigation, setNavigation] = useState<NavigationHistory>(EMPTY_NAVIGATION);
   const navigating = useRef(false);
   useEffect(() => {
     if (navigating.current) { navigating.current = false; return; }
-    setNavigation((current) => recordNavigation(current, { projectId, sessionId }));
-  }, [projectId, sessionId]);
+    setNavigation((current) => recordNavigation(current, { projectId, sessionId, view }));
+  }, [projectId, sessionId, view]);
   const travel = (direction: "back" | "forward") => {
     const move = direction === "back" ? navigationBack(navigation) : navigationForward(navigation);
     if (!move) return;
@@ -514,10 +541,32 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setNavigation(move.history);
     if (move.entry.projectId) setProjectId(move.entry.projectId);
     setSessionId(move.entry.sessionId);
-    setView("chat");
+    setView(move.entry.view ?? "chat");
   };
   const goBack = () => travel("back");
   const goForward = () => travel("forward");
+  /* The mouse's side buttons and a trackpad swipe arrive outside React; they read the latest history. */
+  const travelLatest = useRef(travel);
+  travelLatest.current = travel;
+  useEffect(() => {
+    const onMouse = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      event.preventDefault();
+      if (event.type === "mouseup") travelLatest.current(event.button === 3 ? "back" : "forward");
+    };
+    const onState = (payload: unknown) => {
+      const command = (payload as { command?: string } | undefined)?.command;
+      if (command === "history-back" || command === "history-forward") travelLatest.current(command === "history-back" ? "back" : "forward");
+    };
+    window.addEventListener("mousedown", onMouse);
+    window.addEventListener("mouseup", onMouse);
+    const off = api.on("state", onState);
+    return () => {
+      window.removeEventListener("mousedown", onMouse);
+      window.removeEventListener("mouseup", onMouse);
+      off();
+    };
+  }, [api]);
   const [ready, setReady] = useState(false);
   const [startupError, setStartupError] = useState<string>();
   const refreshError = useRef<{ scope: object; detail: string } | undefined>(undefined);
@@ -558,6 +607,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const draftHarnessConfig = draftHarnessConfigs[agentId] ?? { options: {} };
   const setDraftHarnessConfig = (config: { model?: string; options: Record<string, string> }) => setDraftHarnessConfigs((current) => ({ ...current, [agentId]: config }));
   const [draftApproval, setDraftApproval] = useScopedState<HarnessPermissionProfile | undefined>(draftScope, undefined);
+  /* A queued follow-up open in the composer, and the draft it set aside until the edit ends. */
+  const [queuedEdit, setQueuedEdit] = useScopedState<{ id: string; original: PromptDraft; saved: PromptDraft } | undefined>(draftScope, undefined);
   const [attachments, setAttachmentValues] = useScopedState<MessageAttachment[]>(draftScope, []);
   const attachmentState = useRef({ scope: draftScope, value: attachments });
   attachmentState.current = { scope: draftScope, value: attachments };
@@ -588,7 +639,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
-  const [diagnostics, setDiagnostics] = useState("");
   const [harnesses, setHarnesses] = useState<HarnessStatus[]>([]);
   const [harnessSessions, setHarnessSessions] = useState<Session[]>([]);
   const [doctors, setDoctors] = useState<Partial<Record<string, HarnessDoctorReport>>>({});
@@ -764,9 +814,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     (run) => run.sessionId === sessionId && ["running", "approval_required", "waiting"].includes(run.status),
   );
   const { turnMode, draftTurnMode, setTurnMode } = useTurnMode({ api, session, settings, setNotice });
-  const pendingApproval = approvals.find(
+  const pendingApprovals = useMemo(() => approvals.filter(
     (item) => item.status === "pending" && runs.some((run) => run.id === item.runId),
-  );
+  ), [approvals, runs]);
+  const pendingApproval = pendingApprovals[0];
   const loadGeneration = useRef(0);
   const liveRunState = useMemo(() => ({ runs: new Map<string, Run>(), events: new Map<string, RunEvent>(), eventBytes: 0, latest: undefined as Run | undefined, loadedOlder: false }), [scope]);
   const connected = status?.state === "connected" && status.kind === "openclaw";
@@ -943,7 +994,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const [
         nextAgents,
         nextSkills,
-        nextSkillPacks,
         nextStatus,
         nextSub,
         nextApprovals,
@@ -954,7 +1004,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       ] = await Promise.all([
           api.listAgents(),
           api.listSkills(selected.projectId, selected.sessionId),
-          api.listSkillPacks(),
           api.getStatus(),
           api.getSubsystemStatus(),
           api.listApprovals("pending"),
@@ -968,7 +1017,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setSessions(nextSessions);
       setAgents(nextAgents);
       setSkills(nextSkills);
-      setSkillPacks(nextSkillPacks);
       setStatus(nextStatus);
       setSubsystems(nextSub);
       setApprovals(nextApprovals);
@@ -1025,6 +1073,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       if (current()) setGitError(formatUserError(error));
     }
   }, [api, scope, projectId, sessionId, selectionExists]);
+
+  /* Remote-tracking refs go stale between pushes; a quiet fetch keeps ahead and behind true. Desktop only: it writes refs. */
+  const gitFetch = useCallback(async () => {
+    if (!projectId || !selectionExists || api.isDesktop === false || !requests.isCurrent(scope)) return;
+    try {
+      if (await api.gitFetch(projectId, sessionId)) await loadGit();
+    } catch { /* A fetch that cannot run leaves the last status. */ }
+  }, [api, scope, projectId, sessionId, selectionExists, loadGit]);
 
   useEffect(() => {
     void refresh();
@@ -1194,11 +1250,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setDraft(saved.prompt);
       setAttachments(saved.attachments);
       setSkillId(saved.skillId);
+      setDraftHarnessConfigs(saved.settings?.harness ?? {});
+      setDraftApproval(saved.settings?.approval);
     } catch {
       setDraft("");
       setAttachments([]);
       setSkillId(undefined);
     }
+    setQueuedEdit(undefined);
   }, [currentDraftKey]);
 
   useEffect(() => {
@@ -1207,14 +1266,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       return;
     }
     try {
-      const result = draftRecovery.save(localStorage, currentDraftKey, { prompt: draft, attachments, skillId });
+      // A conversation that has started keeps its settings itself; only one that has not needs them here.
+      const settings = messages.length === 0 && (draftApproval || Object.keys(draftHarnessConfigs).length) ? { settings: { harness: draftHarnessConfigs, ...(draftApproval ? { approval: draftApproval } : {}) } } : {};
+      // While a queued message is being edited, the draft it set aside is the one to keep.
+      const result = draftRecovery.save(localStorage, currentDraftKey, queuedEdit ? queuedEdit.saved : { prompt: draft, attachments, skillId, ...settings });
       if (result !== "saved") setNotice(result === "temporary"
         ? "This draft is kept temporarily until the app closes because local storage could not save it. Copy it before quitting."
         : "Draft recovery storage is full. Copy this draft before switching conversations or quitting; these edits could not be saved.");
     } catch {
       // Draft persistence is a convenience; storage policy must not break chat.
     }
-  }, [attachments, currentDraftKey, draft, skillId]);
+  }, [attachments, currentDraftKey, draft, skillId, draftHarnessConfigs, draftApproval, queuedEdit, messages.length]);
 
   useEffect(() => {
     // The drawer's open and closed states on a phone are not the desktop's preference.
@@ -1311,7 +1373,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setFiles([]);
       return;
     }
-    void loadGit();
+    void loadGit().then(() => gitFetch());
     void api
       .listFiles(projectId, ".", session?.workingDirectory)
       .then((entries: FileEntry[]) =>
@@ -1326,7 +1388,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         ),
       )
       .catch(() => setFiles([]));
-  }, [api, scope, loadGit, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
+  }, [api, scope, loadGit, gitFetch, projectId, project?.workingDirectory, sessionId, session?.workingDirectory, selectionExists]);
 
   async function createTask(inProject?: string, initialPrompt?: string, options?: CreateTaskOptions) {
     if (api.isDesktop === false && api.remoteMode !== "control") {
@@ -1427,8 +1489,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setNotice(formatUserError(error));
     }
   };
-  const [threadFind, setThreadFind] = useState(false);
-  useEffect(() => { setThreadFind(false); }, [sessionId]);
+  /*
+   * Find belongs to the thread it was opened on, so a search hit can open it
+   * on another thread, with the words that matched, as it selects that thread.
+   * Moving to any other thread closes it.
+   */
+  const [find, setFind] = useState<{ sessionId?: string; query: string }>();
+  useEffect(() => { setFind((current) => current && current.sessionId !== sessionId ? undefined : current); }, [sessionId]);
+  const threadFind = find !== undefined && find.sessionId === sessionId;
+  const threadFindQuery = threadFind ? find.query : "";
+  const setThreadFind = (open: boolean | ((current: boolean) => boolean)) => setFind((current) => {
+    const here = currentSelection.current.sessionId;
+    const showing = current !== undefined && current.sessionId === here;
+    const next = typeof open === "function" ? open(showing) : open;
+    return !next ? undefined : showing ? current : { sessionId: here, query: "" };
+  });
+  /* Selects the thread and opens find on it, seeded with the query that found it. */
+  const findInThread = (targetProjectId: string, targetSessionId: string, query: string) => {
+    if (targetProjectId !== currentSelection.current.projectId) applyProjectDefaults(projects.find((item) => item.id === targetProjectId));
+    setProjectId(targetProjectId);
+    setSessionId(targetSessionId);
+    setView("chat");
+    setFind({ sessionId: targetSessionId, query: query.trim() });
+  };
   const [promptJump, setPromptJump] = useState(false);
   useEffect(() => { setPromptJump(false); }, [sessionId]);
 
@@ -1442,8 +1525,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   };
   const cancelResume = () => { void changeFollowUps({ type: "cancel-resume" }); };
   const retryPrompt = (prompt: string, runId?: string) => {
-    if (!prompt.trim()) return;
-    void changeFollowUps({ type: "add", prompt: { content: prompt, attachments: runId ? attachmentsForRun(runId) : [] } });
+    if (!prompt.trim() || !sessionId) return;
+    const threadId = sessionId;
+    // Retry is the person asking for it now, so it goes first even past a held queue.
+    void (async () => {
+      try {
+        const added = await api.updateFollowUps(threadId, { type: "add", prompt: { content: prompt, attachments: runId ? attachmentsForRun(runId) : [] } });
+        const id = added.queue.at(-1)?.id;
+        setFollowUps(id ? await api.updateFollowUps(threadId, { type: "release", id }) : added);
+      } catch (error) {
+        setNotice(formatUserError(error));
+      }
+    })();
   };
 
   /*
@@ -1463,7 +1556,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     setSessionId(created.id);
   };
 
-  async function send(continueToNew = false, command?: string) {
+  async function send(continueToNew = false, command?: string, followUp?: "steer" | "queue") {
     if (attachmentReservations.get(draftScope)) {
       setNotice("Attachments are still being prepared. Wait for them before sending.");
       return false;
@@ -1489,7 +1582,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
        * agent that cannot steer (direct mode) and a paired device queue
        * instead, quietly: for them that is the expected path, not a failure.
        */
-      const steerable = settings?.followUpBehavior === "steer" && Boolean(agent)
+      const steerable = (followUp ?? settings?.followUpBehavior) === "steer" && Boolean(agent)
         && !command && filesToSend.length === 0 && !promptSkill
         && canSteerTurn({ harness: agent, session, status: harnessStatuses[threadId], desktop: api.isDesktop !== false });
       // Clear first and hold the key, so a second Enter cannot send the same text twice.
@@ -1744,11 +1837,56 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   function editQueued(id: string) {
     const item = queue.find((entry) => entry.id === id);
     if (!item) return;
-    void changeFollowUps({ type: "remove", id });
-    setDraft((current) => (current.trim() ? `${current}\n\n${item.content}` : item.content));
-    if (item.attachments.length) setAttachments((current) => [...current, ...item.attachments.filter((file) => !current.some((existing) => existing.path === file.path))]);
-    if (item.skillId) setSkillId(item.skillId);
+    const original = { prompt: item.content, attachments: item.attachments, ...(item.skillId ? { skillId: item.skillId } : {}) };
+    setQueuedEdit({ id, original, saved: queuedEdit?.saved ?? { prompt: draft, attachments, ...(skillId ? { skillId } : {}) } });
+    setDraft(item.content);
+    setAttachments(item.attachments);
+    setSkillId(item.skillId);
   }
+  function restoreDraft(value: PromptDraft) {
+    setDraft(value.prompt);
+    setAttachments(value.attachments);
+    setSkillId(value.skillId);
+  }
+  function cancelQueuedEdit() {
+    if (!queuedEdit) return;
+    setQueuedEdit(undefined);
+    restoreDraft(queuedEdit.saved);
+  }
+  async function saveQueuedEdit(): Promise<boolean> {
+    if (!queuedEdit || !sessionId) return false;
+    if (!draft.trim() && attachments.length === 0) {
+      setNotice("A queued message needs text. Remove it from the queue instead.");
+      return false;
+    }
+    try {
+      setFollowUps(await api.updateFollowUps(sessionId, { type: "replace", id: queuedEdit.id, prompt: { content: draft, attachments, ...(skillId ? { skillId } : {}) } }));
+    } catch (error) {
+      setNotice(formatUserError(error));
+      return false;
+    }
+    cancelQueuedEdit();
+    return true;
+  }
+  /*
+   * The prompt went out while it was open here. An untouched edit just ends;
+   * a changed one stays in the composer as a new draft, and the draft it had
+   * set aside goes to Stash rather than being lost.
+   */
+  useEffect(() => {
+    if (!queuedEdit || queue.some((item) => item.id === queuedEdit.id)) return;
+    setQueuedEdit(undefined);
+    const changed = draft !== queuedEdit.original.prompt || attachments.length !== queuedEdit.original.attachments.length || skillId !== queuedEdit.original.skillId;
+    if (!changed) { restoreDraft(queuedEdit.saved); return; }
+    const aside = queuedEdit.saved;
+    if (aside.prompt.trim() || aside.attachments.length || aside.skillId) {
+      const recovery = recoverFailedPrompt(localStorage, latestStashes.current, { ...aside, projectId });
+      latestStashes.current = recovery.entries;
+      setPromptStashes(recovery.entries);
+    }
+    setNotice("That queued message was sent before your edit was saved. Your edit is still in the composer as a new message.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, queuedEdit]);
   async function steerQueued(id: string) {
     const item = queue.find((entry) => entry.id === id);
     if (!item || !sessionId) return;
@@ -2070,11 +2208,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     });
   }
 
+  /* Never rejects: an empty title or a failed write is said, and the old title stays. */
   async function renameSession(id: string, title: string) {
     const trimmed = title.trim();
-    if (!trimmed) return;
-    await api.renameSession(id, trimmed);
+    if (!trimmed) {
+      setNotice("A conversation needs a title. It keeps its old one.");
+      return false;
+    }
+    if (sessions.find((item) => item.id === id)?.title === trimmed) return true;
+    try {
+      await api.renameSession(id, trimmed);
+    } catch (error) {
+      setNotice(`Could not rename the conversation. ${formatUserError(error)}`);
+      return false;
+    }
     await refresh();
+    return true;
   }
 
   function deleteSession(id: string) {
@@ -2170,6 +2319,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       const message = formatUserError(error);
       setNotice(message);
       return { saved: false as const, error: message };
+    }
+  }
+
+  /*
+   * An action runs in the terminal dock, in a tab named after it, so its
+   * output stays live and Control-C stops it. A paired viewer has no shell.
+   */
+  function runProjectAction(action: ProjectAction) {
+    if (!project) return;
+    if (api.isDesktop === false) {
+      setNotice("Project actions run in the terminal on the computer running Capsule.");
+      return;
+    }
+    rememberLastAction(project.id, action.id);
+    requestTerminalCommand({ kind: "run", command: action.command, tab: { key: `${project.id}:${action.id}`, label: action.name } });
+    setView("chat");
+    setTerminalOpen(true);
+    if (action.previewUrl && action.openPreview !== false) {
+      setBrowserUrl(action.previewUrl);
+      openInspector("browser");
     }
   }
 
@@ -2376,11 +2545,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     } catch (error) { setNotice(formatUserError(error)); }
   }
 
-  async function exportDiagnostics() {
-    const snapshot = await api.getDiagnostics();
-    setDiagnostics(JSON.stringify({ ...snapshot, rendererPerformance: localTimings.snapshot() }, null, 2));
-  }
-
   async function stopRun() {
     if (!activeRun || stoppingRuns.current.has(activeRun.id)) return;
     const runId = activeRun.id;
@@ -2411,8 +2575,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     } catch (error) { setNotice(formatUserError(error)); }
   }
 
+  /* Unpinning drops the thread's place among the pins, so Undo puts the order back too. */
   async function pinSession(id: string, pinned: boolean) {
-    await api.pinSession(id, pinned);
+    const target = sessions.find((item) => item.id === id);
+    const before = sessions.filter((item) => item.projectId === target?.projectId && item.pinned)
+      .sort((a, b) => (a.pinOrder ?? Number.MAX_SAFE_INTEGER) - (b.pinOrder ?? Number.MAX_SAFE_INTEGER)).map((item) => item.id);
+    try {
+      await api.pinSession(id, pinned);
+    } catch (error) {
+      setNotice(formatUserError(error));
+      return;
+    }
+    if (!pinned && target?.pinned) {
+      toasts.show({
+        key: `unpin:${id}`,
+        title: `Unpinned “${target.title}”`,
+        action: { label: "Undo", undo: true, run: () => restorePin(id, target.projectId, before) },
+      });
+    } else toasts.dismissKey(`unpin:${id}`);
+    await refresh();
+  }
+
+  async function restorePin(id: string, targetProjectId: string, before: readonly string[]) {
+    try {
+      await api.pinSession(id, true);
+      const pinnedNow = (await api.listSessions(targetProjectId)).filter((item: Session) => item.pinned);
+      const order = restoredPinOrder(before, pinnedNow);
+      if (order.join() !== pinnedNow.map((item: Session) => item.id).join()) await api.reorderPinnedSessions(targetProjectId, order);
+    } catch (error) {
+      setNotice(formatUserError(error));
+    }
     await refresh();
   }
 
@@ -2494,8 +2686,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
     }
   }
 
-  async function gitCommit(message: string) {
-    return projectId ? performGit(() => api.gitCommit(projectId, message, sessionId)) : false;
+  async function gitCommit(message: string, scope?: GitCommitScope) {
+    return projectId ? performGit(() => api.gitCommit(projectId, message, sessionId, scope)) : false;
     }
 
   async function gitStage(relative: string) {
@@ -2526,11 +2718,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }
 
   async function gitCreateBranch(branch: string) {
-    if (projectId) await performGit(() => api.gitCreateBranch(projectId, branch, sessionId));
+    return projectId ? performGit(() => api.gitCreateBranch(projectId, branch, sessionId)) : false;
   }
 
-  async function gitPush() {
-    return projectId ? performGit(() => api.gitPush(projectId, sessionId)) : false;
+  async function gitPush(options?: { toDefaultBranch?: boolean; }) {
+    return projectId ? performGit(() => api.gitPush(projectId, sessionId, options?.toDefaultBranch)) : false;
+  }
+
+  async function gitPull(mode: GitPullMode = "ff-only") {
+    return projectId ? performGit(() => api.gitPull(projectId, sessionId, mode)) : false;
   }
 
   async function gitCreatePullRequest(input?: { title?: string; body?: string; }) {
@@ -2556,15 +2752,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   const installSkill = useCallback(
     async (skill: Skill) => {
       const result = await api.installSkill(skill) as Skill;
-      await refresh();
-      return result;
-    },
-    [api, refresh],
-  );
-
-  const installSkillPack = useCallback(
-    async (packId: string) => {
-      const result = await api.installSkillPack(packId) as SkillPack;
       await refresh();
       return result;
     },
@@ -2612,13 +2799,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   }), [events, activeRun?.status, projectSettings?.reasoningSummary]);
 
   /* ⌃Tab reads the latest list and selection, not the ones its key handler closed over. */
-  cycleSession.current = (step) => {
-    const next = adjacentSession(sessions, sessionId, step);
-    if (!next || next.id === sessionId) return;
-    applyProjectDefaults(projects.find((item) => item.id === next.projectId));
-    setProjectId(next.projectId);
-    setSessionId(next.id);
+  /* ⌃Tab and ⌘1–9 follow the sidebar as drawn, so they reach what the person can see. */
+  const openSidebarThread = (id: string | undefined) => {
+    const next = sessions.find((item) => item.id === id && item.state === "active");
+    if (!next) return;
+    if (next.id !== sessionId) {
+      applyProjectDefaults(projects.find((item) => item.id === next.projectId));
+      setProjectId(next.projectId);
+      setSessionId(next.id);
+    }
     setView("chat");
+  };
+  cycleSession.current = (step) => {
+    const next = adjacentSession(sidebarOrder(), sessionId, step);
+    if (next !== sessionId) openSidebarThread(next);
   };
 
   const commands = useCommandList(api, projectId);
@@ -2653,7 +2847,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
         setNotice(`This project has no action named ${name}.`);
         return;
       }
-      void api.runProjectAction(project.id, found.id, sessionId).catch((error: unknown) => setNotice(formatUserError(error)));
+      runProjectAction(found);
+      return;
+    }
+    const row = jumpCommandIndex(name);
+    if (row !== undefined) {
+      // The open model picker numbers its own rows; its handler takes the key there.
+      if (!document.activeElement?.closest(".agent-model-picker")) openSidebarThread(sidebarOrder()[row]);
       return;
     }
     switch (name) {
@@ -2741,6 +2941,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
   };
   const keyChordPending = useKeymap(keyBindings, runKeyAction);
 
+  /* An agent turned off in Agents is hidden from every list but that one, where it can be turned back on. */
+  const agentOverrides = settings?.agentOverrides;
+  const shownHarnesses = useMemo(() => harnesses.filter((item) => agentEnabled(agentOverrides, item.id)), [harnesses, agentOverrides]);
+  const shownAgents = useMemo(() => agents.filter((item) => agentEnabled(agentOverrides, item.id)), [agents, agentOverrides]);
+
   const value = useMemo<WorkspaceValue>(
     () => ({
       api,
@@ -2756,11 +2961,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       subsystems,
       projects,
       sessions,
-      agents,
+      agents: shownAgents,
       skills,
-      skillPacks,
       installSkill,
-      installSkillPack,
       uninstallSkill,
       searchSkillCatalog,
       fetchSkillDetail,
@@ -2779,7 +2982,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       eventLoad,
       artifacts,
       approvals,
-      harnesses,
+      harnesses: shownHarnesses,
+      allHarnesses: harnesses,
       harnessSessions,
       doctors,
       harnessStatuses,
@@ -2799,7 +3003,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       palette,
       paletteQuery,
       newProjectName,
-      diagnostics,
       notice,
       setNotice,
       steerDraft,
@@ -2807,6 +3010,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       session,
       activeRun,
       pendingApproval,
+      pendingApprovals,
       connected,
       steps,
       contextUsage,
@@ -2854,6 +3058,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       createTask,
       startWithProfile,
       send,
+      sendFollowUp: (how: "steer" | "queue") => send(false, undefined, how),
       createProject,
       pickProjectDirectory,
       pickFilesToMention,
@@ -2871,6 +3076,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       openTerminal,
       initializeGit,
       saveProjectActions,
+      runProjectAction,
       workspaceMode,
       setWorkspaceMode,
       setWorktreeBase,
@@ -2893,7 +3099,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setHarnessOption,
       ready,
       startupError,
-      exportDiagnostics,
       sidebarCollapsed,
       inspectorOpen,
       terminalOpen,
@@ -2922,8 +3127,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       runAgentCommand: async (name, input = "") => {
         if (api.isDesktop === false) { setNotice("Agent commands can only be sent from the desktop app."); return false; }
         const commands = sessionId ? harnessStatuses[sessionId]?.parsed?.availableCommands : undefined;
-        if (!session?.openclawSessionKey?.startsWith("direct:acp:") || !commands?.some((command) => command.name === name)) {
-          setNotice(`${harnessDisplayName(harnesses, session?.harnessId, "This agent")} doesn't offer /${name} here. Type / to see its commands.`); return false;
+        const agentName = harnessDisplayName(harnesses, session?.harnessId, "This agent");
+        if (!session?.openclawSessionKey?.startsWith("direct:acp:")) {
+          setNotice(`${agentName} runs through the Gateway here, which doesn't share the agent's commands with Capsule, so /${name} can't run from this menu.`); return false;
+        }
+        if (!commands?.some((command) => command.name === name)) {
+          setNotice(`${agentName} doesn't offer /${name}. Type / to see the commands it does.`); return false;
         }
         if (input.length > 4000 || /[\r\n\0]/.test(input)) { setNotice("Command input must be one line of at most 4,000 characters."); return false; }
         return send(false, `/${name}${input.trim() ? ` ${input.trim()}` : ""}`);
@@ -2943,12 +3152,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       setContentSearch,
       queue,
       followUpsBlocked: followUps.blocked,
+      followUpsHeld: followUps.held,
+      releaseQueued: (id?: string) => { void changeFollowUps(id ? { type: "release", id } : { type: "release" }); },
+      queuedEdit: queuedEdit ? { id: queuedEdit.id } : undefined,
+      cancelQueuedEdit,
+      saveQueuedEdit,
       removeQueued,
       moveQueued,
       editQueued,
       steerQueued,
       threadFind,
       setThreadFind,
+      threadFindQuery,
+      findInThread,
       promptJump,
       setPromptJump,
       pendingResume,
@@ -2961,6 +3177,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       gitApplyHunk,
       gitCreateBranch,
       gitPush,
+      gitPull,
+      gitFetch,
       gitCreatePullRequest,
       gitMergePullRequest,
       gitMergePullRequestStack,
@@ -2989,7 +3207,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       subsystems,
       projects,
       sessions,
-      agents,
+      shownAgents,
       skills,
       messages,
       historyLoad,
@@ -3003,6 +3221,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       eventLoad,
       artifacts,
       approvals,
+      shownHarnesses,
       harnesses,
       harnessSessions,
       doctors,
@@ -3023,7 +3242,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       palette,
       paletteQuery,
       newProjectName,
-      diagnostics,
       notice,
       setNotice,
       steerDraft,
@@ -3033,6 +3251,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       session,
       activeRun,
       pendingApproval,
+      pendingApprovals,
       connected,
       steps,
       git,
@@ -3049,7 +3268,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode; }) {
       contentSearch,
       queue,
       followUps.blocked,
+      followUps.held,
+      queuedEdit,
       threadFind,
+      threadFindQuery,
       promptJump,
       pendingResume,
       navigation,

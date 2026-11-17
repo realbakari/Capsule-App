@@ -20,13 +20,18 @@ import { RunEventLog } from "../features/conversation/RunEventLog";
 import { TurnVerification } from "../features/conversation/TurnVerification";
 import { Pet } from "../features/pet/Pet";
 import { runUiPolishRegressions } from "./ui-polish-regressions";
+import { runCommitControlRegressions, runGitPaletteRegressions } from "./commit-control-regressions";
 import { runOwnershipRegressions } from "./ownership-regressions";
 import { runScreenshotRegressions } from "./screenshot-regressions";
 import { runRuntimeExtensionRegressions } from "./runtime-extension-regressions";
 import { runInterfaceRegressions } from "./interface-regressions";
 import { runPanelRegressions } from "./panel-regressions";
+import { runSidebarNavigationRegressions } from "./sidebar-navigation-regressions";
 import { runActivityRegressions, renderActivityPreview } from "./activity-regressions";
 import { runNoticeRegressions } from "./notice-regressions";
+import { runFeatureReviewRegressions } from "./feature-review-regressions";
+import { runToastRegressions } from "./toast-regressions";
+import { runProjectActionRegressions } from "./project-action-regressions";
 import { runChannelRegressions, renderChannelPreview } from "./channel-regressions";
 import { runComposerLayoutRegressions, runModelPickerRegressions } from "./composer-layout-regressions";
 import { runDictationRegressions } from "./dictation-regressions";
@@ -45,6 +50,7 @@ import { runNavigationRecoveryRegressions } from "./navigation-recovery-regressi
 import { runDraftAdmissionRegressions } from "./draft-admission-regressions";
 import { runWorkspaceExtensionRegressions } from "./workspace-extension-regressions";
 import { runComposerContextRegressions } from "./composer-context-regressions";
+import { runComposerKeyboardRegressions } from "./composer-keyboard-regressions";
 import { runSavedPreviewRegressions, runSavedPreviewLayoutRegressions, SavedDiffFixture, focusSavedPreview } from "./saved-preview-regressions";
 import { ChevronRightIcon, FolderIcon, InboxIcon } from "../features/shell/icons";
 import { CapabilityDetails } from "../features/harness/CapabilityDetails";
@@ -473,8 +479,8 @@ window.runRendererRegressions = async () => {
   const views: string[] = [];
   let finishInstall!: (value: Skill) => void;
   window.testWorkspace = {
-    skills: [], skillPacks: [], projectId: "project", sessionId: "thread", view: "skills",
-    setSkillId: (id: string) => attachments.push(id), setView: (view: string) => views.push(view),
+    api: { isDesktop: true }, skills: [], projectId: "project", sessionId: "thread", view: "skills",
+    setSkillId: (id: string | undefined) => { attachments.push(id ?? "(none)"); window.testWorkspace.skillId = id; }, setView: (view: string) => views.push(view),
     searchSkillCatalog: async () => {
       searches += 1;
       if (searches === 1) throw new Error("Catalog offline");
@@ -490,6 +496,7 @@ window.runRendererRegressions = async () => {
   };
   root.render(<SkillsDirectory />);
   await until(() => document.body.textContent?.includes("Browse GitHub"));
+  assert(!document.body.textContent?.includes("Packs") && !document.body.textContent?.includes("Plugins"), "The skills library still offers packs or plugins");
   button("Browse GitHub").click();
   await until(() => document.body.textContent?.includes("Catalog offline"));
   button("Retry").click();
@@ -497,26 +504,71 @@ window.runRendererRegressions = async () => {
   assert(searches === 2, "Catalog Retry did not fetch again");
   document.querySelector<HTMLButtonElement>(".skill-catalog-main")!.click();
   await until(() => document.querySelector(".skill-markdown-rendered")?.textContent?.includes("Fixture instructions"));
-  button("Install & Attach ($)").click();
+  button("Install and attach").click();
   await until(() => document.body.textContent?.includes("Install denied by the host"));
   assert(attachments.length === 0 && views.length === 0, "A rejected install attached or navigated");
   assert(document.querySelector('[role="dialog"]'), "Failed install closed its detail");
-  button("Install & Attach ($)").click(); await until(() => installs === 2);
-  assert(button("Install & Attach ($)").disabled, "Install can be repeated while pending");
+  button("Install and attach").click(); await until(() => installs === 2);
+  assert(button("Install and attach").disabled, "Install can be repeated while pending");
   assert(attachments.length === 0, "Attached before persistence completed");
   finishInstall({ ...skill, content: "# Fixture instructions", status: "installed" });
   await until(() => attachments.length === 1);
   assert(attachments[0] === skill.id && views[0] === "chat", "Successful install did not attach to the chat");
   root.unmount();
   root = createRoot(host);
-  window.testWorkspace.skills = [{ ...skill, status: "installed" }];
+  const onDisk = (id: string, name: string, source: string, tags: string[] = ["global", "claude"]): Skill => ({ id, name, description: `${name} guidance`, source, status: "installed", requirements: [], permissions: {}, content: `# ${name}`, location: `/skills/${id}/SKILL.md`, managedExternally: true, tags });
+  window.testWorkspace.skillId = undefined;
+  window.testWorkspace.skills = [
+    { ...skill, status: "installed", content: "# Fixture instructions" },
+    onDisk("global:claude:lint", "lint", "Claude Code"),
+    onDisk("global:codex:lint", "lint", "Codex", ["global", "codex"]),
+    onDisk("global:agents:a11y", "Accessibility (a11y) Audit", "Agent Skills", ["global", "agents"]),
+    { ...skill, id: "owner/repo/old", name: "Removed fixture", status: "available" },
+  ];
+  const skillStyles = document.getElementById("composer-test-styles") as HTMLStyleElement;
+  skillStyles.media = "all";
   root.render(<SkillsDirectory />);
-  await until(() => document.querySelector(".installed-skill-row"));
-  button("Attach").click(); await until(() => installs === 3);
-  assert(attachments.length === 1, "Installed-list Attach bypassed document recovery");
-  assert(button("Loading…").disabled, "Installed-list Attach is repeatable during recovery");
-  finishInstall({ ...skill, content: "# Fixture instructions", status: "installed" });
+  await until(() => document.querySelectorAll(".installed-skill-row").length === 4);
+  assert(button("Installed 4"), "The Installed count does not match the one list it heads");
+  assert(!Array.from(document.querySelectorAll("button")).some((item) => item.textContent?.trim() === "Attach"), "Every row still repeats an Attach button");
+  const sources = Array.from(document.querySelectorAll(".installed-skill-source")).map((item) => item.textContent);
+  assert(sources.length === 2 && sources.includes("Claude Code") && sources.includes("Codex"), `Only equally named skills should name their source: ${sources.join(",")}`);
+  const longName = Array.from(document.querySelectorAll<HTMLElement>(".installed-skill-name")).find((item) => item.textContent?.startsWith("Accessibility"))!;
+  assert(getComputedStyle(longName).textOverflow === "ellipsis" && longName.scrollWidth <= longName.clientWidth + 1, "A skill name is cut off in its row");
+  skillStyles.media = "not all";
+  fill(".skills-search-input", "lint");
+  await until(() => document.querySelectorAll(".installed-skill-row").length === 2);
+  document.querySelector<HTMLInputElement>(".skills-search-input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  assert(document.activeElement === document.querySelector(".installed-skill-row"), "Down from search does not reach the first skill");
+  (document.activeElement as HTMLButtonElement).click();
+  await until(() => document.querySelector('[role="dialog"]'));
+  assert(document.querySelector(".skill-modal-meta")?.textContent?.includes("/skills/global:claude:lint"), "Detail does not say where the skill lives");
+  assert(!Array.from(document.querySelectorAll("button")).some((item) => item.textContent?.trim() === "Uninstall"), "A skill another CLI owns offers Uninstall");
+  document.querySelector<HTMLElement>('[role="dialog"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await until(() => !document.querySelector('[role="dialog"]'));
+  assert(document.activeElement?.classList.contains("installed-skill-row"), "Closing the detail lost the row's focus");
+  (document.activeElement as HTMLButtonElement).click();
+  await until(() => document.querySelector('[role="dialog"]'));
+  button("Attach to message").click();
   await until(() => attachments.length === 2);
+  assert(attachments[1] === "global:claude:lint" && !document.querySelector('[role="dialog"]'), "Attach from the detail did not attach and close");
+  root.unmount();
+  root = createRoot(host);
+  root.render(<SkillsDirectory />);
+  await until(() => document.querySelector(".installed-skill-attached"));
+  document.querySelector<HTMLButtonElement>(".installed-skill-row .installed-skill-attached")!.closest("button")!.click();
+  await until(() => document.querySelector('[role="dialog"]'));
+  button("Remove from message").click();
+  await until(() => attachments.length === 3);
+  assert(attachments[2] === "(none)", "An attached skill has no way to be removed from the detail");
+  root.unmount();
+  root = createRoot(host);
+  window.testWorkspace.api = { isDesktop: false };
+  root.render(<SkillsDirectory />);
+  await until(() => document.body.textContent?.includes("Browse GitHub"));
+  button("Browse GitHub").click();
+  await until(() => document.body.textContent?.includes("computer running Capsule"));
+  assert(searches === 2, "A paired device fetched the catalog it cannot install from");
   root.unmount();
   root = createRoot(host);
   const writes: Array<{ projectId: string; path: string; contents: string; root: string }> = [];
@@ -625,7 +677,7 @@ window.runRendererRegressions = async () => {
   await until(() => copiedBrowserImage === 1 && document.body.textContent?.includes("Screenshot copied to clipboard"));
   captureFails = true;
   document.querySelector<HTMLButtonElement>('button[aria-label="Capture screenshot"]')!.click();
-  await until(() => document.body.textContent?.includes("Could not copy screenshot: Capture unavailable"));
+  await until(() => document.body.textContent?.includes("Could not copy the screenshot: Capture unavailable"));
   document.querySelector<HTMLElement>('.browser-controls > summary')!.click();
   await until(() => document.querySelector<HTMLDetailsElement>('.browser-controls')!.open);
   button("Allow agent control").click();
@@ -653,6 +705,11 @@ window.runRendererRegressions = async () => {
   guest.dispatchEvent(Object.assign(new Event("did-fail-load"), { errorCode: -105, errorDescription: "Subframe failed", isMainFrame: false }));
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert(!document.body.textContent?.includes("Subframe failed"), "A subframe error replaced the working page");
+  guest.dispatchEvent(Object.assign(new Event("did-fail-load"), { errorCode: -102, errorDescription: "ERR_CONNECTION_REFUSED", validatedURL: "http://localhost:4321/", isMainFrame: true }));
+  await until(() => document.querySelector(".browser-error")?.textContent?.includes("Could not open localhost:4321: nothing is answering there."));
+  assert(!document.querySelector(".browser-error")?.textContent?.includes("ERR_"), "A page load failure showed a network code instead of a reason");
+  guest.dispatchEvent(new Event("did-start-loading"));
+  await until(() => !document.querySelector(".browser-error"));
   guest.dispatchEvent(new Event("did-stop-loading"));
   document.querySelector<HTMLButtonElement>('button[title="More options"]')!.click();
   await until(() => document.querySelector('.preview-more-menu[role="menu"]'));
@@ -675,11 +732,20 @@ window.runRendererRegressions = async () => {
   assert(browserGrants.some(([id, allowed]) => id === "browser-a" && !allowed), "Closing the Browser left agent control enabled");
   root = createRoot(host);
   let serverRetries = 0;
+  const savedRecents = localStorage.getItem("capsule.browser.recents");
+  localStorage.setItem("capsule.browser.recents", JSON.stringify([
+    { url: "http://localhost:3000/", title: "Keep me", lastUsedAt: new Date().toISOString() },
+    { url: "http://localhost:5173/", title: "Forget me", lastUsedAt: new Date().toISOString() },
+  ]));
   root.render(<EmbeddedBrowser address="" onAddressChange={() => {}} localServers={[]} serversLoading={false}
     serversError="Discovery unavailable" onRetryServers={() => { serverRetries += 1; }} onOpenExternal={() => {}} />);
   await until(() => document.querySelector('[role="alert"]'));
-  assert(!document.body.textContent?.includes("No local web servers"), "Discovery failure was presented as an empty scan");
+  assert(!document.body.textContent?.includes("No local servers are running"), "Discovery failure was presented as an empty scan");
   button("Retry").click(); assert(serverRetries === 1, "Server discovery Retry did nothing");
+  document.querySelector<HTMLButtonElement>('button[aria-label="Remove Forget me from recently used"]')!.click();
+  await until(() => !document.body.textContent?.includes("Forget me"));
+  assert(document.body.textContent?.includes("Keep me") && !localStorage.getItem("capsule.browser.recents")?.includes("5173"), "Removing a recent address did not forget only that address");
+  if (savedRecents === null) localStorage.removeItem("capsule.browser.recents"); else localStorage.setItem("capsule.browser.recents", savedRecents);
   root.unmount(); root = createRoot(host);
 
   const largeFile: DiffFile = { path: "large.ts", status: "modified", binary: false, additions: 20_000, deletions: 0, hunks: [{
@@ -757,7 +823,7 @@ window.runRendererRegressions = async () => {
   button("Retry").click();
   await until(() => document.body.textContent?.includes("result.ts:17"));
   document.querySelector<HTMLButtonElement>(".palette-list button")!.click();
-  assert(openedFiles[0] === "result.ts", "Search result did not open its file");
+  assert(openedFiles[0] === "result.ts:17", "Search result did not open its file at its line");
   root.unmount(); root = createRoot(host); window.capsule = searchApi;
   let diffReads = 0;
   const savedPatch = "diff --git a/saved.ts b/saved.ts\n--- a/saved.ts\n+++ b/saved.ts\n@@ -0,0 +2023,500 @@\n" + Array.from({ length: 500 }, (_, index) => `+const saved${index} = ${index};\n`).join("") + "diff --git a/icon.png b/icon.png\nBinary files a/icon.png and b/icon.png differ\n";
@@ -839,7 +905,7 @@ window.runRendererRegressions = async () => {
     logReads++;
     return { events: [{ id: before ? "old" : "new", type: "error", timestamp: "2026-01-01T00:00:00Z", message: before ? "Earlier diagnostic" : "Recent diagnostic" }], hasMore: !before, before: before ? undefined : { timestamp: "2026-01-01T00:00:00Z", id: "new" } };
   } } };
-  root.render(<RunEventLog runId="failed-run" failed />);
+  root.render(<RunEventLog runId="failed-run" />);
   await until(() => document.querySelector("summary"));
   assert(logReads === 0, "Closed log eagerly loaded its history");
   document.querySelector("summary")!.click(); await until(() => document.body.textContent?.includes("Recent diagnostic"));
@@ -938,7 +1004,7 @@ window.runRendererRegressions = async () => {
       if (projectId && projectId !== project.id) throw new Error("Project not found");
       if (sessionId && !threads.some((thread) => thread.id === sessionId && thread.projectId === projectId)) throw new Error("Session not found");
       return [];
-    }, listSkillPacks: async () => [], getStatus: async () => ({ kind: "openclaw", state: "connected" }),
+    }, getStatus: async () => ({ kind: "openclaw", state: "connected" }),
     getSubsystemStatus: async () => ({}), listApprovals: async () => [], listHarnesses: async () => [],
     getSettings: async () => {
       if (failStartup) throw new Error("Workspace settings could not be read");
@@ -1221,6 +1287,7 @@ window.runRendererRegressions = async () => {
     session: { id: completed.sessionId, projectId: project.id, workingDirectory: project.workingDirectory }, sessionId: completed.sessionId,
     agents: pickerAgents, harnesses: pickerHarnesses, agentId: "claude", ready: true, connected: false,
     status: { state: "disconnected", kind: "openclaw" }, sendBlockReason: GATEWAY_CONNECTION_REQUIRED,
+    projects: [{ ...project, actions: [{ id: "tests", name: "Tests", command: "pnpm test" }] }],
     runs: [completed], steps: [{ id: "command-1", label: "Ran a command", status: "complete" }], events: [], messages: [
       // An older main process can still send SQLite's numeric false over IPC.
       { id: "details-prompt", runId: completed.id, sessionId: completed.sessionId, role: "user", content: completed.prompt, contentTruncated: 0 as unknown as boolean, createdAt: completed.createdAt },
@@ -1248,16 +1315,35 @@ window.runRendererRegressions = async () => {
   await until(() => document.querySelector('.gateway-recovery-error'));
   assert(connectionCalls === 1 && !button("Retry connection").disabled, "Failed connection was not recoverable");
   detailsToggle.click();
-  await until(() => document.querySelector('.turn-work-body .turn-verification') && document.querySelector('.turn-work-body .run-event-log'));
+  await until(() => document.querySelector('.turn-work-body .turn-verification'));
   assert(document.querySelector('[data-verification-run]')?.getAttribute('data-verification-run') === completed.id, "Expanded checks belong to another turn");
-  const beforeLog = detailReads;
-  document.querySelector<HTMLElement>('.run-event-log summary')!.click();
-  await until(() => detailReads > beforeLog && document.querySelector('.run-event-log')?.textContent?.includes("No recorded events"));
+  assert(!document.querySelector('.run-event-log'), "A completed turn that answered still offers its event log");
+  document.querySelector<HTMLElement>('.turn-verification > summary')!.click();
+  await until(() => document.querySelector<HTMLDetailsElement>('.turn-verification')?.open);
   detailsToggle.click();
   await until(() => document.querySelector('.turn-work-body')?.hasAttribute("hidden"));
   detailsToggle.click();
   await until(() => !document.querySelector('.turn-work-body')?.hasAttribute("hidden"));
-  assert(document.querySelector<HTMLDetailsElement>('.run-event-log')?.open && detailReads === beforeLog + 1, "Collapsing activity discarded diagnostic state or repeated its read");
+  assert(document.querySelector<HTMLDetailsElement>('.turn-verification')?.open, "Collapsing activity discarded the open checks");
+  // A project with no saved check and a turn with no evidence draw no checks at all.
+  window.testWorkspace = { ...window.testWorkspace, projects: [project] };
+  root.render(<Conversation />);
+  await until(() => !document.querySelector('.turn-verification'));
+  // A failed turn keeps its own Turn details row with what the agent reported, read once on open.
+  const failedTurn = { ...completed, id: "failed-details", status: "failed", error: "The agent exited.", result: undefined } as Run;
+  const completedTurn = window.testWorkspace;
+  window.testWorkspace = { ...window.testWorkspace, runs: [failedTurn], messages: [
+    { id: "failed-prompt", runId: failedTurn.id, sessionId: completed.sessionId, role: "user", content: completed.prompt, createdAt: completed.createdAt },
+  ] };
+  root.render(<Conversation />);
+  await until(() => document.querySelector('.run-summary-header'));
+  document.querySelector<HTMLButtonElement>('.run-summary-header')!.click();
+  await until(() => document.querySelector('.run-event-log summary'));
+  assert(document.querySelector('.run-event-log summary')!.textContent === "What the agent reported" && !document.querySelector('.reported-usage'), "A failed turn's log is not labelled for what it holds");
+  const beforeLog = detailReads;
+  document.querySelector<HTMLElement>('.run-event-log summary')!.click();
+  await until(() => detailReads > beforeLog && document.querySelector('.run-event-log')?.textContent?.includes("No recorded events"));
+  window.testWorkspace = completedTurn;
   window.testWorkspace = { ...window.testWorkspace, sendBlockReason: undefined, harnesses: pickerHarnesses.map((item) => ({ ...item, runtimeRoute: "direct" })) };
   root.render(<Conversation />);
   await until(() => !document.querySelector('.gateway-recovery'));
@@ -1344,23 +1430,20 @@ window.runRendererRegressions = async () => {
     applyPreviewPalette(theme);
     host.style.cssText = "width:100%;padding:24px;box-sizing:border-box";
     previewRoot ??= createRoot(host);
-    window.testWorkspace = { ...window.testWorkspace, api: { ...actualWorkspace.api, listRunEventPage: async () => ({ hasMore: false, events: [
-      { id: "context", runId: "receipt", type: "usage.context", timestamp: "2026-01-01T12:00:00Z", message: "Agent-reported context usage", data: { context: { source: "agent", used: 21000, size: 258000 } } },
-      { id: "tokens", runId: "receipt", type: "usage.turn", timestamp: "2026-01-01T12:00:00Z", message: "Agent-reported turn usage", data: { usage: { inputTokens: 21000, outputTokens: 14, totalTokens: 21014 } } },
-      ...Array.from({ length: 50 }, (_, index) => ({ id: String(index), runId: "receipt", type: "lifecycle", timestamp: "2026-01-01T12:00:00Z", message: "Recorded agent activity" })),
-    ] }) } };
-    const run = { id: "receipt", status: "completed" } as Run;
+    window.testWorkspace = { ...window.testWorkspace, api: { ...actualWorkspace.api, listRunEventPage: async () => ({ hasMore: false, events:
+      Array.from({ length: 50 }, (_, index) => ({ id: String(index), runId: "receipt", type: "lifecycle", timestamp: "2026-01-01T12:00:00Z", message: "Recorded agent activity" })),
+    }) } };
+    const run = { id: "receipt", status: "failed" } as Run;
     previewRoot.render(<div style={{ maxWidth: "44rem", margin: "auto" }}><p>Hi! What would you like to work on?</p><RunSummary key={`${expanded}-${theme}`} run={run} label="Turn details"><RunEventLog runId={run.id} /><TurnVerification run={run} /></RunSummary></div>);
     await settle();
     if (expanded) {
       host.querySelector<HTMLButtonElement>(".run-summary-header")!.click(); await settle();
       host.querySelector<HTMLElement>(".run-event-log summary")!.click();
-      await until(() => host.querySelector(".reported-usage"));
-      host.querySelector<HTMLDetailsElement>(".reported-usage")!.open = true; await settle();
+      await until(() => host.querySelector(".event-log > div"));
       const log = host.querySelector<HTMLElement>(".event-log")!;
       assert(log.scrollHeight > log.clientHeight && log.clientHeight <= 300, "Long run log does not have a bounded scrolling region");
       assert(!host.querySelector(".run-log-pages"), "Single-page log renders useless pagination");
-      assert(host.scrollWidth <= host.clientWidth, "Usage details overflow a narrow conversation");
+      assert(host.scrollWidth <= host.clientWidth, "Turn details overflow a narrow conversation");
     }
   };
   window.renderActivityPreview = async (closing, theme) => {
@@ -1589,6 +1672,7 @@ window.runRendererRegressions = async () => {
   document.documentElement.style.removeProperty("font-size");
   phase("UI polish");
   await runUiPolishRegressions(host);
+  await runCommitControlRegressions(host);
   phase("screenshots");
   await runScreenshotRegressions(host);
   phase("ownership");
@@ -1599,6 +1683,9 @@ window.runRendererRegressions = async () => {
   await runInterfaceRegressions(host, contextBase);
   phase("panels");
   await runPanelRegressions(host, contextBase);
+  await runGitPaletteRegressions(host, contextBase);
+  phase("sidebar navigation");
+  await runSidebarNavigationRegressions(host, contextBase);
   phase("simulator");
   await runSimulatorRegressions(host, contextBase);
   phase("follow-ups");
@@ -1609,6 +1696,9 @@ window.runRendererRegressions = async () => {
   phase("activity and startup");
   await runActivityRegressions(host);
   await runNoticeRegressions(host);
+  await runFeatureReviewRegressions(host);
+  await runToastRegressions(host);
+  await runProjectActionRegressions(host);
   await runChannelRegressions(host);
   phase("composer layout matrix");
   await runComposerLayoutRegressions(host, contextBase);
@@ -1632,6 +1722,8 @@ window.runRendererRegressions = async () => {
   await runWorkspaceExtensionRegressions(host, contextBase);
   phase("composer context sources");
   await runComposerContextRegressions(host, contextBase);
+  phase("composer keyboard");
+  await runComposerKeyboardRegressions(host, contextBase);
   phase("files layout and navigation");
   await runFilesRegressions(host, contextBase);
   phase("review hunk actions");

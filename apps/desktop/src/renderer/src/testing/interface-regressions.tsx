@@ -207,6 +207,7 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     let update: UpdateCheck = { state: "update-available", current: "0.13.0", latest: "0.14.0", canInstall: true };
     let updateEvent: (payload: unknown) => void = () => {};
     let checks = 0, downloads = 0, confirmTitle = "";
+    const restoredIds: string[] = [];
     let toasts: Toast[] = [];
     const ToastCapture = () => { toasts = useToasts().toasts; return null; };
     const sidebarWorkspace = window.testWorkspace as Record<string, unknown>;
@@ -259,7 +260,9 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
       checkForUpdates: async () => { checks++; return update; }, search: async () => ({ sessions: [], messages: [] }) };
     root.render(<ToastProvider><PaletteFixture base={{ ...base, api: paletteApi, setPalette: () => {}, session: undefined, sessionId: undefined,
       project: { id: "project", name: "Example workspace" }, projects: [{ id: "project", name: "Example workspace" }],
-      sessions: [{ id: "thread", projectId: "project", title: "Review accessibility", state: "active", updatedAt: "2026-01-01T00:00:00Z" }] }} /><ToastCapture /></ToastProvider>);
+      sessions: [{ id: "thread", projectId: "project", title: "Review accessibility", state: "active", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" },
+        { id: "shelved", projectId: "project", title: "An archived thread", state: "archived", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" }],
+      restoreSession: async (id: string) => { restoredIds.push(id); }, setProjectId: () => {}, setView: () => {} }} /><ToastCapture /></ToastProvider>);
     await until(() => document.querySelector('[aria-label="Search workspace"]'));
     const headers = Array.from(document.querySelectorAll(".search-dialog-section"), (node) => node.textContent);
     assert(headers[0] === "Recent conversations" && new Set(headers).size === headers.length, `Palette groups repeat or recent conversations do not lead: ${headers.join(", ")}`);
@@ -275,6 +278,15 @@ export async function runInterfaceRegressions(host: HTMLElement, base: Record<st
     updateRow()!.click();
     await until(() => toasts.some((toast) => toast.title === "You’re up to date"));
     assert(Number(checks) === 2, "The palette's Check for updates did not start a check");
+    fill('[role="combobox"]', "archived");
+    const archivedRow = () => Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.textContent?.startsWith("Archived conversations"));
+    await until(archivedRow);
+    archivedRow()!.click();
+    await until(() => document.querySelector('[role="dialog"][aria-label="Archived conversations"]'));
+    const shelvedRow = () => Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((option) => option.textContent?.startsWith("An archived thread"));
+    await until(shelvedRow);
+    shelvedRow()!.click();
+    await until(() => restoredIds.includes("shelved"));
   } finally {
     root.unmount();
     if (clipboard) Object.defineProperty(navigator.clipboard, "writeText", clipboard);
